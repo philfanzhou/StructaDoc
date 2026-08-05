@@ -15,6 +15,7 @@ public static class AuthenticationServiceCollectionExtensions
         services.AddSingleton<IPasswordHasher<AdminUserEntity>, PasswordHasher<AdminUserEntity>>();
         services.AddSingleton<AdministratorPasswordVerifier>();
         services.AddScoped<IAdministratorAuthenticationService, AdministratorAuthenticationService>();
+        services.AddScoped<IApiClientAdministrationService, ApiClientAdministrationService>();
         return services;
     }
 }

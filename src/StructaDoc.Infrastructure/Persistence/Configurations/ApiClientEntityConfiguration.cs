@@ -24,5 +24,8 @@ internal sealed class ApiClientEntityConfiguration : IEntityTypeConfiguration<Ap
         builder.Property(client => client.IsActive).HasColumnName("is_active");
         builder.Property(client => client.CreatedAtUtc).HasColumnName("created_at_utc");
         builder.Property(client => client.RevokedAtUtc).HasColumnName("revoked_at_utc");
+        builder.Property(client => client.ConcurrencyVersion)
+            .HasColumnName("concurrency_version")
+            .IsConcurrencyToken();
     }
 }

@@ -59,7 +59,7 @@ file=<exactly one file>
 
 ## Remaining Work
 
-- 管理员和 API Client 管理界面；
+- 管理员和 API Client 管理界面（API Client 管理端点已实现）；
 - S3 兼容对象存储实现及就绪检查；
 - Document 详情、分页列表、受控下载和删除 API；
 - 孤儿对象扫描与删除重试；

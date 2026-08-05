@@ -9,4 +9,5 @@ public sealed class ApiClientEntity
     public bool IsActive { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? RevokedAtUtc { get; set; }
+    public long ConcurrencyVersion { get; set; }
 }

@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租、失败转换和到期恢复。本地文件存储、Document 上传、管理员 Cookie 会话、API Key scope 授权和 antiforgery 防护已经实现；管理员/API Client 管理、文档读取 API、解析 Provider、实际任务执行器和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租、失败转换和到期恢复。本地文件存储、Document 上传、管理员 Cookie 会话、API Client 生命周期与 scope 授权和 antiforgery 防护已经实现；管理员账户管理、文档读取 API、解析 Provider、实际任务执行器和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -36,6 +36,11 @@ dotnet run --project src/StructaDoc.Host
 - `POST /api/v1/admin/session`：管理员登录；
 - `GET /api/v1/admin/session`：读取当前管理员会话；
 - `DELETE /api/v1/admin/session`：退出管理员会话；
+- `GET /api/v1/admin/api-clients`：管理员列出 API Client；
+- `POST /api/v1/admin/api-clients`：创建 API Client，并且只在该响应中返回完整 Key；
+- `PUT /api/v1/admin/api-clients/{id}`：修改名称与 scope；
+- `POST /api/v1/admin/api-clients/{id}/rotate`：轮换 Key，并且只在该响应中返回新 Key；
+- `DELETE /api/v1/admin/api-clients/{id}`：不可逆撤销 API Client；
 - `POST /api/v1/documents`：单文件 `multipart/form-data` 上传，字段名为 `file`；要求管理员会话或具有 `documents:write` 的 API Key。
 
 默认配置使用 `./data/structadoc.db` SQLite 文件并在启动时应用迁移。可以通过环境变量切换数据库：
@@ -241,7 +246,7 @@ GET    /api/v1/parse-runs/{parseRunId}/artifacts
 - `parses:read`
 - `parses:write`
 
-调用方不需要也不允许复用管理员浏览器 Cookie。API Client 管理端点尚未实现；目前只有认证、哈希存储和 scope 授权基础。
+调用方不需要也不允许复用管理员浏览器 Cookie。管理员可以通过 `/api/v1/admin/api-clients` 创建、列出、修改 scope、轮换和撤销 API Client；创建或轮换返回的完整 Key 只显示一次，服务端无法恢复。
 
 ## 计划技术栈
 

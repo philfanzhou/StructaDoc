@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using StructaDoc.Application.Authentication;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
+using StructaDoc.Infrastructure.Authentication;
 using StructaDoc.Infrastructure.Persistence;
 using StructaDoc.Infrastructure.Persistence.Entities;
 using StructaDoc.Infrastructure.Persistence.ParseRuns;
@@ -133,7 +135,10 @@ internal static class ParseRunLeaseContract
             .AsNoTracking()
             .SingleAsync();
         Assert.Equal(32, apiClient.SecretHash.Length);
-        Assert.Equal("documents:write", apiClient.Scopes);
+        Assert.Equal("documents:read", apiClient.Scopes);
+        Assert.False(apiClient.IsActive);
+        Assert.NotNull(apiClient.RevokedAtUtc);
+        Assert.Equal(3, apiClient.ConcurrencyVersion);
     }
 
     private static DbContextOptions<StructaDocDbContext> CreateOptions(
@@ -215,6 +220,39 @@ internal static class ParseRunLeaseContract
         }
 
         await dbContext.SaveChangesAsync();
+
+        await ExerciseApiClientAdministrationAsync(options, nowUtc);
+    }
+
+    private static async Task ExerciseApiClientAdministrationAsync(
+        DbContextOptions<StructaDocDbContext> options,
+        DateTime nowUtc)
+    {
+        await using var dbContext = new StructaDocDbContext(options);
+        var service = new ApiClientAdministrationService(dbContext);
+        var existing = Assert.Single(await service.ListAsync());
+        Assert.True(ApiClientDefinition.TryCreate(
+            "Updated contract client",
+            [AuthenticationScopes.DocumentsRead],
+            out var definition,
+            out _,
+            out _));
+
+        var update = await service.UpdateAsync(existing.Id, definition!);
+        Assert.Equal(ApiClientMutationStatus.Succeeded, update.Status);
+        Assert.Equal([AuthenticationScopes.DocumentsRead], update.Client!.Scopes);
+
+        var rotation = await service.RotateCredentialAsync(existing.Id);
+        Assert.Equal(ApiClientMutationStatus.Succeeded, rotation.Status);
+        Assert.NotNull(rotation.IssuedClient);
+        Assert.StartsWith("sd1.", rotation.IssuedClient.Credential, StringComparison.Ordinal);
+
+        Assert.Equal(
+            ApiClientMutationStatus.Succeeded,
+            await service.RevokeAsync(existing.Id, nowUtc.AddMinutes(1)));
+        Assert.Equal(
+            ApiClientMutationStatus.Conflict,
+            (await service.RotateCredentialAsync(existing.Id)).Status);
     }
 
     private static async Task<ParseRunLease?> ClaimOneAsync(

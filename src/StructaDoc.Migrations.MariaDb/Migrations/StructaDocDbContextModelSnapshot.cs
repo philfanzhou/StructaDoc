@@ -84,6 +84,11 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
                         .HasColumnType("char(36)")
                         .HasColumnName("id");
 
+                    b.Property<long>("ConcurrencyVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("concurrency_version");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at_utc");

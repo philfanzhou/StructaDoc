@@ -79,6 +79,11 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("id");
 
+                    b.Property<long>("ConcurrencyVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("concurrency_version");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at_utc");

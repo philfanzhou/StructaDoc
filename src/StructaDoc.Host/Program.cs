@@ -76,6 +76,7 @@ if (ingestionOptions.UploadApiEnabled)
 
 app.MapAdministratorSessionEndpoints(
     authenticationOptions.AdministratorSessionLifetime);
+app.MapApiClientAdministrationEndpoints();
 
 app.MapHealthChecks(
     "/health/live",

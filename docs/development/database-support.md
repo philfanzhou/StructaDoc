@@ -87,7 +87,7 @@ $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
 dotnet test tests/StructaDoc.DatabaseContractTests
 ```
 
-当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、Document/管理员/API Client 持久化、并发抢占不重复、续租令牌失效、未启动任务的租约过期恢复，以及运行、失败、重试等待和到期回队列转换。测试成功前不得更新上面的发布支持状态。
+当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、Document/管理员持久化、API Client scope 更新、Key 轮换、并发版本和撤销，以及 Parse Run 并发抢占、续租令牌失效、未启动任务的租约过期恢复、运行、失败、重试等待和到期回队列转换。测试成功前不得更新上面的发布支持状态。
 
 ## Remaining Verification
 

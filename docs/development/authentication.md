@@ -42,7 +42,7 @@ Email 和密码必须同时配置，密码长度为 12–1024 个字符。启动
 
 ## API Client Credential
 
-Credential 格式包含版本、公开 Client UUID 和 256-bit 随机 Secret。数据库只保存 Secret SHA-256；完整 Credential 不能恢复，也不得写入日志。API Client 管理和“只显示一次”的创建响应尚未实现，因此当前代码只提供验证、scope 和持久化基础。
+Credential 格式包含版本、公开 Client UUID 和 256-bit 随机 Secret。数据库只保存 Secret SHA-256；完整 Credential 不能恢复，也不得写入日志。创建和轮换响应使用 `Cache-Control: no-store`，并且是唯一返回完整 Credential 的位置。
 
 已登记 scope：
 
@@ -53,6 +53,20 @@ Credential 格式包含版本、公开 Client UUID 和 256-bit 随机 Secret。�
 
 当前 Document 上传要求 `documents:write`。管理员主体由独立策略授权，不需要伪造 API Client scope。
 
+## API Client Administration
+
+以下端点只允许管理员 Cookie 会话访问；所有写操作都要求 antiforgery token：
+
+| Method | Path | Behavior |
+|---|---|---|
+| `GET` | `/api/v1/admin/api-clients` | 按创建时间倒序列出 Client，不返回 Credential 或 Secret 哈希 |
+| `POST` | `/api/v1/admin/api-clients` | 创建 Client，返回只显示一次的 Credential |
+| `PUT` | `/api/v1/admin/api-clients/{id}` | 修改显示名称和 scope，立即影响后续请求 |
+| `POST` | `/api/v1/admin/api-clients/{id}/rotate` | 生成新 Credential，旧 Credential 立即失效 |
+| `DELETE` | `/api/v1/admin/api-clients/{id}` | 不可逆撤销；重复撤销保持幂等 |
+
+名称会去除首尾空白，scope 会去重并按固定顺序保存。未知 scope 返回 `400`。轮换和修改使用并发版本比较；Client 被撤销或同时发生其他变更时返回 `409`。撤销是终态，不能通过轮换重新启用；需要恢复调用方时应创建新的 API Client。
+
 ## Data Protection
 
 `Authentication:DataProtectionKeysPath` 默认是 `./data/keys`。该目录保存 Cookie 和 antiforgery 使用的 ASP.NET Core Data Protection key ring，必须放入持久卷并限制文件权限。删除或更换 key ring 会使现有管理员会话与 antiforgery token 失效。
@@ -62,7 +76,7 @@ Credential 格式包含版本、公开 Client UUID 和 256-bit 随机 Secret。�
 ## Remaining Work
 
 - 管理员创建、停用、密码变更和安全审计；
-- API Client 创建、只显示一次的 Key、轮换、撤销和 scope 管理；
+- API Client 管理网页和持久化安全审计；
 - 登录失败审计和可配置锁定策略；
 - 生产 HTTPS、反向代理和 Cookie Secure 部署验证；
 - 可选 OIDC 管理员登录；

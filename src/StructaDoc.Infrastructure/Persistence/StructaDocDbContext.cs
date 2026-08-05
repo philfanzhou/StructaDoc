@@ -37,6 +37,14 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
 
     private void IncrementConcurrencyVersions()
     {
+        foreach (var entry in ChangeTracker.Entries<ApiClientEntity>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.ConcurrencyVersion++;
+            }
+        }
+
         foreach (var entry in ChangeTracker.Entries<ParseRunEntity>())
         {
             if (entry.State == EntityState.Modified)
