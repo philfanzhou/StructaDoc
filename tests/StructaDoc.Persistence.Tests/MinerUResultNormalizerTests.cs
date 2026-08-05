@@ -147,6 +147,38 @@ public sealed class MinerUResultNormalizerTests
         Assert.Contains(bundle.Artifacts, artifact => artifact.Type == ArtifactTypes.ModelOutput);
     }
 
+    [Fact]
+    public async Task Supports_official_local_nested_zip_layout_and_relative_image_paths()
+    {
+        using var environment = new NormalizerTestEnvironment();
+        var parseRunId = Guid.NewGuid();
+        var archive = await environment.StoreArchiveAsync(
+            parseRunId,
+            ("report/auto/report.md", "# Local result"u8.ToArray()),
+            (
+                "report/auto/report_content_list.json",
+                "[{\"type\":\"image\",\"page_id\":0,\"img_path\":\"images/figure.png\"}]"u8.ToArray()),
+            ("report/auto/report_middle.json", "{}"u8.ToArray()),
+            ("report/auto/report_model.json", "{}"u8.ToArray()),
+            ("report/auto/images/figure.png", PngBytes()));
+
+        var bundle = await environment.Normalizer.NormalizeAsync(new(
+            parseRunId,
+            ProviderTypes.MinerULocal,
+            archive,
+            Backend: "pipeline"));
+
+        var asset = Assert.Single(bundle.Assets);
+        var block = Assert.Single(bundle.Blocks);
+        Assert.Equal(asset.Id, block.AssetId);
+        Assert.Equal(1, block.PageNumber);
+        Assert.Contains(bundle.Artifacts, artifact => artifact.Type == ArtifactTypes.Markdown);
+        Assert.Contains(bundle.Artifacts, artifact => artifact.Type == ArtifactTypes.ContentList);
+        Assert.Contains(bundle.Artifacts, artifact => artifact.Type == ArtifactTypes.Layout);
+        Assert.Contains(bundle.Artifacts, artifact => artifact.Type == ArtifactTypes.ModelOutput);
+        Assert.True(ParseBundleValidator.Validate(bundle).IsValid);
+    }
+
     [Theory]
     [InlineData("missing-markdown", "mineru-result-markdown-missing")]
     [InlineData("empty-markdown", "mineru-result-markdown-empty")]
@@ -223,6 +255,38 @@ public sealed class MinerUResultNormalizerTests
                 archive)));
 
         Assert.Equal("mineru-result-entry-ambiguous", exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Rejects_ambiguous_nested_markdown_and_image_aliases()
+    {
+        using var environment = new NormalizerTestEnvironment();
+        var markdownParseRunId = Guid.NewGuid();
+        var markdownArchive = await environment.StoreArchiveAsync(
+            markdownParseRunId,
+            ("one/result.md", "one"u8.ToArray()),
+            ("two/result.md", "two"u8.ToArray()));
+
+        var markdownException = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+            environment.Normalizer.NormalizeAsync(new(
+                markdownParseRunId,
+                ProviderTypes.MinerULocal,
+                markdownArchive)));
+        Assert.Equal("mineru-result-entry-ambiguous", markdownException.ErrorCode);
+
+        var imageParseRunId = Guid.NewGuid();
+        var imageArchive = await environment.StoreArchiveAsync(
+            imageParseRunId,
+            ("full.md", "markdown"u8.ToArray()),
+            ("one/images/figure.png", PngBytes()),
+            ("two/images/figure.png", PngBytes()));
+
+        var imageException = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+            environment.Normalizer.NormalizeAsync(new(
+                imageParseRunId,
+                ProviderTypes.MinerULocal,
+                imageArchive)));
+        Assert.Equal("mineru-result-entry-ambiguous", imageException.ErrorCode);
     }
 
     [Fact]

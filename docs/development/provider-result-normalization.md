@@ -12,12 +12,12 @@
 
 | ZIP 内容 | 识别规则 | Canonical 结果 |
 |---|---|---|
-| `full.md` | 根目录精确名称，必需且必须为非空 UTF-8 | `markdown` Artifact |
+| `full.md` 或唯一 `*.md` | 优先根目录精确名称；否则接受唯一嵌套 Markdown，必需且必须为非空 UTF-8 | `markdown` Artifact |
 | `content_list.json` | 根目录精确名称；否则唯一 `*_content_list.json`；否则唯一子目录同名文件 | `content-list` Artifact，并映射 Blocks |
 | `content_list_v2.json` | 与 content list 相同优先级，可选 | 第二个 `content-list` Artifact |
-| `layout.json` | 精确、唯一后缀、唯一子目录同名文件，可选 | `layout` Artifact |
+| `layout.json` / `*_middle.json` | 精确、唯一后缀、唯一子目录同名文件，可选 | `layout` Artifact |
 | `model.json` | 精确、唯一后缀、唯一子目录同名文件，可选 | `model-output` Artifact |
-| `images/**` | 已验清单下的非空文件 | Asset；当前接受 PNG、JPEG、GIF、WebP 文件签名 |
+| `images/**` 或唯一嵌套 `*/images/**` | 已验清单下的非空文件；嵌套路径为 content list 提供唯一 `images/**` 别名 | Asset；当前接受 PNG、JPEG、GIF、WebP 文件签名 |
 | 原始 ZIP | 接收阶段固定对象 | `provider-archive` Artifact |
 
 同一优先级存在多个候选时返回稳定歧义错误，不依赖 ZIP 条目顺序选择“第一个”。JSON 必须是合法 UTF-8 JSON；`content_list` 根节点必须是数组。`content_list` 缺失时仍可生成只包含 Markdown 和原始 Archive 的合法 Bundle，以兼容只输出 Markdown 的 Provider 版本。
@@ -58,7 +58,7 @@
 
 ## 当前未实现
 
-- MinerU HTTP 适配器和真实 Worker 的下载、接收、归一化、提交编排；
+- MinerU HTTP 适配器已经实现；真实 Worker 的下载、接收、归一化、提交编排仍未接入；
 - 用实际生产样本扩展更多 MinerU 目录版本、图片媒体类型和结构字段；
 - Markdown 内图片链接的公共下载/导出重写策略；
 - 解析 Assets/Artifacts/Blocks 的公共读取与受控下载端点。

@@ -37,16 +37,19 @@ Host 的 `ParseRunLeaseHeartbeat` 把心跳续租与阶段、外部任务 ID 写
 
 `IProviderResultNormalizer` 和首个 `MinerUResultNormalizer` 已把已观察的 Markdown、content list、layout、model output 与图片映射成 Canonical Parse Bundle。派生存储键和资源 UUID 可在崩溃重试时稳定复现，具体规则见 [`provider-result-normalization.md`](./provider-result-normalization.md)。
 
+`MinerUCloudParseProvider` 和 `MinerULocalParseProvider` 已按两套独立协议实现能力报告、提交、状态查询、流式结果和当前上游取消能力。Cloud 使用签名 batch 上传且不向上传/CDN 主机转发 Token；Local 使用 multipart `/tasks`。适配器、options 白名单、错误分类与剩余 SSRF/checkpoint 风险见 [`mineru-http-providers.md`](./mineru-http-providers.md)。
+
 ## 当前未启用执行的原因
 
-Host 的维护 Worker 仍只做过期抢占和重试恢复。当前不会解析 `queued` 任务，也没有注册 MinerU Cloud / Local 的 HTTP 实现。启用真实提交前还需要同一执行链具备：
+Host 的维护 Worker 仍只做过期抢占和重试恢复。HTTP 适配器已注册，但当前不会解析 `queued` 任务，因此不会产生 MinerU 出站请求。启用真实提交前还需要同一执行链具备：
 
-1. 实现 MinerU Cloud / Local HTTP 适配器，并用真实样本补齐版本差异；
-2. 把 Provider 调用、现有心跳会话、结果接收、归一化和 Canonical 成功事务接入完整执行器；
-3. 取消请求传播和尝试明细记录。
+1. 把 Provider 调用、现有心跳会话、结果接收、归一化和 Canonical 成功事务接入完整执行器；
+2. 为 Cloud 签名上传分配 batch ID 后的未知上传结果建立持久 checkpoint，并完成跨主机目标策略；
+3. 用部署目标的真实 MinerU 版本和样本补齐协议/输出差异；
+4. 取消请求传播和尝试明细记录。
 
 Canonical 结果持久化边界已经实现，但在其余条件完成前提交真实外部任务仍会产生无法可靠恢复的中间状态，因此当前不把占位适配器注册为可用 Provider。
 
 ## 已验证行为
 
-SQLite 与本地存储测试覆盖：媒体类型能力匹配、凭据默认脱敏、重复 Provider 类型拒绝、按类型解析适配器、执行上下文固定读取旧配置版本并拒绝过期并发令牌、阶段与外部 ID 条件写入、运行任务单次接管、心跳与状态写入共享最新租约、ZIP 受限接收，以及 MinerU 条目识别、Canonical 映射和确定性重放。服务端数据库契约也包含状态写入与接管，但本机缺少容器运行时，仍待实际执行。
+SQLite 与本地存储测试覆盖：媒体类型能力匹配、凭据默认脱敏、重复 Provider 类型拒绝、Cloud 签名上传不转发 Token、Local multipart、Provider 状态/错误映射和结果流所有权、按类型解析适配器、执行上下文固定读取旧配置版本并拒绝过期并发令牌、阶段与外部 ID 条件写入、运行任务单次接管、心跳与状态写入共享最新租约、ZIP 受限接收，以及 Cloud/Local MinerU 条目识别、Canonical 映射和确定性重放。服务端数据库契约也包含状态写入与接管，但本机缺少容器运行时，仍待实际执行。

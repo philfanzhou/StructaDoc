@@ -37,7 +37,7 @@ Provider 配置分成逻辑配置和不可变版本：
 
 ## 尚未实现
 
-- MinerU Cloud / Local HTTP 适配和连接测试；当前只实现与具体协议无关的执行契约和配置快照读取；
+- MinerU Cloud / Local HTTP 适配器已经实现并注册；管理员连接测试和实际 Worker 执行仍未接入，协议与安全边界见 [`mineru-http-providers.md`](./mineru-http-providers.md)；
 - Provider 能力驱动的 LibreOffice 回退和实际 Worker 执行；
 - Provider 配置与 Parse Run 的管理网页和审计日志；
 - 解析取消，以及结果 Blocks/Assets/Artifacts 的公共读取 API；内部 Canonical 成功提交已经实现；

@@ -34,7 +34,7 @@ public sealed class MinerUResultNormalizer(
                 options.TemporaryPath,
                 cancellationToken);
 
-            var markdownEntry = FindRequiredExact(session, "full.md");
+            var markdownEntry = FindRequiredMarkdown(session);
             var contentListEntry = FindOptionalJson(
                 session,
                 "content_list.json",
@@ -44,7 +44,11 @@ public sealed class MinerUResultNormalizer(
                 "content_list_v2.json",
                 "_content_list_v2.json");
             var modelEntry = FindOptionalJson(session, "model.json", "_model.json");
-            var layoutEntry = FindOptionalJson(session, "layout.json", "_layout.json");
+            var layoutEntry = FindOptionalJson(
+                session,
+                "layout.json",
+                "_layout.json",
+                "_middle.json");
 
             var markdownBytes = await ReadEntryAsync(
                 markdownEntry,
@@ -234,19 +238,35 @@ public sealed class MinerUResultNormalizer(
         }
     }
 
-    private static ZipArchiveEntry FindRequiredExact(
-        ProviderArchiveReadSession session,
-        string path) =>
-        session.Entries.TryGetValue(path, out var entry) && !IsDirectory(entry)
-            ? entry
-            : throw Failure(
+    private static ZipArchiveEntry FindRequiredMarkdown(ProviderArchiveReadSession session)
+    {
+        if (session.Entries.TryGetValue("full.md", out var exact) && !IsDirectory(exact))
+        {
+            return exact;
+        }
+
+        var matches = session.Entries
+            .Where(item =>
+                !IsDirectory(item.Value)
+                && item.Key.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            .Select(item => item.Value)
+            .ToArray();
+        return matches.Length switch
+        {
+            1 => matches[0],
+            > 1 => throw Failure(
+                "mineru-result-entry-ambiguous",
+                "The MinerU result archive contains ambiguous Markdown artifacts."),
+            _ => throw Failure(
                 "mineru-result-markdown-missing",
-                "The MinerU result archive does not contain full.md.");
+                "The MinerU result archive does not contain a supported Markdown artifact."),
+        };
+    }
 
     private static ZipArchiveEntry? FindOptionalJson(
         ProviderArchiveReadSession session,
         string exactPath,
-        string suffix)
+        params string[] suffixes)
     {
         if (session.Entries.TryGetValue(exactPath, out var exact) && !IsDirectory(exact))
         {
@@ -256,7 +276,8 @@ public sealed class MinerUResultNormalizer(
         var suffixMatches = session.Entries
             .Where(item =>
                 !IsDirectory(item.Value)
-                && item.Key.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                && suffixes.Any(suffix =>
+                    item.Key.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)))
             .Select(item => item.Value)
             .ToArray();
         if (suffixMatches.Length > 1)
@@ -327,7 +348,7 @@ public sealed class MinerUResultNormalizer(
         var entries = session.Entries
             .Where(item =>
                 !IsDirectory(item.Value)
-                && item.Key.StartsWith("images/", StringComparison.OrdinalIgnoreCase))
+                && IsImageEntryPath(item.Key))
             .OrderBy(item => item.Key, StringComparer.Ordinal)
             .ToArray();
         if (entries.Length > ParseBundleValidator.MaxAssets)
@@ -376,10 +397,44 @@ public sealed class MinerUResultNormalizer(
                 stored.SizeBytes,
                 stored.Sha256,
                 stored.StorageRef));
-            assetsByPath[path] = id;
+            AddAssetPath(assetsByPath, path, id);
         }
 
         return (assets, assetsByPath);
+    }
+
+    private static bool IsImageEntryPath(string path) =>
+        path.StartsWith("images/", StringComparison.OrdinalIgnoreCase)
+        || path.Contains("/images/", StringComparison.OrdinalIgnoreCase);
+
+    private static void AddAssetPath(
+        Dictionary<string, Guid> assetsByPath,
+        string path,
+        Guid id)
+    {
+        if (assetsByPath.TryGetValue(path, out var existingPathId) && existingPathId != id)
+        {
+            throw Failure(
+                "mineru-result-entry-ambiguous",
+                "The MinerU result archive contains ambiguous image paths.");
+        }
+
+        assetsByPath[path] = id;
+        var markerIndex = path.LastIndexOf("/images/", StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0)
+        {
+            return;
+        }
+
+        var relativePath = path[(markerIndex + 1)..];
+        if (assetsByPath.TryGetValue(relativePath, out var existingId) && existingId != id)
+        {
+            throw Failure(
+                "mineru-result-entry-ambiguous",
+                "The MinerU result archive contains ambiguous image paths.");
+        }
+
+        assetsByPath[relativePath] = id;
     }
 
     private static IReadOnlyList<ParseBlock> CreateBlocks(

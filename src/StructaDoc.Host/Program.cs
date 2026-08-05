@@ -14,6 +14,7 @@ using StructaDoc.Infrastructure.Authentication;
 using StructaDoc.Infrastructure.Documents;
 using StructaDoc.Infrastructure.Persistence;
 using StructaDoc.Infrastructure.ProviderResults;
+using StructaDoc.Infrastructure.Providers;
 using StructaDoc.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -51,6 +52,7 @@ builder.Services
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
 builder.Services.AddStructaDocPersistence(databaseOptions);
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions);
+builder.Services.AddStructaDocParseProviders();
 builder.Services.AddStructaDocProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
