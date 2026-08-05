@@ -1,4 +1,5 @@
 using StructaDoc.Application.ParseRuns;
+using StructaDoc.Application.Providers;
 
 namespace StructaDoc.Host.Workers;
 
@@ -102,6 +103,38 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
                         externalTaskId,
                         nowUtc,
                         operationToken),
+            cancellationToken);
+    }
+
+    public Task<ParseRunLease?> TrySaveSubmissionCheckpointAsync(
+        ProviderSubmissionCheckpoint checkpoint,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(checkpoint);
+
+        return ApplyMutationAsync(
+            (services, lease, nowUtc, operationToken) =>
+                services.GetRequiredService<IParseRunSubmissionCheckpointStore>().TrySaveAsync(
+                    lease,
+                    checkpoint,
+                    nowUtc,
+                    operationToken),
+            cancellationToken);
+    }
+
+    public Task<ParseRunLease?> TryCompleteSubmissionCheckpointAsync(
+        ProviderSubmissionCheckpoint checkpoint,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(checkpoint);
+
+        return ApplyMutationAsync(
+            (services, lease, nowUtc, operationToken) =>
+                services.GetRequiredService<IParseRunSubmissionCheckpointStore>().TryCompleteAsync(
+                    lease,
+                    checkpoint,
+                    nowUtc,
+                    operationToken),
             cancellationToken);
     }
 

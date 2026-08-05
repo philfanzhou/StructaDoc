@@ -26,6 +26,7 @@ public static class HostAuthenticationServiceCollectionExtensions
             .SetApplicationName("StructaDoc")
             .PersistKeysToFileSystem(new DirectoryInfo(keyPath));
         services.AddSingleton<IProviderSecretProtector, DataProtectionProviderSecretProtector>();
+        services.AddSingleton<IProviderSubmissionProtector, DataProtectionProviderSubmissionProtector>();
         services.AddAntiforgery(antiforgery =>
         {
             antiforgery.HeaderName = "X-CSRF-TOKEN";

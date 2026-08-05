@@ -16,3 +16,17 @@ public sealed class DataProtectionProviderSecretProtector : IProviderSecretProte
 
     public string Unprotect(string protectedValue) => protector.Unprotect(protectedValue);
 }
+
+public sealed class DataProtectionProviderSubmissionProtector : IProviderSubmissionProtector
+{
+    private readonly IDataProtector protector;
+
+    public DataProtectionProviderSubmissionProtector(IDataProtectionProvider provider)
+    {
+        protector = provider.CreateProtector("StructaDoc.ProviderSubmissionContinuations.v1");
+    }
+
+    public string Protect(string plaintext) => protector.Protect(plaintext);
+
+    public string Unprotect(string protectedValue) => protector.Unprotect(protectedValue);
+}

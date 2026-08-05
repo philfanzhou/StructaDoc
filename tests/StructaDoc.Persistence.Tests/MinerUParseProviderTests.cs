@@ -30,7 +30,8 @@ public sealed class MinerUParseProviderTests
             LocalConfiguration(credential: "local-credential", backend: "hybrid-engine"),
             Guid.NewGuid(),
             Source("sample.pdf", "document"u8.ToArray()),
-            """{"ocr":true,"formula":false,"language":"en","effort":"high"}""");
+            """{"ocr":true,"formula":false,"language":"en","effort":"high"}""",
+            checkpoint: null);
 
         Assert.Equal("local-task-1", submission.ExternalTaskId);
         Assert.Equal(TimeSpan.FromSeconds(5), submission.SuggestedPollDelay);
@@ -158,6 +159,17 @@ public sealed class MinerUParseProviderTests
                     """);
             }
 
+            if (requests == 2)
+            {
+                Assert.Equal(HttpMethod.Get, request.Method);
+                Assert.Equal("cloud-secret", request.Headers.Authorization?.Parameter);
+                return JsonResponse(
+                    HttpStatusCode.OK,
+                    """
+                    {"code":0,"data":{"batch_id":"batch-1","extract_result":[{"state":"waiting-file"}]}}
+                    """);
+            }
+
             Assert.Equal(HttpMethod.Put, request.Method);
             Assert.Equal(
                 "https://upload.example/signed?key=value",
@@ -168,16 +180,75 @@ public sealed class MinerUParseProviderTests
             Assert.Equal("document", await request.Content.ReadAsStringAsync());
             return new HttpResponseMessage(HttpStatusCode.OK);
         });
-        var provider = new MinerUCloudParseProvider(new HttpClient(handler));
+        var provider = CloudProvider(handler);
+
+        var configuration = CloudConfiguration(credential: "cloud-secret", model: "vlm");
+        var source = Source("report.pdf", "document"u8.ToArray());
+        var optionsJson = """{"ocr":true,"startPage":1,"endPage":3}""";
+        var checkpoint = await provider.PrepareSubmissionAsync(
+            configuration,
+            parseRunId,
+            source,
+            optionsJson);
+        Assert.NotNull(checkpoint);
 
         var submission = await provider.SubmitAsync(
-            CloudConfiguration(credential: "cloud-secret", model: "vlm"),
+            configuration,
             parseRunId,
-            Source("report.pdf", "document"u8.ToArray()),
-            """{"ocr":true,"startPage":1,"endPage":3}""");
+            source,
+            optionsJson,
+            checkpoint);
 
         Assert.Equal("batch-1", submission.ExternalTaskId);
-        Assert.Equal(2, requests);
+        Assert.Equal(3, requests);
+    }
+
+    [Fact]
+    public async Task Cloud_submit_reuses_checkpoint_and_skips_upload_when_batch_started()
+    {
+        var handler = new StubHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("cloud-secret", request.Headers.Authorization?.Parameter);
+            return Task.FromResult(JsonResponse(
+                HttpStatusCode.OK,
+                """
+                {"code":0,"data":{"batch_id":"batch-1","extract_result":[{"state":"running"}]}}
+                """));
+        });
+        var provider = CloudProvider(handler);
+        var checkpoint = new ProviderSubmissionCheckpoint(
+            "batch-1",
+            "https://upload.example/signed?key=value");
+
+        var submission = await provider.SubmitAsync(
+            CloudConfiguration(credential: "cloud-secret"),
+            Guid.NewGuid(),
+            Source("report.pdf", "document"u8.ToArray()),
+            "{}",
+            checkpoint);
+
+        Assert.Equal("batch-1", submission.ExternalTaskId);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Cloud_submit_requires_a_durable_checkpoint_before_http()
+    {
+        var handler = new StubHandler(_ => throw new InvalidOperationException(
+            "No HTTP request should be sent."));
+        var provider = CloudProvider(handler);
+
+        var exception = await Assert.ThrowsAsync<ProviderException>(() =>
+            provider.SubmitAsync(
+                CloudConfiguration(credential: "cloud-secret"),
+                Guid.NewGuid(),
+                Source("report.pdf", "document"u8.ToArray()),
+                "{}",
+                checkpoint: null));
+
+        Assert.Equal("mineru-cloud-checkpoint-required", exception.ErrorCode);
+        Assert.Equal(0, handler.RequestCount);
     }
 
     [Theory]
@@ -198,7 +269,7 @@ public sealed class MinerUParseProviderTests
                 HttpStatusCode.OK,
                 $"{{\"code\":0,\"data\":{{\"batch_id\":\"batch-1\",\"extract_result\":[{{\"state\":\"{state}\"}}]}}}}"));
         });
-        var provider = new MinerUCloudParseProvider(new HttpClient(handler));
+        var provider = CloudProvider(handler);
 
         var status = await provider.GetStatusAsync(
             CloudConfiguration(credential: "cloud-secret"),
@@ -232,7 +303,7 @@ public sealed class MinerUParseProviderTests
                 Content = new StreamContent(resultStream),
             });
         });
-        var provider = new MinerUCloudParseProvider(new HttpClient(handler));
+        var provider = CloudProvider(handler);
 
         var result = await provider.OpenResultAsync(
             CloudConfiguration(credential: "cloud-secret"),
@@ -255,7 +326,7 @@ public sealed class MinerUParseProviderTests
         {
             Content = new StringContent(responseSecret),
         }));
-        var provider = new MinerUCloudParseProvider(new HttpClient(handler));
+        var provider = CloudProvider(handler);
 
         var exception = await Assert.ThrowsAsync<ProviderException>(() =>
             provider.GetStatusAsync(
@@ -284,7 +355,8 @@ public sealed class MinerUParseProviderTests
                 LocalConfiguration(),
                 Guid.NewGuid(),
                 Source("sample.pdf", "document"u8.ToArray()),
-                optionsJson));
+                optionsJson,
+                checkpoint: null));
 
         Assert.Equal(ProviderFailureCategory.Input, exception.Category);
         Assert.Equal(0, handler.RequestCount);
@@ -295,7 +367,7 @@ public sealed class MinerUParseProviderTests
     {
         var handler = new StubHandler(_ => throw new InvalidOperationException(
             "No HTTP request should be sent."));
-        var provider = new MinerUCloudParseProvider(new HttpClient(handler));
+        var provider = CloudProvider(handler);
         var configuration = CloudConfiguration(credential: "cloud-secret");
         var unsupported = new ProviderDocumentSource(
             "book.xlsx",
@@ -309,13 +381,13 @@ public sealed class MinerUParseProviderTests
             _ => Task.FromResult<Stream>(new MemoryStream([1])));
 
         var unsupportedException = await Assert.ThrowsAsync<ProviderException>(() =>
-            provider.SubmitAsync(
+            provider.PrepareSubmissionAsync(
                 configuration,
                 Guid.NewGuid(),
                 unsupported,
                 "{}"));
         var oversizedException = await Assert.ThrowsAsync<ProviderException>(() =>
-            provider.SubmitAsync(
+            provider.PrepareSubmissionAsync(
                 configuration,
                 Guid.NewGuid(),
                 oversized,
@@ -331,10 +403,10 @@ public sealed class MinerUParseProviderTests
     {
         var handler = new StubHandler(_ => throw new InvalidOperationException(
             "No HTTP request should be sent."));
-        var provider = new MinerUCloudParseProvider(new HttpClient(handler));
+        var provider = CloudProvider(handler);
 
         var exception = await Assert.ThrowsAsync<ProviderException>(() =>
-            provider.SubmitAsync(
+            provider.PrepareSubmissionAsync(
                 CloudConfiguration(credential: "cloud-secret"),
                 Guid.NewGuid(),
                 Source("sample.pdf", "document"u8.ToArray()),
@@ -356,6 +428,81 @@ public sealed class MinerUParseProviderTests
         Assert.Equal(2, providers.Length);
         Assert.Contains(providers, provider => provider.ProviderType == ProviderTypes.MinerUCloud);
         Assert.Contains(providers, provider => provider.ProviderType == ProviderTypes.MinerULocal);
+    }
+
+    [Theory]
+    [InlineData("8.8.8.8", true)]
+    [InlineData("1.1.1.1", true)]
+    [InlineData("127.0.0.1", false)]
+    [InlineData("10.0.0.1", false)]
+    [InlineData("100.64.0.1", false)]
+    [InlineData("169.254.169.254", false)]
+    [InlineData("172.16.0.1", false)]
+    [InlineData("192.168.1.1", false)]
+    [InlineData("::1", false)]
+    [InlineData("fc00::1", false)]
+    [InlineData("fe80::1", false)]
+    [InlineData("2001:4860:4860::8888", true)]
+    public void Signed_transfer_policy_only_allows_public_addresses(
+        string address,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            SignedTransferDestinationPolicy.IsPublicAddress(IPAddress.Parse(address)));
+    }
+
+    [Fact]
+    public async Task Signed_transfer_url_rejects_non_standard_https_ports()
+    {
+        var handler = new StubHandler(_ => Task.FromResult(JsonResponse(
+            HttpStatusCode.OK,
+            """
+            {"code":0,"data":{"batch_id":"batch-1","file_urls":["https://upload.example:8443/signed"]}}
+            """)));
+        var provider = CloudProvider(handler);
+        var exception = await Assert.ThrowsAsync<ProviderException>(() =>
+            provider.PrepareSubmissionAsync(
+                CloudConfiguration(credential: "cloud-secret"),
+                Guid.NewGuid(),
+                Source("report.pdf", "document"u8.ToArray()),
+                "{}"));
+
+        Assert.Equal(ProviderFailureCategory.Security, exception.Category);
+    }
+
+    [Fact]
+    public async Task Signed_transfer_connection_rejects_private_addresses_as_security_failures()
+    {
+        var apiHandler = new StubHandler(_ => Task.FromResult(JsonResponse(
+            HttpStatusCode.OK,
+            """
+            {"code":0,"data":{"batch_id":"batch-1","extract_result":[{"state":"waiting-file"}]}}
+            """)));
+        using var signedHandler = new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseProxy = false,
+            ConnectCallback = SignedTransferDestinationPolicy.ConnectAsync,
+        };
+        using var signedClient = new HttpClient(signedHandler);
+        var provider = new MinerUCloudParseProvider(
+            new HttpClient(apiHandler),
+            signedClient);
+        var checkpoint = new ProviderSubmissionCheckpoint(
+            "batch-1",
+            "https://127.0.0.1/upload");
+
+        var exception = await Assert.ThrowsAsync<ProviderException>(() =>
+            provider.SubmitAsync(
+                CloudConfiguration(credential: "cloud-secret"),
+                Guid.NewGuid(),
+                Source("report.pdf", "document"u8.ToArray()),
+                "{}",
+                checkpoint));
+
+        Assert.Equal("mineru-cloud-upload-destination-denied", exception.ErrorCode);
+        Assert.Equal(ProviderFailureCategory.Security, exception.Category);
     }
 
     private static ProviderExecutionConfiguration LocalConfiguration(
@@ -386,6 +533,12 @@ public sealed class MinerUParseProviderTests
         "application/pdf",
         content.Length,
         _ => Task.FromResult<Stream>(new MemoryStream(content, writable: false)));
+
+    private static MinerUCloudParseProvider CloudProvider(HttpMessageHandler handler)
+    {
+        var client = new HttpClient(handler);
+        return new MinerUCloudParseProvider(client, client);
+    }
 
     private static HttpResponseMessage JsonResponse(HttpStatusCode statusCode, string json) => new(
         statusCode)

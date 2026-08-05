@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using StructaDoc.Application.ParseRuns;
+using StructaDoc.Application.Providers;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Infrastructure.Persistence;
 using StructaDoc.Infrastructure.Persistence.Entities;
@@ -108,6 +109,51 @@ public sealed class SqliteParseRunStateStoreTests
                 runningLease,
                 "provider\ntask",
                 nowUtc.AddSeconds(2)));
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task Submission_checkpoint_is_retained_only_for_retryable_failures(
+        bool retryable,
+        bool expectedToRemain)
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+        var checkpoint = new ProviderSubmissionCheckpoint(
+            "batch-1",
+            "https://upload.example/signed?secret=value");
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var stateStore = new EfCoreParseRunStateStore(dbContext);
+        var submittingLease = Assert.IsType<ParseRunLease>(
+            await stateStore.TryUpdateStageAsync(
+                runningLease,
+                ParseRunStages.Submitting,
+                nowUtc.AddSeconds(2)));
+        var checkpointStore = new EfCoreParseRunSubmissionCheckpointStore(
+            dbContext,
+            new TestSecretProtector());
+        var checkpointedLease = Assert.IsType<ParseRunLease>(
+            await checkpointStore.TrySaveAsync(
+                submittingLease,
+                checkpoint,
+                nowUtc.AddSeconds(3)));
+
+        var transition = await stateStore.TryRecordFailureAsync(
+            checkpointedLease,
+            "provider-submit-failed",
+            "The submission failed.",
+            retryable,
+            nowUtc.AddMinutes(1),
+            nowUtc.AddSeconds(4));
+
+        Assert.NotNull(transition);
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        Assert.Equal(
+            expectedToRemain,
+            persistedRun.ProtectedSubmissionContinuation is not null);
     }
 
     [Fact]
@@ -273,5 +319,13 @@ public sealed class SqliteParseRunStateStoreTests
             Directory.Delete(DirectoryPath, recursive: true);
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class TestSecretProtector : IProviderSubmissionProtector
+    {
+        public string Protect(string plaintext) => $"protected:{plaintext}";
+
+        public string Unprotect(string protectedValue) =>
+            protectedValue["protected:".Length..];
     }
 }

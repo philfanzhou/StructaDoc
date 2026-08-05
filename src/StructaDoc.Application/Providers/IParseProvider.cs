@@ -8,11 +8,19 @@ public interface IParseProvider
         ProviderExecutionConfiguration configuration,
         CancellationToken cancellationToken = default);
 
+    Task<ProviderSubmissionCheckpoint?> PrepareSubmissionAsync(
+        ProviderExecutionConfiguration configuration,
+        Guid parseRunId,
+        ProviderDocumentSource source,
+        string optionsJson,
+        CancellationToken cancellationToken = default);
+
     Task<ProviderSubmission> SubmitAsync(
         ProviderExecutionConfiguration configuration,
         Guid parseRunId,
         ProviderDocumentSource source,
         string optionsJson,
+        ProviderSubmissionCheckpoint? checkpoint,
         CancellationToken cancellationToken = default);
 
     Task<ProviderTaskStatus> GetStatusAsync(

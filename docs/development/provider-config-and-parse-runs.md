@@ -41,4 +41,4 @@ Provider 配置分成逻辑配置和不可变版本：
 - Provider 能力驱动的 LibreOffice 回退和实际 Worker 执行；
 - Provider 配置与 Parse Run 的管理网页和审计日志；
 - 解析取消，以及结果 Blocks/Assets/Artifacts 的公共读取 API；内部 Canonical 成功提交已经实现；
-- 面向生产的 Provider 出站 SSRF 策略与多实例凭据 key-ring 部署验证。
+- 管理员配置 Cloud/Local Base URL 的部署级受信网络策略与多实例凭据 key-ring 部署验证；Cloud 返回的跨主机签名 URL 已使用独立的公网地址连接策略。

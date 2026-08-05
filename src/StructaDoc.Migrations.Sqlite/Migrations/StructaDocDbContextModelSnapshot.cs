@@ -515,6 +515,10 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("options_json");
 
+                    b.Property<string>("ProtectedSubmissionContinuation")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("protected_submission_continuation");
+
                     b.Property<Guid>("ProviderConfigId")
                         .HasColumnType("TEXT")
                         .HasColumnName("provider_config_id");

@@ -520,6 +520,10 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                         .HasColumnType("text")
                         .HasColumnName("options_json");
 
+                    b.Property<string>("ProtectedSubmissionContinuation")
+                        .HasColumnType("text")
+                        .HasColumnName("protected_submission_continuation");
+
                     b.Property<Guid>("ProviderConfigId")
                         .HasColumnType("uuid")
                         .HasColumnName("provider_config_id");

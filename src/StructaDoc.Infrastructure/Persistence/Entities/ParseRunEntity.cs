@@ -28,6 +28,8 @@ public sealed class ParseRunEntity
 
     public string? ExternalTaskId { get; set; }
 
+    public string? ProtectedSubmissionContinuation { get; set; }
+
     public string? ResultSchemaVersion { get; set; }
 
     public string? ResultSha256 { get; set; }

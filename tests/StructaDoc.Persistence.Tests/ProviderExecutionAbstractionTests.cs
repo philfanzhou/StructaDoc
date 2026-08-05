@@ -174,6 +174,7 @@ public sealed class ProviderExecutionAbstractionTests
             {
                 var store = new EfCoreParseRunExecutionContextStore(
                     dbContext,
+                    new TestSecretProtector(),
                     new TestSecretProtector());
                 var context = await store.LoadAsync(
                     runningLease,
@@ -197,6 +198,70 @@ public sealed class ProviderExecutionAbstractionTests
                     nowUtc.AddSeconds(2));
                 Assert.Null(staleContext);
             }
+
+            ParseRunLease checkpointedLease;
+            var checkpoint = new ProviderSubmissionCheckpoint(
+                "batch-1",
+                "https://upload.example/signed?secret=value");
+            await using (var dbContext = new StructaDocDbContext(options))
+            {
+                var stateStore = new EfCoreParseRunStateStore(dbContext);
+                var submittingLease = Assert.IsType<ParseRunLease>(
+                    await stateStore.TryUpdateStageAsync(
+                        runningLease,
+                        ParseRunStages.Submitting,
+                        nowUtc.AddSeconds(3)));
+                var checkpointStore = new EfCoreParseRunSubmissionCheckpointStore(
+                    dbContext,
+                    new TestSecretProtector());
+                checkpointedLease = Assert.IsType<ParseRunLease>(
+                    await checkpointStore.TrySaveAsync(
+                        submittingLease,
+                        checkpoint,
+                        nowUtc.AddSeconds(4)));
+
+                var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+                Assert.Equal(ParseRunStages.Submitting, persistedRun.Stage);
+                Assert.Equal("batch-1", persistedRun.ExternalTaskId);
+                Assert.Equal(
+                    "protected:https://upload.example/signed?secret=value",
+                    persistedRun.ProtectedSubmissionContinuation);
+            }
+
+            await using (var dbContext = new StructaDocDbContext(options))
+            {
+                var contextStore = new EfCoreParseRunExecutionContextStore(
+                    dbContext,
+                    new TestSecretProtector(),
+                    new TestSecretProtector());
+                var context = await contextStore.LoadAsync(
+                    checkpointedLease,
+                    nowUtc.AddSeconds(5));
+
+                Assert.NotNull(context?.SubmissionCheckpoint);
+                Assert.Equal("batch-1", context.SubmissionCheckpoint.ExternalTaskId);
+                Assert.Equal(
+                    "https://upload.example/signed?secret=value",
+                    context.SubmissionCheckpoint.ContinuationToken);
+                Assert.DoesNotContain(
+                    "secret=value",
+                    context.SubmissionCheckpoint.ToString(),
+                    StringComparison.Ordinal);
+
+                var checkpointStore = new EfCoreParseRunSubmissionCheckpointStore(
+                    dbContext,
+                    new TestSecretProtector());
+                var completedLease = await checkpointStore.TryCompleteAsync(
+                    checkpointedLease,
+                    checkpoint,
+                    nowUtc.AddSeconds(6));
+                Assert.NotNull(completedLease);
+
+                var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+                Assert.Equal(ParseRunStages.WaitingProvider, persistedRun.Stage);
+                Assert.Equal("batch-1", persistedRun.ExternalTaskId);
+                Assert.Null(persistedRun.ProtectedSubmissionContinuation);
+            }
         }
         finally
         {
@@ -204,7 +269,8 @@ public sealed class ProviderExecutionAbstractionTests
         }
     }
 
-    private sealed class TestSecretProtector : IProviderSecretProtector
+    private sealed class TestSecretProtector
+        : IProviderSecretProtector, IProviderSubmissionProtector
     {
         public string Protect(string plaintext) => $"protected:{plaintext}";
 
@@ -222,11 +288,19 @@ public sealed class ProviderExecutionAbstractionTests
             ProviderExecutionConfiguration configuration,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
+        public Task<ProviderSubmissionCheckpoint?> PrepareSubmissionAsync(
+            ProviderExecutionConfiguration configuration,
+            Guid parseRunId,
+            ProviderDocumentSource source,
+            string optionsJson,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
         public Task<ProviderSubmission> SubmitAsync(
             ProviderExecutionConfiguration configuration,
             Guid parseRunId,
             ProviderDocumentSource source,
             string optionsJson,
+            ProviderSubmissionCheckpoint? checkpoint,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<ProviderTaskStatus> GetStatusAsync(

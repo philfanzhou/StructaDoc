@@ -46,6 +46,8 @@ internal sealed class ParseRunEntityConfiguration : IEntityTypeConfiguration<Par
         builder.Property(parseRun => parseRun.ExternalTaskId)
             .HasColumnName("external_task_id")
             .HasMaxLength(512);
+        builder.Property(parseRun => parseRun.ProtectedSubmissionContinuation)
+            .HasColumnName("protected_submission_continuation");
         builder.Property(parseRun => parseRun.ResultSchemaVersion)
             .HasColumnName("result_schema_version")
             .HasMaxLength(16)

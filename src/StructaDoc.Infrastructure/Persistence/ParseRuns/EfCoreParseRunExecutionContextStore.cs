@@ -7,7 +7,8 @@ namespace StructaDoc.Infrastructure.Persistence.ParseRuns;
 
 public sealed class EfCoreParseRunExecutionContextStore(
     StructaDocDbContext dbContext,
-    IProviderSecretProtector secretProtector) : IParseRunExecutionContextStore
+    IProviderSecretProtector secretProtector,
+    IProviderSubmissionProtector submissionProtector) : IParseRunExecutionContextStore
 {
     public async Task<ParseRunExecutionContext?> LoadAsync(
         ParseRunLease currentLease,
@@ -47,6 +48,7 @@ public sealed class EfCoreParseRunExecutionContextStore(
                 parseRun.OptionsJson,
                 parseRun.Stage,
                 parseRun.ExternalTaskId,
+                parseRun.ProtectedSubmissionContinuation,
                 parseRun.AttemptCount,
                 parseRun.ProviderConfigId,
                 parseRun.ProviderConfigVersion,
@@ -71,6 +73,13 @@ public sealed class EfCoreParseRunExecutionContextStore(
         var credential = snapshot.ProtectedCredential is null
             ? null
             : new ProviderCredential(secretProtector.Unprotect(snapshot.ProtectedCredential));
+        var submissionCheckpoint = snapshot.ProtectedSubmissionContinuation is null
+            ? null
+            : new ProviderSubmissionCheckpoint(
+                snapshot.ExternalTaskId
+                    ?? throw new InvalidOperationException(
+                        "A protected submission continuation requires an external task ID."),
+                submissionProtector.Unprotect(snapshot.ProtectedSubmissionContinuation));
 
         return new ParseRunExecutionContext(
             snapshot.Id,
@@ -84,6 +93,7 @@ public sealed class EfCoreParseRunExecutionContextStore(
             snapshot.OptionsJson,
             snapshot.Stage,
             snapshot.ExternalTaskId,
+            submissionCheckpoint,
             snapshot.AttemptCount,
             new ProviderExecutionConfiguration(
                 snapshot.ProviderConfigId,

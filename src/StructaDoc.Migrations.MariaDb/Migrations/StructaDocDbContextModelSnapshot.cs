@@ -520,6 +520,10 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
                         .HasColumnType("longtext")
                         .HasColumnName("options_json");
 
+                    b.Property<string>("ProtectedSubmissionContinuation")
+                        .HasColumnType("longtext")
+                        .HasColumnName("protected_submission_continuation");
+
                     b.Property<Guid>("ProviderConfigId")
                         .HasColumnType("char(36)")
                         .HasColumnName("provider_config_id");

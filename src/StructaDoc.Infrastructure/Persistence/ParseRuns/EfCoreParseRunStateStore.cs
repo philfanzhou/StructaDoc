@@ -81,6 +81,7 @@ public sealed class EfCoreParseRunStateStore(StructaDocDbContext dbContext)
                 && parseRun.Status == ParseRunStatuses.Running
                 && parseRun.Stage == ParseRunStages.Submitting
                 && parseRun.ExternalTaskId == null
+                && parseRun.ProtectedSubmissionContinuation == null
                 && parseRun.ClaimedBy == currentLease.WorkerId
                 && parseRun.ConcurrencyVersion == currentLease.ConcurrencyVersion
                 && parseRun.LeaseExpiresAtUtc > nowUtc)
@@ -158,6 +159,11 @@ public sealed class EfCoreParseRunStateStore(StructaDocDbContext dbContext)
                     .SetProperty(parseRun => parseRun.Status, nextStatus)
                     .SetProperty(parseRun => parseRun.ErrorCode, errorCode)
                     .SetProperty(parseRun => parseRun.ErrorMessage, errorMessage)
+                    .SetProperty(
+                        parseRun => parseRun.ProtectedSubmissionContinuation,
+                        parseRun => willRetry
+                            ? parseRun.ProtectedSubmissionContinuation
+                            : null)
                     .SetProperty(parseRun => parseRun.ClaimedBy, (string?)null)
                     .SetProperty(parseRun => parseRun.LeaseExpiresAtUtc, (DateTime?)null)
                     .SetProperty(

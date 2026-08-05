@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、运行中任务接管、串行化心跳会话、MinerU Cloud 签名上传与 Local multipart HTTP 适配、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现；实际任务执行器、Cloud 上传 checkpoint 与完整出站 SSRF 策略、统一结果读取 API、管理员账户管理、文档删除和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试，不会调用 MinerU；HTTP 适配器已经注册但只有在可恢复执行器接入后才会产生出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、Cloud 两阶段上传加密 checkpoint、运行中任务接管、串行化心跳会话、MinerU Cloud 签名上传与 Local multipart HTTP 适配、签名传输连接级公共地址策略、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现；实际任务执行器、管理员配置 Base URL 的部署级出站策略、统一结果读取 API、管理员账户管理、文档删除和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试，不会调用 MinerU；HTTP 适配器已经注册但只有在可恢复执行器接入后才会产生出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 

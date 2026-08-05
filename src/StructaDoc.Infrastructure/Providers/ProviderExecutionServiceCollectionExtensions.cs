@@ -11,11 +11,14 @@ public static class ProviderExecutionServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddSingleton(_ => new ProviderHttpClientOwner(CreateProviderHttpClient()));
+        services.AddSingleton(_ => new ProviderHttpClientOwner(
+            CreateProviderApiHttpClient(),
+            CreateSignedTransferHttpClient()));
         services.AddSingleton(serviceProvider => new MinerUCloudParseProvider(
-            serviceProvider.GetRequiredService<ProviderHttpClientOwner>().Client));
+            serviceProvider.GetRequiredService<ProviderHttpClientOwner>().ProviderApiClient,
+            serviceProvider.GetRequiredService<ProviderHttpClientOwner>().SignedTransferClient));
         services.AddSingleton(serviceProvider => new MinerULocalParseProvider(
-            serviceProvider.GetRequiredService<ProviderHttpClientOwner>().Client));
+            serviceProvider.GetRequiredService<ProviderHttpClientOwner>().ProviderApiClient));
         services.AddSingleton<IParseProvider>(serviceProvider =>
             serviceProvider.GetRequiredService<MinerUCloudParseProvider>());
         services.AddSingleton<IParseProvider>(serviceProvider =>
@@ -23,7 +26,18 @@ public static class ProviderExecutionServiceCollectionExtensions
         return services;
     }
 
-    private static HttpClient CreateProviderHttpClient()
+    private static HttpClient CreateProviderApiHttpClient()
+    {
+        return CreateHttpClient(connectCallback: null);
+    }
+
+    private static HttpClient CreateSignedTransferHttpClient()
+    {
+        return CreateHttpClient(SignedTransferDestinationPolicy.ConnectAsync);
+    }
+
+    private static HttpClient CreateHttpClient(
+        Func<SocketsHttpConnectionContext, CancellationToken, ValueTask<Stream>>? connectCallback)
     {
         var handler = new SocketsHttpHandler
         {
@@ -32,6 +46,8 @@ public static class ProviderExecutionServiceCollectionExtensions
             ConnectTimeout = TimeSpan.FromSeconds(30),
             PooledConnectionLifetime = TimeSpan.FromMinutes(10),
             PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+            UseProxy = connectCallback is null,
+            ConnectCallback = connectCallback,
         };
         return new HttpClient(handler)
         {
@@ -39,10 +55,18 @@ public static class ProviderExecutionServiceCollectionExtensions
         };
     }
 
-    private sealed class ProviderHttpClientOwner(HttpClient client) : IDisposable
+    private sealed class ProviderHttpClientOwner(
+        HttpClient providerApiClient,
+        HttpClient signedTransferClient) : IDisposable
     {
-        public HttpClient Client { get; } = client;
+        public HttpClient ProviderApiClient { get; } = providerApiClient;
 
-        public void Dispose() => Client.Dispose();
+        public HttpClient SignedTransferClient { get; } = signedTransferClient;
+
+        public void Dispose()
+        {
+            ProviderApiClient.Dispose();
+            SignedTransferClient.Dispose();
+        }
     }
 }

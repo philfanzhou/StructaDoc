@@ -73,7 +73,7 @@ Credential 格式包含版本、公开 Client UUID 和 256-bit 随机 Secret。�
 
 多实例 Host 必须共享同一 key ring。当前只实现文件系统持久化；在无法安全共享文件卷的环境中，管理员会话暂不具备多实例发布支持，API Key 不受该限制。
 
-Provider Bearer Token 与管理员 Cookie、API Client Key 是独立凭据。MinerU HTTP 适配器只在运行时从固定配置版本解密 Token，并按请求显式加入发往配置 Base URL 的 API 请求；Cloud 签名上传和结果 CDN 请求不携带该 Token。Token、签名 URL、上游响应正文和内部存储引用不得进入异常、日志或公共响应。具体出站边界和当前剩余 SSRF 工作见 [`mineru-http-providers.md`](./mineru-http-providers.md)。
+Provider Bearer Token 与管理员 Cookie、API Client Key 是独立凭据。MinerU HTTP 适配器只在运行时从固定配置版本解密 Token，并按请求显式加入发往配置 Base URL 的 API 请求；Cloud 签名上传和结果 CDN 请求不携带该 Token。Token、签名 URL、上游响应正文和内部存储引用不得进入异常、日志或公共响应；Cloud 签名 URL 仅作为 Data Protection 加密的短期提交 continuation 落库，并在提交确认或最终失败时清除。具体出站边界见 [`mineru-http-providers.md`](./mineru-http-providers.md)。
 
 ## Remaining Work
 

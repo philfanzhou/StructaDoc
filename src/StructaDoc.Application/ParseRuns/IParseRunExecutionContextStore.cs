@@ -22,6 +22,7 @@ public sealed record ParseRunExecutionContext(
     string OptionsJson,
     string Stage,
     string? ExternalTaskId,
+    ProviderSubmissionCheckpoint? SubmissionCheckpoint,
     int AttemptCount,
     ProviderExecutionConfiguration ProviderConfiguration)
 {

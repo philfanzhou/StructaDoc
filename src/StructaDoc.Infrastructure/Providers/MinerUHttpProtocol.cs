@@ -177,6 +177,14 @@ internal static class MinerUHttpProtocol
                 $"The MinerU {operation} request timed out.",
                 ProviderFailureCategory.Transient);
         }
+        catch (HttpRequestException exception) when (HasSignedTransferSecurityFailure(exception))
+        {
+            throw new ProviderException(
+                $"mineru-{operation}-destination-denied",
+                $"The MinerU {operation} destination was denied by the outbound policy.",
+                ProviderFailureCategory.Security,
+                exception);
+        }
         catch (HttpRequestException exception)
         {
             throw new ProviderException(
@@ -185,6 +193,19 @@ internal static class MinerUHttpProtocol
                 ProviderFailureCategory.Transient,
                 exception);
         }
+    }
+
+    private static bool HasSignedTransferSecurityFailure(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is SignedTransferSecurityException)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static void EnsureSuccess(
@@ -284,6 +305,7 @@ internal static class MinerUHttpProtocol
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
             || uri.Scheme != Uri.UriSchemeHttps
+            || uri.Port != 443
             || !string.IsNullOrEmpty(uri.UserInfo)
             || !string.IsNullOrEmpty(uri.Fragment)
             || uri.AbsoluteUri.Length > 4096)

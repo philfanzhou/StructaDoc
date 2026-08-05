@@ -4,7 +4,9 @@ using StructaDoc.Application.Providers;
 
 namespace StructaDoc.Infrastructure.Providers;
 
-public sealed class MinerUCloudParseProvider(HttpClient httpClient) : IParseProvider
+public sealed class MinerUCloudParseProvider(
+    HttpClient providerApiClient,
+    HttpClient signedTransferClient) : IParseProvider
 {
     private static readonly ProviderCapabilities Capabilities = new(
         [
@@ -36,7 +38,7 @@ public sealed class MinerUCloudParseProvider(HttpClient httpClient) : IParseProv
         return Task.FromResult(Capabilities);
     }
 
-    public async Task<ProviderSubmission> SubmitAsync(
+    public async Task<ProviderSubmissionCheckpoint?> PrepareSubmissionAsync(
         ProviderExecutionConfiguration configuration,
         Guid parseRunId,
         ProviderDocumentSource source,
@@ -77,7 +79,7 @@ public sealed class MinerUCloudParseProvider(HttpClient httpClient) : IParseProv
         string batchId;
         Uri uploadUri;
         using (var response = await MinerUHttpProtocol.SendAsync(
-                   httpClient,
+                   providerApiClient,
                    request,
                    HttpCompletionOption.ResponseHeadersRead,
                    "cloud-submit",
@@ -106,8 +108,70 @@ public sealed class MinerUCloudParseProvider(HttpClient httpClient) : IParseProv
                 "cloud-upload");
         }
 
-        await UploadSourceAsync(source, uploadUri, cancellationToken);
-        return new ProviderSubmission(batchId, TimeSpan.FromSeconds(5));
+        return new ProviderSubmissionCheckpoint(batchId, uploadUri.AbsoluteUri);
+    }
+
+    public async Task<ProviderSubmission> SubmitAsync(
+        ProviderExecutionConfiguration configuration,
+        Guid parseRunId,
+        ProviderDocumentSource source,
+        string optionsJson,
+        ProviderSubmissionCheckpoint? checkpoint,
+        CancellationToken cancellationToken = default)
+    {
+        MinerUHttpProtocol.ValidateConfiguration(configuration, ProviderType, requireHttps: true);
+        if (parseRunId == Guid.Empty)
+        {
+            throw new ArgumentException("A Parse Run ID is required.", nameof(parseRunId));
+        }
+
+        ArgumentNullException.ThrowIfNull(source);
+        MinerUHttpProtocol.ValidateSource(source, Capabilities);
+        MinerUProviderOptions.Parse(optionsJson).ValidateForCloud();
+
+        if (checkpoint is null)
+        {
+            throw new ProviderException(
+                "mineru-cloud-checkpoint-required",
+                "MinerU Cloud requires a durable submission checkpoint before upload.",
+                ProviderFailureCategory.Configuration);
+        }
+
+        MinerUHttpProtocol.ValidateExternalTaskId(checkpoint.ExternalTaskId);
+        var uploadUri = MinerUHttpProtocol.ValidateSignedUri(
+            checkpoint.ContinuationToken,
+            "cloud-upload");
+        var result = await GetBatchResultAsync(
+            configuration,
+            checkpoint.ExternalTaskId,
+            cancellationToken);
+
+        switch (result.State)
+        {
+            case "waiting-file":
+                await UploadSourceAsync(source, uploadUri, cancellationToken);
+                break;
+
+            case "pending":
+            case "converting":
+            case "running":
+            case "done":
+                break;
+
+            case "failed":
+                throw new ProviderException(
+                    "mineru-cloud-task-failed",
+                    "The MinerU Cloud task failed.",
+                    ProviderFailureCategory.Permanent);
+
+            default:
+                throw new ProviderException(
+                    "mineru-cloud-submit-state-unknown",
+                    "The MinerU Cloud task returned an unknown submission state.",
+                    ProviderFailureCategory.Transient);
+        }
+
+        return new ProviderSubmission(checkpoint.ExternalTaskId, TimeSpan.FromSeconds(5));
     }
 
     public async Task<ProviderTaskStatus> GetStatusAsync(
@@ -170,7 +234,7 @@ public sealed class MinerUCloudParseProvider(HttpClient httpClient) : IParseProv
             "cloud-result");
         using var request = new HttpRequestMessage(HttpMethod.Get, resultUri);
         var response = await MinerUHttpProtocol.SendAsync(
-            httpClient,
+            signedTransferClient,
             request,
             HttpCompletionOption.ResponseHeadersRead,
             "cloud-result",
@@ -227,7 +291,7 @@ public sealed class MinerUCloudParseProvider(HttpClient httpClient) : IParseProv
         request.Content = content;
 
         using var response = await MinerUHttpProtocol.SendAsync(
-            httpClient,
+            signedTransferClient,
             request,
             HttpCompletionOption.ResponseHeadersRead,
             "cloud-upload",
@@ -257,7 +321,7 @@ public sealed class MinerUCloudParseProvider(HttpClient httpClient) : IParseProv
             required: true);
 
         using var response = await MinerUHttpProtocol.SendAsync(
-            httpClient,
+            providerApiClient,
             request,
             HttpCompletionOption.ResponseHeadersRead,
             "cloud-status",

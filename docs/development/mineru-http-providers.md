@@ -7,11 +7,15 @@
 `MinerUCloudParseProvider` 使用 Cloud 的签名批量上传协议处理单个 StructaDoc Parse Run：
 
 1. `POST /api/v4/file-urls/batch`，为一个文件申请 batch ID 和签名上传 URL；
-2. 使用不带 Provider Token 和 Content-Type 的 `PUT` 流式上传原文件；
-3. `GET /api/v4/extract-results/batch/{batchId}` 查询唯一文件的状态；
-4. `done` 后从 `full_zip_url` 流式打开结果 ZIP。
+2. 在当前 Parse Run 租约下原子保存 batch ID 和加密后的签名 URL continuation，仍保持 `submitting`；
+3. 查询同一 batch；仅在 `waiting-file` 时使用不带 Provider Token 和 Content-Type 的 `PUT` 流式上传原文件，已进入后续状态时不重复上传；
+4. 上传确认后清除 continuation 并进入 `waiting-provider`；
+5. `GET /api/v4/extract-results/batch/{batchId}` 查询唯一文件的状态；
+6. `done` 后从 `full_zip_url` 流式打开结果 ZIP。
 
-Cloud Token 是必需配置，只加入发往管理员配置 Base URL 的 API 请求。Token 不会加入签名上传或结果 CDN 请求。签名 URL 不写入异常、日志、数据库或 Canonical 元数据。Cloud Base URL 必须使用 HTTPS，且不能包含 query；签名上传和结果 URL 也必须是无 user-info、无 fragment 的 HTTPS 地址。HTTP 客户端关闭自动重定向，避免 Token 或请求载荷被无意转发。
+Cloud Token 是必需配置，只加入发往管理员配置 Base URL 的 API 请求。Token 不会加入签名上传或结果 CDN 请求。签名 URL 不写入异常、日志或 Canonical 元数据；为跨进程恢复上传，它只作为 Data Protection 加密的内部 continuation 暂存于 Parse Run，提交确认或最终失败时清除。Cloud Base URL 必须使用 HTTPS，且不能包含 query；签名上传和结果 URL 必须是无 user-info、无 fragment 的 HTTPS/443 地址。签名传输使用独立客户端、禁用代理和自动重定向，在每次建连时解析 DNS，拒绝任一非公网 IPv4/IPv6 结果，并直接连接已验证 IP，以避免 DNS 校验与实际连接分离。Provider API 客户端与签名传输客户端不会共享认证头或连接池。
+
+如果进程在上传响应未知时崩溃，新 Worker 会加载同一 batch 与加密 continuation：远端仍为 `waiting-file` 时可重复 PUT 同一份源文件；远端已进入 `pending / converting / running / done` 时直接完成本地提交阶段；远端明确 `failed` 时永久失败。签名地址过期或被拒绝不会自动申请新 batch，避免把未知上传结果变成重复解析；管理员可通过创建新 Parse Run 显式重试。
 
 当前能力快照为单文件最多 200 MiB、600 页，支持 PDF、DOC/DOCX、PPT/PPTX、HTML 和文档列出的图片类型；不声明 XLS/XLSX Cloud 原生支持。Cloud 当前没有接入可用的取消端点，因此取消能力为 `false`。
 
@@ -49,6 +53,7 @@ Local backend 来自不可变 Provider 配置的 `backend`；Cloud model version
 
 - 所有响应 JSON 最多读取 1 MiB，不把响应正文放入日志或异常；
 - Provider API 的 `400/422` 分类为输入错误，`401/403` 分类为配置错误，`408/429/5xx` 和网络超时分类为瞬时错误；不携带 Token 的签名传输 `401/403` 不误报为凭据配置错误；
+- 签名传输目标命中私网、回环、链路本地、保留、组播地址或非 443 端口时分类为安全错误；DNS/连接临时失败仍分类为瞬时错误；
 - 外部任务失败只返回稳定错误码和通用脱敏消息；
 - 结果响应所有权随 `ProviderResultContent` 转移，调用方释放结果时同时释放网络流和 `HttpResponseMessage`；
 - 外部 task ID 只作为转义后的单个 URL path segment 使用；源文件名必须是安全的单段名称。
@@ -58,9 +63,8 @@ Local backend 来自不可变 Provider 配置的 `backend`；Cloud model version
 适配器已注册到 Host DI，但维护 Worker 仍不会抢占并执行新的 Parse Run。真实执行启用前还必须完成：
 
 - 把租约心跳、Provider 调用、结果接收、归一化和 Canonical 提交编排为可恢复执行器；
-- 明确 Cloud “已申请 batch ID、上传响应结果未知”时的持久化 checkpoint，不能把这类情况当作普通瞬时错误盲目创建新 batch；
-- 为 Cloud 返回的跨主机签名 URL增加可配置的目标策略和连接级 DNS/IP 固定，当前仅强制 HTTPS、禁止 user-info/fragment 和自动重定向，尚未宣称完整 SSRF 防护；
 - 使用部署目标的真实 MinerU 版本和样本执行集成测试；
 - 接入取消请求和执行尝试明细。
+- 根据部署网络明确管理员配置的 Cloud/Local Base URL 允许范围；Local 为支持同机和受信内网部署不会套用公网限定。
 
 因此，本实现使协议适配层可独立测试和继续集成，但尚不代表生产任务执行已经开启。

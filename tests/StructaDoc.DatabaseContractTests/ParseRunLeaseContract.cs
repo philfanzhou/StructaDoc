@@ -6,6 +6,7 @@ using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.ParseRuns;
+using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Infrastructure.Authentication;
@@ -114,15 +115,26 @@ internal static class ParseRunLeaseContract
                 ParseRunStages.Submitting,
                 nowUtc.AddSeconds(1));
             Assert.NotNull(runningLease);
-            var submittedLease = await stateStore.TryRecordProviderSubmissionAsync(
-                runningLease,
+            var checkpoint = new ProviderSubmissionCheckpoint(
                 "provider-task-1",
+                "https://upload.example/signed?secret=value");
+            var checkpointStore = new EfCoreParseRunSubmissionCheckpointStore(
+                dbContext,
+                new ContractSecretProtector());
+            var checkpointedLease = await checkpointStore.TrySaveAsync(
+                runningLease,
+                checkpoint,
                 nowUtc.AddSeconds(2));
+            Assert.NotNull(checkpointedLease);
+            var submittedLease = await checkpointStore.TryCompleteAsync(
+                checkpointedLease,
+                checkpoint,
+                nowUtc.AddSeconds(3));
             Assert.NotNull(submittedLease);
             var downloadingLease = await stateStore.TryUpdateStageAsync(
                 submittedLease,
                 ParseRunStages.Downloading,
-                nowUtc.AddSeconds(3));
+                nowUtc.AddSeconds(4));
             Assert.NotNull(downloadingLease);
 
             await dbContext.ParseRuns
@@ -427,6 +439,14 @@ internal static class ParseRunLeaseContract
         {
             throw new NotSupportedException();
         }
+    }
+
+    private sealed class ContractSecretProtector : IProviderSubmissionProtector
+    {
+        public string Protect(string plaintext) => $"protected:{plaintext}";
+
+        public string Unprotect(string protectedValue) =>
+            protectedValue["protected:".Length..];
     }
 
     private sealed class ContractFileStorage : IFileStorage

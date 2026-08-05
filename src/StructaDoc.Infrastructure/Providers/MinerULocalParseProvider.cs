@@ -38,7 +38,7 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         return Task.FromResult(Capabilities);
     }
 
-    public async Task<ProviderSubmission> SubmitAsync(
+    public Task<ProviderSubmissionCheckpoint?> PrepareSubmissionAsync(
         ProviderExecutionConfiguration configuration,
         Guid parseRunId,
         ProviderDocumentSource source,
@@ -46,6 +46,26 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         CancellationToken cancellationToken = default)
     {
         MinerUHttpProtocol.ValidateConfiguration(configuration, ProviderType, requireHttps: false);
+        return Task.FromResult<ProviderSubmissionCheckpoint?>(null);
+    }
+
+    public async Task<ProviderSubmission> SubmitAsync(
+        ProviderExecutionConfiguration configuration,
+        Guid parseRunId,
+        ProviderDocumentSource source,
+        string optionsJson,
+        ProviderSubmissionCheckpoint? checkpoint,
+        CancellationToken cancellationToken = default)
+    {
+        MinerUHttpProtocol.ValidateConfiguration(configuration, ProviderType, requireHttps: false);
+        if (checkpoint is not null)
+        {
+            throw new ProviderException(
+                "mineru-local-checkpoint-unexpected",
+                "MinerU Local does not accept a submission checkpoint.",
+                ProviderFailureCategory.Permanent);
+        }
+
         if (parseRunId == Guid.Empty)
         {
             throw new ArgumentException("A Parse Run ID is required.", nameof(parseRunId));
