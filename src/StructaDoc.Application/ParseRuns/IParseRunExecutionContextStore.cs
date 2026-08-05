@@ -20,6 +20,7 @@ public sealed record ParseRunExecutionContext(
     string SourceSha256,
     string SourceStorageRef,
     string OptionsJson,
+    string Stage,
     string? ExternalTaskId,
     int AttemptCount,
     ProviderExecutionConfiguration ProviderConfiguration)

@@ -14,6 +14,12 @@ public interface IParseRunLeaseStore
         TimeSpan leaseDuration,
         CancellationToken cancellationToken = default);
 
+    Task<ParseRunLease?> TryRecoverNextRunningAsync(
+        string workerId,
+        DateTime nowUtc,
+        TimeSpan leaseDuration,
+        CancellationToken cancellationToken = default);
+
     Task<int> RequeueExpiredUnstartedClaimsAsync(
         DateTime nowUtc,
         int maxCount,

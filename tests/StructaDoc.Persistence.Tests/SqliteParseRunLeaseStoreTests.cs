@@ -128,6 +128,58 @@ public sealed class SqliteParseRunLeaseStoreTests
         Assert.Equal("worker-1", persistedRun.ClaimedBy);
     }
 
+    [Fact]
+    public async Task Expired_running_task_is_recovered_once_without_incrementing_attempt()
+    {
+        await using var database = await SqliteLeaseTestDatabase.CreateAsync(parseRunCount: 1);
+        var nowUtc = DateTime.UtcNow;
+        var claimedLease = await ClaimOneAsync(database.Options, "worker-1", nowUtc);
+        Assert.NotNull(claimedLease);
+
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            var runningLease = await stateStore.TryStartAsync(
+                claimedLease,
+                ParseRunStages.Submitting,
+                nowUtc.AddSeconds(1));
+            Assert.NotNull(runningLease);
+            var submittedLease = await stateStore.TryRecordProviderSubmissionAsync(
+                runningLease,
+                "provider-task-1",
+                nowUtc.AddSeconds(2));
+            Assert.NotNull(submittedLease);
+
+            await dbContext.ParseRuns.ExecuteUpdateAsync(setters => setters
+                .SetProperty(
+                    parseRun => parseRun.LeaseExpiresAtUtc,
+                    nowUtc.AddSeconds(-1)));
+        }
+
+        var recoveries = await Task.WhenAll(
+            Enumerable.Range(1, 8).Select(async workerNumber =>
+            {
+                await using var dbContext = new StructaDocDbContext(database.Options);
+                var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+                return await leaseStore.TryRecoverNextRunningAsync(
+                    $"recovery-worker-{workerNumber}",
+                    nowUtc,
+                    TimeSpan.FromMinutes(1));
+            }));
+
+        var recoveredLease = Assert.Single(recoveries, lease => lease is not null);
+        Assert.NotNull(recoveredLease);
+
+        await using var verificationContext = new StructaDocDbContext(database.Options);
+        var persistedRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync();
+        Assert.Equal(ParseRunStatuses.Running, persistedRun.Status);
+        Assert.Equal(ParseRunStages.WaitingProvider, persistedRun.Stage);
+        Assert.Equal("provider-task-1", persistedRun.ExternalTaskId);
+        Assert.Equal(recoveredLease.WorkerId, persistedRun.ClaimedBy);
+        Assert.Equal(1, persistedRun.AttemptCount);
+        Assert.Equal(4, persistedRun.ConcurrencyVersion);
+    }
+
     private static async Task<StructaDoc.Application.ParseRuns.ParseRunLease?> ClaimOneAsync(
         DbContextOptions<StructaDocDbContext> options,
         string workerId,

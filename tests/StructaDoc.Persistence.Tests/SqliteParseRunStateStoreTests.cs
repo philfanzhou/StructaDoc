@@ -40,6 +40,77 @@ public sealed class SqliteParseRunStateStoreTests
     }
 
     [Fact]
+    public async Task Stage_and_provider_submission_updates_require_the_current_lease()
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var store = new EfCoreParseRunStateStore(dbContext);
+        var submittingLease = await store.TryUpdateStageAsync(
+            runningLease,
+            ParseRunStages.Submitting,
+            nowUtc.AddSeconds(2));
+        Assert.NotNull(submittingLease);
+
+        var staleSubmission = await store.TryRecordProviderSubmissionAsync(
+            runningLease,
+            "provider-task-stale",
+            nowUtc.AddSeconds(3));
+        Assert.Null(staleSubmission);
+
+        var submittedLease = await store.TryRecordProviderSubmissionAsync(
+            submittingLease,
+            "provider-task-1",
+            nowUtc.AddSeconds(3));
+        Assert.NotNull(submittedLease);
+
+        var downloadingLease = await store.TryUpdateStageAsync(
+            submittedLease,
+            ParseRunStages.Downloading,
+            nowUtc.AddSeconds(4));
+        Assert.NotNull(downloadingLease);
+        Assert.Null(await store.TryUpdateStageAsync(
+            downloadingLease,
+            ParseRunStages.Submitting,
+            nowUtc.AddSeconds(5)));
+
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        Assert.Equal(ParseRunStatuses.Running, persistedRun.Status);
+        Assert.Equal(ParseRunStages.Downloading, persistedRun.Stage);
+        Assert.Equal("provider-task-1", persistedRun.ExternalTaskId);
+        Assert.Equal(5, persistedRun.ConcurrencyVersion);
+    }
+
+    [Fact]
+    public async Task Provider_submission_rejects_unsafe_external_task_ids()
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var store = new EfCoreParseRunStateStore(dbContext);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            store.TryRecordProviderSubmissionAsync(
+                runningLease,
+                " provider-task ",
+                nowUtc.AddSeconds(2)));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            store.TryRecordProviderSubmissionAsync(
+                runningLease,
+                new string('x', 513),
+                nowUtc.AddSeconds(2)));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            store.TryRecordProviderSubmissionAsync(
+                runningLease,
+                "provider\ntask",
+                nowUtc.AddSeconds(2)));
+    }
+
+    [Fact]
     public async Task Retryable_failure_waits_and_returns_to_queue_when_due()
     {
         await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);

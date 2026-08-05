@@ -49,6 +49,58 @@ public sealed class EfCoreParseRunStateStore(StructaDocDbContext dbContext)
             : null;
     }
 
+    public Task<ParseRunLease?> TryUpdateStageAsync(
+        ParseRunLease currentLease,
+        string stage,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLease(currentLease, nowUtc);
+        ValidateStage(stage);
+
+        return UpdateStageAsync(
+            currentLease,
+            stage,
+            RequiresExternalTask(stage),
+            nowUtc,
+            cancellationToken);
+    }
+
+    public async Task<ParseRunLease?> TryRecordProviderSubmissionAsync(
+        ParseRunLease currentLease,
+        string externalTaskId,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLease(currentLease, nowUtc);
+        ValidateExternalTaskId(externalTaskId);
+
+        var affectedRows = await dbContext.ParseRuns
+            .Where(parseRun =>
+                parseRun.Id == currentLease.ParseRunId
+                && parseRun.Status == ParseRunStatuses.Running
+                && parseRun.Stage == ParseRunStages.Submitting
+                && parseRun.ExternalTaskId == null
+                && parseRun.ClaimedBy == currentLease.WorkerId
+                && parseRun.ConcurrencyVersion == currentLease.ConcurrencyVersion
+                && parseRun.LeaseExpiresAtUtc > nowUtc)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(parseRun => parseRun.ExternalTaskId, externalTaskId)
+                    .SetProperty(parseRun => parseRun.Stage, ParseRunStages.WaitingProvider)
+                    .SetProperty(
+                        parseRun => parseRun.ConcurrencyVersion,
+                        parseRun => parseRun.ConcurrencyVersion + 1),
+                cancellationToken);
+
+        return affectedRows == 1
+            ? currentLease with
+            {
+                ConcurrencyVersion = currentLease.ConcurrencyVersion + 1,
+            }
+            : null;
+    }
+
     public async Task<ParseRunFailureTransition?> TryRecordFailureAsync(
         ParseRunLease currentLease,
         string errorCode,
@@ -177,6 +229,82 @@ public sealed class EfCoreParseRunStateStore(StructaDocDbContext dbContext)
         ArgumentNullException.ThrowIfNull(currentLease);
         ValidateUtc(nowUtc, nameof(nowUtc));
         ArgumentException.ThrowIfNullOrWhiteSpace(currentLease.WorkerId);
+    }
+
+    private async Task<ParseRunLease?> UpdateStageAsync(
+        ParseRunLease currentLease,
+        string stage,
+        bool requiresExternalTask,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var affectedRows = await dbContext.ParseRuns
+            .Where(parseRun =>
+                parseRun.Id == currentLease.ParseRunId
+                && parseRun.Status == ParseRunStatuses.Running
+                && (requiresExternalTask
+                    ? parseRun.ExternalTaskId != null
+                    : parseRun.ExternalTaskId == null)
+                && parseRun.ClaimedBy == currentLease.WorkerId
+                && parseRun.ConcurrencyVersion == currentLease.ConcurrencyVersion
+                && parseRun.LeaseExpiresAtUtc > nowUtc)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(parseRun => parseRun.Stage, stage)
+                    .SetProperty(
+                        parseRun => parseRun.ConcurrencyVersion,
+                        parseRun => parseRun.ConcurrencyVersion + 1),
+                cancellationToken);
+
+        return affectedRows == 1
+            ? currentLease with
+            {
+                ConcurrencyVersion = currentLease.ConcurrencyVersion + 1,
+            }
+            : null;
+    }
+
+    private static bool RequiresExternalTask(string stage)
+    {
+        return stage is ParseRunStages.WaitingProvider
+            or ParseRunStages.Downloading
+            or ParseRunStages.Normalizing
+            or ParseRunStages.Persisting
+            or ParseRunStages.CleaningUp;
+    }
+
+    private static void ValidateStage(string stage)
+    {
+        if (!ParseRunStages.IsKnown(stage))
+        {
+            throw new ArgumentException("The parse stage is not recognized.", nameof(stage));
+        }
+    }
+
+    private static void ValidateExternalTaskId(string externalTaskId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(externalTaskId);
+
+        if (externalTaskId.Length > 512)
+        {
+            throw new ArgumentException(
+                "External task ID cannot exceed 512 characters.",
+                nameof(externalTaskId));
+        }
+
+        if (!string.Equals(externalTaskId, externalTaskId.Trim(), StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "External task ID cannot have leading or trailing whitespace.",
+                nameof(externalTaskId));
+        }
+
+        if (externalTaskId.Any(char.IsControl))
+        {
+            throw new ArgumentException(
+                "External task ID cannot contain control characters.",
+                nameof(externalTaskId));
+        }
     }
 
     private static void ValidateUtc(DateTime value, string parameterName)

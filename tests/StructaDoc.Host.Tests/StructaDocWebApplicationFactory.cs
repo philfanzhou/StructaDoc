@@ -21,6 +21,8 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
         builder.UseSetting("Worker:Enabled", "true");
         builder.UseSetting("Worker:MaintenanceInterval", "00:00:00.100");
         builder.UseSetting("Worker:RecoveryBatchSize", "20");
+        builder.UseSetting("Worker:LeaseDuration", "00:00:30");
+        builder.UseSetting("Worker:HeartbeatInterval", "00:00:00.100");
         builder.UseSetting("Documents:UploadApiEnabled", "true");
         builder.UseSetting("Documents:MaxUploadBytes", "1048576");
         builder.UseSetting(

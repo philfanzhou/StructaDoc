@@ -105,6 +105,63 @@ public sealed class EfCoreParseRunLeaseStore(StructaDocDbContext dbContext)
             : null;
     }
 
+    public async Task<ParseRunLease?> TryRecoverNextRunningAsync(
+        string workerId,
+        DateTime nowUtc,
+        TimeSpan leaseDuration,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateWorkerId(workerId);
+        ValidateLeaseArguments(nowUtc, leaseDuration);
+
+        var leaseExpiresAtUtc = nowUtc.Add(leaseDuration);
+        var candidates = await dbContext.ParseRuns
+            .AsNoTracking()
+            .Where(parseRun =>
+                parseRun.Status == ParseRunStatuses.Running
+                && parseRun.ExternalTaskId != null
+                && parseRun.LeaseExpiresAtUtc <= nowUtc)
+            .OrderBy(parseRun => parseRun.LeaseExpiresAtUtc)
+            .ThenBy(parseRun => parseRun.Id)
+            .Select(parseRun => new
+            {
+                parseRun.Id,
+                parseRun.ConcurrencyVersion,
+            })
+            .Take(CandidateBatchSize)
+            .ToListAsync(cancellationToken);
+
+        foreach (var candidate in candidates)
+        {
+            var affectedRows = await dbContext.ParseRuns
+                .Where(parseRun =>
+                    parseRun.Id == candidate.Id
+                    && parseRun.Status == ParseRunStatuses.Running
+                    && parseRun.ExternalTaskId != null
+                    && parseRun.LeaseExpiresAtUtc <= nowUtc
+                    && parseRun.ConcurrencyVersion == candidate.ConcurrencyVersion)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(parseRun => parseRun.ClaimedBy, workerId)
+                        .SetProperty(parseRun => parseRun.LeaseExpiresAtUtc, leaseExpiresAtUtc)
+                        .SetProperty(
+                            parseRun => parseRun.ConcurrencyVersion,
+                            parseRun => parseRun.ConcurrencyVersion + 1),
+                    cancellationToken);
+
+            if (affectedRows == 1)
+            {
+                return new ParseRunLease(
+                    candidate.Id,
+                    workerId,
+                    candidate.ConcurrencyVersion + 1,
+                    leaseExpiresAtUtc);
+            }
+        }
+
+        return null;
+    }
+
     public async Task<int> RequeueExpiredUnstartedClaimsAsync(
         DateTime nowUtc,
         int maxCount,

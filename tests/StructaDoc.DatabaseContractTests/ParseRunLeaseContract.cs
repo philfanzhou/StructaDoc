@@ -98,20 +98,58 @@ internal static class ParseRunLeaseContract
                     .SetProperty(
                         parseRun => parseRun.LeaseExpiresAtUtc,
                         nowUtc.AddSeconds(-1)));
-            await dbContext.ParseRuns
-                .Where(parseRun => parseRun.Id == externalTaskLease.ParseRunId)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(parseRun => parseRun.ExternalTaskId, "provider-task-1")
-                    .SetProperty(
-                        parseRun => parseRun.LeaseExpiresAtUtc,
-                        nowUtc.AddSeconds(-1)));
-
             var store = new EfCoreParseRunLeaseStore(dbContext);
             var recoveredCount = await store.RequeueExpiredUnstartedClaimsAsync(
                 nowUtc,
                 maxCount: ParseRunCount);
 
             Assert.Equal(1, recoveredCount);
+        }
+
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            var runningLease = await stateStore.TryStartAsync(
+                externalTaskLease,
+                ParseRunStages.Submitting,
+                nowUtc.AddSeconds(1));
+            Assert.NotNull(runningLease);
+            var submittedLease = await stateStore.TryRecordProviderSubmissionAsync(
+                runningLease,
+                "provider-task-1",
+                nowUtc.AddSeconds(2));
+            Assert.NotNull(submittedLease);
+            var downloadingLease = await stateStore.TryUpdateStageAsync(
+                submittedLease,
+                ParseRunStages.Downloading,
+                nowUtc.AddSeconds(3));
+            Assert.NotNull(downloadingLease);
+
+            await dbContext.ParseRuns
+                .Where(parseRun => parseRun.Id == externalTaskLease.ParseRunId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(
+                        parseRun => parseRun.LeaseExpiresAtUtc,
+                        nowUtc.AddSeconds(-1)));
+        }
+
+        ParseRunLease recoveredRunningLease;
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+            recoveredRunningLease = Assert.IsType<ParseRunLease>(
+                await leaseStore.TryRecoverNextRunningAsync(
+                    "recovery-worker",
+                    nowUtc,
+                    TimeSpan.FromMinutes(1)));
+            Assert.Equal(externalTaskLease.ParseRunId, recoveredRunningLease.ParseRunId);
+
+            var recoveredRun = await dbContext.ParseRuns
+                .AsNoTracking()
+                .SingleAsync(parseRun => parseRun.Id == recoveredRunningLease.ParseRunId);
+            Assert.Equal(ParseRunStages.Downloading, recoveredRun.Stage);
+            Assert.Equal("provider-task-1", recoveredRun.ExternalTaskId);
+            Assert.Equal(1, recoveredRun.AttemptCount);
         }
 
         var resultLease = successfulClaims[4]!;
@@ -165,16 +203,18 @@ internal static class ParseRunLeaseContract
             .ToListAsync();
         Assert.Equal(ParseRunCount, persistedRuns.Count);
         Assert.Equal(
-            ParseRunCount - 3,
+            ParseRunCount - 4,
             persistedRuns.Count(parseRun => parseRun.Status == ParseRunStatuses.Claimed));
         Assert.Equal(2, persistedRuns.Count(parseRun =>
             parseRun.Status == ParseRunStatuses.Queued
             && parseRun.ClaimedBy == null
             && parseRun.LeaseExpiresAtUtc == null));
         Assert.Single(persistedRuns, parseRun =>
-            parseRun.Status == ParseRunStatuses.Claimed
+            parseRun.Status == ParseRunStatuses.Running
             && parseRun.ExternalTaskId == "provider-task-1"
-            && parseRun.ClaimedBy != null);
+            && parseRun.Stage == ParseRunStages.Downloading
+            && parseRun.AttemptCount == 1
+            && parseRun.ClaimedBy == recoveredRunningLease.WorkerId);
         Assert.Single(persistedRuns, parseRun =>
             parseRun.Status == ParseRunStatuses.Succeeded
             && parseRun.ResultSchemaVersion == ParseBundleValidator.CurrentSchemaVersion
@@ -421,4 +461,5 @@ internal static class ParseRunLeaseContract
             string storageRef,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
+
 }

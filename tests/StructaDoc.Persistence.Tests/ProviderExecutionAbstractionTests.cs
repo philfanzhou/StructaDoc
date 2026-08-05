@@ -173,6 +173,7 @@ public sealed class ProviderExecutionAbstractionTests
                 Assert.Equal("version-one-secret", context.ProviderConfiguration.Credential?.Reveal());
                 Assert.Equal("[redacted]", context.ProviderConfiguration.Credential?.ToString());
                 Assert.Equal("documents/source.pdf", context.SourceStorageRef);
+                Assert.Equal(ParseRunStages.Validating, context.Stage);
                 Assert.DoesNotContain("version-one-secret", context.ToString(), StringComparison.Ordinal);
                 Assert.DoesNotContain("documents/source.pdf", context.ToString(), StringComparison.Ordinal);
                 Assert.DoesNotContain("source.pdf", context.ToString(), StringComparison.Ordinal);

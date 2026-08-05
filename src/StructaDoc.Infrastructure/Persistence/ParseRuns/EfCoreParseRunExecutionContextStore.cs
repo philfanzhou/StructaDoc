@@ -45,6 +45,7 @@ public sealed class EfCoreParseRunExecutionContextStore(
                 document.Sha256,
                 document.StorageRef,
                 parseRun.OptionsJson,
+                parseRun.Stage,
                 parseRun.ExternalTaskId,
                 parseRun.AttemptCount,
                 parseRun.ProviderConfigId,
@@ -57,6 +58,12 @@ public sealed class EfCoreParseRunExecutionContextStore(
             }).SingleOrDefaultAsync(cancellationToken);
 
         if (snapshot is null)
+        {
+            return null;
+        }
+
+
+        if (snapshot.Stage is null)
         {
             return null;
         }
@@ -75,6 +82,7 @@ public sealed class EfCoreParseRunExecutionContextStore(
             snapshot.Sha256,
             snapshot.StorageRef,
             snapshot.OptionsJson,
+            snapshot.Stage,
             snapshot.ExternalTaskId,
             snapshot.AttemptCount,
             new ProviderExecutionConfiguration(
