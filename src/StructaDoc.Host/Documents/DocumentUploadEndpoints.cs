@@ -80,7 +80,7 @@ public static class DocumentUploadEndpoints
                 document.Sha256,
                 document.CreatedAtUtc);
 
-            return Results.Json(response, statusCode: StatusCodes.Status201Created);
+            return Results.Created($"/api/v1/documents/{document.Id:D}", response);
         }
         catch (FileSizeLimitExceededException exception)
         {

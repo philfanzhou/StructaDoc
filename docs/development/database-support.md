@@ -11,7 +11,7 @@
 
 | Database | EF Core Provider | Migration assembly | Current verification |
 |---|---|---|---|
-| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、Document/Parse Run/认证数据 CRUD、乐观并发、抢占、续租、失败/重试转换和过期恢复 |
+| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、Document 查询与键集分页、Parse Run/认证数据 CRUD、乐观并发、抢占、续租、失败/重试转换和过期恢复 |
 | PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `StructaDoc.Migrations.PostgreSql` | Provider、包含认证表的迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
 | MySQL | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MySql` | MySQL 8.4 方言、包含认证表的迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
 | MariaDB | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | MariaDB 11.4 方言、包含认证表的迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
@@ -87,7 +87,7 @@ $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
 dotnet test tests/StructaDoc.DatabaseContractTests
 ```
 
-当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、Document/管理员持久化、API Client scope 更新、Key 轮换、并发版本和撤销，以及 Parse Run 并发抢占、续租令牌失效、未启动任务的租约过期恢复、运行、失败、重试等待和到期回队列转换。测试成功前不得更新上面的发布支持状态。
+当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、Document 复合游标分页与详情查询、管理员持久化、API Client scope 更新、Key 轮换、并发版本和撤销，以及 Parse Run 并发抢占、续租令牌失效、未启动任务的租约过期恢复、运行、失败、重试等待和到期回队列转换。测试成功前不得更新上面的发布支持状态。
 
 ## Remaining Verification
 

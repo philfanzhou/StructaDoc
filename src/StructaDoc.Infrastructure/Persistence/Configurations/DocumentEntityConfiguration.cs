@@ -43,5 +43,7 @@ internal sealed class DocumentEntityConfiguration : IEntityTypeConfiguration<Doc
 
         builder.HasIndex(document => document.Sha256)
             .HasDatabaseName("ix_documents_sha256");
+        builder.HasIndex(document => new { document.CreatedAtUtc, document.Id })
+            .HasDatabaseName("ix_documents_created_at_id");
     }
 }

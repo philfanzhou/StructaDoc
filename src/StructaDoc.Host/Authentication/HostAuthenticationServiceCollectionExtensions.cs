@@ -87,6 +87,17 @@ public static class HostAuthenticationServiceCollectionExtensions
                         StructaDocClaimTypes.SubjectType,
                         SubjectTypes.Administrator))
             .AddPolicy(
+                AuthorizationPolicies.DocumentsRead,
+                policy => policy
+                    .RequireAuthenticatedUser()
+                    .RequireAssertion(context =>
+                        context.User.HasClaim(
+                            StructaDocClaimTypes.SubjectType,
+                            SubjectTypes.Administrator)
+                        || context.User.HasClaim(
+                            StructaDocClaimTypes.Scope,
+                            AuthenticationScopes.DocumentsRead)))
+            .AddPolicy(
                 AuthorizationPolicies.DocumentsWrite,
                 policy => policy
                     .RequireAuthenticatedUser()

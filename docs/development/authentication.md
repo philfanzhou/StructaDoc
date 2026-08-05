@@ -51,7 +51,7 @@ Credential 格式包含版本、公开 Client UUID 和 256-bit 随机 Secret。�
 - `parses:read`
 - `parses:write`
 
-当前 Document 上传要求 `documents:write`。管理员主体由独立策略授权，不需要伪造 API Client scope。
+当前 Document 上传要求 `documents:write`；列表、详情和原文件下载要求 `documents:read`。两个 scope 相互独立。管理员主体由独立策略授权，不需要伪造 API Client scope。
 
 ## API Client Administration
 

@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
 
 namespace StructaDoc.Host.Tests;
 
@@ -40,16 +39,11 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
         builder.UseSetting(
             "Storage:RootPath",
             StorageRootPath);
-
-        builder.ConfigureAppConfiguration(
-            configuration => configuration.AddInMemoryCollection(
-                new Dictionary<string, string?>
-                {
-                    ["Database:Provider"] = "Sqlite",
-                    ["Database:ConnectionString"] =
-                        $"Data Source={Path.Combine(testDirectory, "structadoc.db")};Pooling=False",
-                    ["Database:ApplyMigrationsOnStartup"] = "true",
-                }));
+        builder.UseSetting("Database:Provider", "Sqlite");
+        builder.UseSetting(
+            "Database:ConnectionString",
+            $"Data Source={Path.Combine(testDirectory, "structadoc.db")};Pooling=False");
+        builder.UseSetting("Database:ApplyMigrationsOnStartup", "true");
     }
 
     protected override void Dispose(bool disposing)

@@ -73,6 +73,7 @@ if (ingestionOptions.UploadApiEnabled)
 {
     app.MapDocumentUpload(ingestionOptions.MaxUploadBytes);
 }
+app.MapDocumentReadEndpoints();
 
 app.MapAdministratorSessionEndpoints(
     authenticationOptions.AdministratorSessionLifetime);

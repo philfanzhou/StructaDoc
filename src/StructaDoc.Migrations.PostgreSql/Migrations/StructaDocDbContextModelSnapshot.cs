@@ -185,6 +185,9 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                     b.HasIndex("Sha256")
                         .HasDatabaseName("ix_documents_sha256");
 
+                    b.HasIndex("CreatedAtUtc", "Id")
+                        .HasDatabaseName("ix_documents_created_at_id");
+
                     b.ToTable("documents", (string)null);
                 });
 

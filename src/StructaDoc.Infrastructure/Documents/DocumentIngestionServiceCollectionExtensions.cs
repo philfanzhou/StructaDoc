@@ -23,6 +23,7 @@ public static class DocumentIngestionServiceCollectionExtensions
         services.AddSingleton<IFileStorage, LocalFileStorage>();
         services.AddSingleton<IDocumentTypeDetector, OfficeDocumentTypeDetector>();
         services.AddScoped<IDocumentIngestionService, EfCoreDocumentIngestionService>();
+        services.AddScoped<IDocumentReadService, EfCoreDocumentReadService>();
         services
             .AddHealthChecks()
             .AddCheck<LocalFileStorageHealthCheck>(

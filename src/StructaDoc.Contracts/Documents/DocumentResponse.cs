@@ -8,3 +8,7 @@ public sealed record DocumentResponse(
     long SizeBytes,
     string Sha256,
     DateTime CreatedAt);
+
+public sealed record DocumentListResponse(
+    IReadOnlyList<DocumentResponse> Items,
+    string? NextCursor);

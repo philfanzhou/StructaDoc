@@ -1,8 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using StructaDoc.Application.Authentication;
+using StructaDoc.Application.Documents;
 using StructaDoc.Application.ParseRuns;
+using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Infrastructure.Authentication;
+using StructaDoc.Infrastructure.Documents;
 using StructaDoc.Infrastructure.Persistence;
 using StructaDoc.Infrastructure.Persistence.Entities;
 using StructaDoc.Infrastructure.Persistence.ParseRuns;
@@ -139,6 +143,7 @@ internal static class ParseRunLeaseContract
         Assert.False(apiClient.IsActive);
         Assert.NotNull(apiClient.RevokedAtUtc);
         Assert.Equal(3, apiClient.ConcurrencyVersion);
+        Assert.Equal(4, await verificationContext.Documents.CountAsync());
     }
 
     private static DbContextOptions<StructaDocDbContext> CreateOptions(
@@ -179,6 +184,21 @@ internal static class ParseRunLeaseContract
             CreatedAtUtc = nowUtc,
         };
         dbContext.Documents.Add(document);
+
+        for (var index = 1; index <= 3; index++)
+        {
+            dbContext.Documents.Add(new DocumentEntity
+            {
+                Id = Guid.NewGuid(),
+                OriginalFileName = $"contract-page-{index}.pdf",
+                MediaType = "application/pdf",
+                Extension = ".pdf",
+                SizeBytes = 128 + index,
+                Sha256 = index.ToString().PadLeft(64, 'a'),
+                StorageRef = $"documents/contract-page-{index}.pdf",
+                CreatedAtUtc = index <= 2 ? nowUtc : nowUtc.AddSeconds(-1),
+            });
+        }
         dbContext.AdminUsers.Add(new AdminUserEntity
         {
             Id = Guid.NewGuid(),
@@ -221,7 +241,29 @@ internal static class ParseRunLeaseContract
 
         await dbContext.SaveChangesAsync();
 
+        await ExerciseDocumentReadsAsync(options);
         await ExerciseApiClientAdministrationAsync(options, nowUtc);
+    }
+
+    private static async Task ExerciseDocumentReadsAsync(
+        DbContextOptions<StructaDocDbContext> options)
+    {
+        await using var dbContext = new StructaDocDbContext(options);
+        var service = new EfCoreDocumentReadService(
+            dbContext,
+            new UnusedFileStorage(),
+            NullLogger<EfCoreDocumentReadService>.Instance);
+        var firstPage = await service.ListAsync(limit: 2);
+        Assert.Equal(2, firstPage.Items.Count);
+        Assert.NotNull(firstPage.NextCursor);
+
+        var secondPage = await service.ListAsync(limit: 2, firstPage.NextCursor);
+        Assert.Equal(2, secondPage.Items.Count);
+        Assert.Null(secondPage.NextCursor);
+        Assert.Equal(
+            4,
+            firstPage.Items.Concat(secondPage.Items).Select(item => item.Id).Distinct().Count());
+        Assert.NotNull(await service.GetAsync(firstPage.Items[0].Id));
     }
 
     private static async Task ExerciseApiClientAdministrationAsync(
@@ -266,5 +308,31 @@ internal static class ParseRunLeaseContract
             workerId,
             nowUtc,
             TimeSpan.FromMinutes(1));
+    }
+
+    private sealed class UnusedFileStorage : IFileStorage
+    {
+        public Task<StoredFile> WriteAsync(
+            string storageRef,
+            Stream content,
+            long maxBytes,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<Stream> OpenReadAsync(
+            string storageRef,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task DeleteIfExistsAsync(
+            string storageRef,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

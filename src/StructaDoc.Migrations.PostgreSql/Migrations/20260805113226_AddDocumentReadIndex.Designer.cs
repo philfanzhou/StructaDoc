@@ -2,66 +2,74 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using StructaDoc.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace StructaDoc.Migrations.Sqlite.Migrations
+namespace StructaDoc.Migrations.PostgreSql.Migrations
 {
     [DbContext(typeof(StructaDocDbContext))]
-    partial class StructaDocDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260805113226_AddDocumentReadIndex")]
+    partial class AddDocumentReadIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+            modelBuilder
+                .HasAnnotation("ProductVersion", "10.0.10")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.AdminUserEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("display_name");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("email");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
                     b.Property<DateTime?>("LastLoginAtUtc")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_login_at_utc");
 
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(320)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(320)")
                         .HasColumnName("normalized_email");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(1024)
                         .IsUnicode(false)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(1024)")
                         .HasColumnName("password_hash");
 
                     b.Property<Guid>("SecurityStamp")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("security_stamp");
 
                     b.HasKey("Id");
@@ -76,43 +84,43 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ApiClientEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<long>("ConcurrencyVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("bigint")
                         .HasColumnName("concurrency_version");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("name");
 
                     b.Property<DateTime?>("RevokedAtUtc")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("revoked_at_utc");
 
                     b.Property<string>("Scopes")
                         .IsRequired()
                         .HasMaxLength(512)
                         .IsUnicode(false)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(512)")
                         .HasColumnName("scopes");
 
                     b.Property<byte[]>("SecretHash")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("BLOB")
+                        .HasColumnType("bytea")
                         .HasColumnName("secret_hash")
                         .IsFixedLength();
 
@@ -124,55 +132,55 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("created_by");
 
                     b.Property<string>("Extension")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(32)")
                         .HasColumnName("extension");
 
                     b.Property<string>("MediaType")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("media_type");
 
                     b.Property<string>("MetadataJson")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("text")
                         .HasColumnName("metadata_json");
 
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(512)")
                         .HasColumnName("original_file_name");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(64)
                         .IsUnicode(false)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(64)")
                         .HasColumnName("sha256");
 
                     b.Property<long>("SizeBytes")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("bigint")
                         .HasColumnName("size_bytes");
 
                     b.Property<string>("StorageRef")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(2048)")
                         .HasColumnName("storage_ref");
 
                     b.HasKey("Id");
@@ -189,124 +197,124 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<int>("AttemptCount")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasColumnName("attempt_count");
 
                     b.Property<string>("ClaimedBy")
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("claimed_by");
 
                     b.Property<DateTime?>("CompletedAtUtc")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at_utc");
 
                     b.Property<long>("ConcurrencyVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("bigint")
                         .HasColumnName("concurrency_version");
 
                     b.Property<string>("ConversionJson")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("text")
                         .HasColumnName("conversion_json");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("created_by");
 
                     b.Property<Guid>("DocumentId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("document_id");
 
                     b.Property<string>("ErrorCode")
                         .HasMaxLength(128)
                         .IsUnicode(false)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(128)")
                         .HasColumnName("error_code");
 
                     b.Property<string>("ErrorMessage")
                         .HasMaxLength(2048)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(2048)")
                         .HasColumnName("error_message");
 
                     b.Property<string>("ExternalTaskId")
                         .HasMaxLength(512)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(512)")
                         .HasColumnName("external_task_id");
 
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(256)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(256)")
                         .HasColumnName("idempotency_key");
 
                     b.Property<DateTime?>("LeaseExpiresAtUtc")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("lease_expires_at_utc");
 
                     b.Property<int>("MaxAttempts")
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("integer")
                         .HasColumnName("max_attempts");
 
                     b.Property<DateTime>("NextAttemptAtUtc")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("next_attempt_at_utc");
 
                     b.Property<string>("OptionsJson")
                         .IsRequired()
-                        .HasColumnType("TEXT")
+                        .HasColumnType("text")
                         .HasColumnName("options_json");
 
                     b.Property<Guid>("ProviderConfigId")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("provider_config_id");
 
                     b.Property<Guid>("ProviderConfigVersion")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("uuid")
                         .HasColumnName("provider_config_version");
 
                     b.Property<string>("ProviderType")
                         .IsRequired()
                         .HasMaxLength(100)
                         .IsUnicode(false)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(100)")
                         .HasColumnName("provider_type");
 
                     b.Property<string>("SourceMediaType")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("source_media_type");
 
                     b.Property<string>("Stage")
                         .HasMaxLength(64)
                         .IsUnicode(false)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(64)")
                         .HasColumnName("stage");
 
                     b.Property<DateTime?>("StartedAtUtc")
-                        .HasColumnType("TEXT")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at_utc");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
                         .IsUnicode(false)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(32)")
                         .HasColumnName("status");
 
                     b.Property<string>("SubmittedMediaType")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("TEXT")
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("submitted_media_type");
 
                     b.HasKey("Id");

@@ -35,6 +35,7 @@
 | [Database Support](./development/database-support.md) | 当前数据库 Provider、迁移边界、配置和验证状态 |
 | [File Storage](./development/file-storage.md) | 当前本地文件存储、上传入口、安全限制和待实现能力 |
 | [Authentication](./development/authentication.md) | 管理员会话、API Key、scope、bootstrap 和 antiforgery 实现状态 |
+| [Document Reading](./development/document-reading.md) | Document 键集分页、详情、下载、缓存和 Range 语义 |
 
 ## 文档原则
 

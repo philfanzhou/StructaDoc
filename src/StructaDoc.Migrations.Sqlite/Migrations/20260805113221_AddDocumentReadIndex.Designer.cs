@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using StructaDoc.Infrastructure.Persistence;
 
@@ -10,9 +11,11 @@ using StructaDoc.Infrastructure.Persistence;
 namespace StructaDoc.Migrations.Sqlite.Migrations
 {
     [DbContext(typeof(StructaDocDbContext))]
-    partial class StructaDocDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260805113221_AddDocumentReadIndex")]
+    partial class AddDocumentReadIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");

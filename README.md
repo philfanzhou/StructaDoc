@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租、失败转换和到期恢复。本地文件存储、Document 上传、管理员 Cookie 会话、API Client 生命周期与 scope 授权和 antiforgery 防护已经实现；管理员账户管理、文档读取 API、解析 Provider、实际任务执行器和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租、失败转换和到期恢复。本地文件存储、Document 上传/分页查询/详情/原文件下载、管理员 Cookie 会话、API Client 生命周期与 scope 授权和 antiforgery 防护已经实现；管理员账户管理、文档删除、解析 Provider、实际任务执行器和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -42,6 +42,9 @@ dotnet run --project src/StructaDoc.Host
 - `POST /api/v1/admin/api-clients/{id}/rotate`：轮换 Key，并且只在该响应中返回新 Key；
 - `DELETE /api/v1/admin/api-clients/{id}`：不可逆撤销 API Client；
 - `POST /api/v1/documents`：单文件 `multipart/form-data` 上传，字段名为 `file`；要求管理员会话或具有 `documents:write` 的 API Key。
+- `GET /api/v1/documents`：使用 `limit` 和不透明 `cursor` 的稳定键集分页；要求管理员会话或 `documents:read`；
+- `GET /api/v1/documents/{id}`：读取 Document 详情；
+- `GET /api/v1/documents/{id}/content`：受控下载原文件，支持 ETag、条件请求和字节 Range。
 
 默认配置使用 `./data/structadoc.db` SQLite 文件并在启动时应用迁移。可以通过环境变量切换数据库：
 
@@ -61,7 +64,7 @@ dotnet run --project src/StructaDoc.Host
 - `Authentication__LoginPermitLimit`、`Authentication__LoginRateLimitWindow`：每个来源 IP 的管理员登录尝试限额和固定时间窗口；
 - `Authentication__BootstrapAdministratorEmail`、`Authentication__BootstrapAdministratorPassword`：仅通过环境变量或 Secret 注入的首个管理员凭据。
 
-连接字符串、bootstrap 密码和其他凭据必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)，文件落盘和上传限制见 [`docs/development/file-storage.md`](./docs/development/file-storage.md)，认证细节见 [`docs/development/authentication.md`](./docs/development/authentication.md)。
+连接字符串、bootstrap 密码和其他凭据必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)，文件落盘和上传限制见 [`docs/development/file-storage.md`](./docs/development/file-storage.md)，读取和下载语义见 [`docs/development/document-reading.md`](./docs/development/document-reading.md)，认证细节见 [`docs/development/authentication.md`](./docs/development/authentication.md)。
 
 ## 核心目标
 
@@ -228,6 +231,7 @@ SQLite、PostgreSQL、MySQL 或 MariaDB 保存业务元数据和需要查询的�
 POST   /api/v1/documents
 GET    /api/v1/documents
 GET    /api/v1/documents/{documentId}
+GET    /api/v1/documents/{documentId}/content
 DELETE /api/v1/documents/{documentId}
 
 POST   /api/v1/documents/{documentId}/parse-runs

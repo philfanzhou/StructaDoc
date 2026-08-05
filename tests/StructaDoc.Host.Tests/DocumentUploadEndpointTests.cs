@@ -30,6 +30,9 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.NotNull(document);
+        Assert.Equal(
+            $"/api/v1/documents/{document.Id:D}",
+            response.Headers.Location?.OriginalString);
         Assert.Equal("unsafe.PDF", document.OriginalFileName);
         Assert.Equal("application/pdf", document.MediaType);
         Assert.Equal(".pdf", document.Extension);
@@ -88,7 +91,7 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
     }
 
     [Fact]
-    public async Task Upload_endpoint_is_not_mapped_when_development_switch_is_disabled()
+    public async Task Upload_post_is_not_allowed_when_development_switch_is_disabled()
     {
         using var disabledFactory = factory.WithWebHostBuilder(
             builder => builder.UseSetting("Documents:UploadApiEnabled", "false"));
@@ -100,7 +103,7 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
 
         using var response = await client.PostAsync("/api/v1/documents", requestContent);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
     }
 
     [Fact]
