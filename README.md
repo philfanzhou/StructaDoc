@@ -3,7 +3,7 @@
 > A self-hosted document ingestion and structured parsing service.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
-[![Status](https://img.shields.io/badge/status-planning-orange.svg)](#项目状态)
+[![Status](https://img.shields.io/badge/status-early_development-yellow.svg)](#项目状态)
 
 StructaDoc 是一个独立、可自托管的文档摄取与结构化解析服务。管理员可以在管理网页中上传 PDF、Word、Excel、PowerPoint 等文档，并选择由在线 MinerU 服务或本地部署的 MinerU 服务完成解析。解析结果会被归一化为稳定的文档、内容块、图片和原始产物数据，供其他应用通过 HTTP API 调用。
 
@@ -11,9 +11,26 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于项目启动和架构设计阶段，尚未提供可运行版本。本 README 描述第一阶段的目标边界和计划架构，不代表所有能力已经实现。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 工程基线以及 Host 健康检查，但尚未实现文档上传、持久化、解析 Provider、Worker 和管理网页。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
+
+## 本地开发
+
+需要安装 .NET 10 SDK。当前工程基线可以通过以下命令验证和启动：
+
+```bash
+dotnet restore StructaDoc.slnx
+dotnet build StructaDoc.slnx --no-restore
+dotnet test StructaDoc.slnx --no-build --no-restore
+dotnet run --project src/StructaDoc.Host
+```
+
+启动后可访问：
+
+- `GET /api/v1/system/info`：服务身份和版本；
+- `GET /health/live`：进程存活检查；
+- `GET /health/ready`：服务就绪检查。数据库和存储接入后会纳入该检查。
 
 ## 核心目标
 

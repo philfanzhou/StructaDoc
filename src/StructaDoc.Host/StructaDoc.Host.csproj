@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\StructaDoc.Contracts\StructaDoc.Contracts.csproj" />
+    <ProjectReference Include="..\StructaDoc.Application\StructaDoc.Application.csproj" />
+    <ProjectReference Include="..\StructaDoc.Infrastructure\StructaDoc.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

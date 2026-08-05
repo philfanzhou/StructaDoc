@@ -1,0 +1,7 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\StructaDoc.Domain\StructaDoc.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

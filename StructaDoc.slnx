@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StructaDoc.Application/StructaDoc.Application.csproj" />
+    <Project Path="src/StructaDoc.Contracts/StructaDoc.Contracts.csproj" />
+    <Project Path="src/StructaDoc.Domain/StructaDoc.Domain.csproj" />
+    <Project Path="src/StructaDoc.Host/StructaDoc.Host.csproj" />
+    <Project Path="src/StructaDoc.Infrastructure/StructaDoc.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StructaDoc.ArchitectureTests/StructaDoc.ArchitectureTests.csproj" />
+    <Project Path="tests/StructaDoc.Host.Tests/StructaDoc.Host.Tests.csproj" />
+  </Folder>
+</Solution>
