@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界以及 Document/Parse Run 的初始持久化模型。文档上传、解析 Provider、Worker 和管理网页尚未实现。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租和未启动任务过期恢复。文档上传、解析 Provider、Worker 和管理网页尚未实现。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 

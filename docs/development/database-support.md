@@ -11,10 +11,10 @@
 
 | Database | EF Core Provider | Migration assembly | Current verification |
 |---|---|---|---|
-| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、Document / Parse Run CRUD 和乐观并发冲突 |
-| PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `StructaDoc.Migrations.PostgreSql` | Provider 配置和初始迁移已编译；真实数据库契约测试待实现 |
-| MySQL | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MySql` | Provider 配置和 MySQL 8.4 方言初始迁移已编译；真实数据库契约测试待实现 |
-| MariaDB | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | Provider 配置和 MariaDB 11.4 方言初始迁移已编译；真实数据库契约测试待实现 |
+| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、CRUD、乐观并发、并发抢占、续租和过期恢复 |
+| PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `StructaDoc.Migrations.PostgreSql` | Provider、初始迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
+| MySQL | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MySql` | MySQL 8.4 方言、初始迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
+| MariaDB | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | MariaDB 11.4 方言、初始迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
 
 在真实数据库迁移、CRUD、并发抢占、租约恢复和升级测试全部通过前，PostgreSQL、MySQL 和 MariaDB 不标记为发布支持。MySQL 与 MariaDB 即使使用同一 Provider，也保留独立迁移和测试目标。
 
@@ -43,6 +43,18 @@ Host 从 `Database` 配置段读取：
 
 SQLite 数据库文件使用本地持久卷；不支持多个容器共享该文件，也不支持放在网络文件系统。服务端数据库连接失败或迁移失败时，Host 不得进入就绪状态。
 
+## Parse Run Lease Store
+
+`IParseRunLeaseStore` 是 Application 层定义的持久化任务边界，Infrastructure 当前提供基于 EF Core 条件更新的可移植实现：
+
+- 按 `nextAttemptAt`、创建时间和 ID 选择到期的 `queued` 候选任务；
+- 使用状态、到期时间和并发版本作为 compare-and-set 条件，只有更新一行的 Worker 获得租约；
+- 抢占时写入 Worker、租约到期时间、尝试次数和新并发版本；
+- 续租要求 Worker 和并发版本仍匹配、旧租约尚未过期；
+- `claimed`、没有外部任务 ID 且租约过期的任务可以原子恢复为 `queued`。
+
+该实现不依赖某个数据库的专有 SQL。后续真实数据库竞争测试若证明有必要，可以在同一接口后为服务端数据库增加 `SKIP LOCKED` 等方言优化，而不改变 Worker 和公共 API。
+
 ## Migration Workflow
 
 仓库使用本地 `dotnet-ef` 工具清单，先执行：
@@ -55,13 +67,24 @@ dotnet tool restore
 
 生产环境可以关闭 `ApplyMigrationsOnStartup`，改用同一应用镜像提供的迁移命令；在该命令入口实现前，部署文档不得声称已支持这种模式。
 
-## Next Verification
+## Contract Tests
 
-下一步使用真实 PostgreSQL、MySQL 和 MariaDB 容器运行共享契约测试，至少覆盖：
+普通测试命令始终运行 SQLite 文件数据库契约测试。PostgreSQL、MySQL 和 MariaDB 测试使用 Testcontainers，默认跳过，避免没有容器运行时的开发机和 CI 被误判为数据库验证通过。
 
-- 从空库应用迁移并验证无待处理迁移；
+安装并启动 Docker 兼容运行时后，显式运行：
+
+```powershell
+$env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
+dotnet test tests/StructaDoc.DatabaseContractTests
+```
+
+当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、并发抢占不重复、续租令牌失效以及未启动任务的租约过期恢复。测试成功前不得更新上面的发布支持状态。
+
+## Remaining Verification
+
+下一步需要在有容器运行时的开发机或 CI 中实际执行现有套件，并继续补齐：
+
 - Document / Parse Run CRUD 与外键约束；
 - 并发版本冲突；
-- 原子任务抢占、续租和过期恢复；
 - UTC 时间、排序、分页及字符串大小写行为；
 - 从上一发布迁移升级。

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Testcontainers.MariaDb" />
+    <PackageReference Include="Testcontainers.MySql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\StructaDoc.Infrastructure\StructaDoc.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\StructaDoc.Migrations.MariaDb\StructaDoc.Migrations.MariaDb.csproj" />
+    <ProjectReference Include="..\..\src\StructaDoc.Migrations.MySql\StructaDoc.Migrations.MySql.csproj" />
+    <ProjectReference Include="..\..\src\StructaDoc.Migrations.PostgreSql\StructaDoc.Migrations.PostgreSql.csproj" />
+  </ItemGroup>
+
+</Project>

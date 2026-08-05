@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using StructaDoc.Application.ParseRuns;
+using StructaDoc.Infrastructure.Persistence.ParseRuns;
 
 namespace StructaDoc.Infrastructure.Persistence;
 
@@ -17,6 +19,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton(databaseOptions);
         services.AddDbContext<StructaDocDbContext>(
             options => ConfigureDatabase(options, databaseOptions));
+        services.AddScoped<IParseRunLeaseStore, EfCoreParseRunLeaseStore>();
         services
             .AddHealthChecks()
             .AddDbContextCheck<StructaDocDbContext>(
