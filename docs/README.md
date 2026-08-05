@@ -17,6 +17,7 @@
 |---|---|---|
 | [ADR-0001](./adr/0001-product-boundary.md) | Accepted | 产品边界：只负责文档摄取与结构化解析 |
 | [ADR-0002](./adr/0002-parser-provider-abstraction.md) | Accepted | 通过 Provider 适配在线和本地解析服务 |
+| [ADR-0003](./adr/0003-technology-and-single-image-deployment.md) | Accepted | 使用 .NET 10 和包含管理网页、Worker、LibreOffice 的单一应用镜像 |
 
 ## 规格
 

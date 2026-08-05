@@ -14,6 +14,8 @@ Parse Run 是 StructaDoc 面向管理员和 API Client 的权威任务记录。P
 
 服务重启后，StructaDoc 必须能够仅凭数据库、对象存储和已保存的 Provider 外部任务 ID 恢复工作。
 
+本规格中的 Worker 是逻辑任务执行器。第一阶段默认按 [ADR-0003](../adr/0003-technology-and-single-image-deployment.md) 作为 `BackgroundService` 运行在 StructaDoc Host 内；是否与 API 处于同一进程不改变本规格的抢占、租约、幂等和恢复要求。
+
 ## 3. Stable Status
 
 公共状态集合：

@@ -91,6 +91,7 @@ Parse Run 表示对一个 Document 的一次不可变解析意图及其执行结
 | `options` | Yes | OCR、表格、公式、语言、模型等解析参数快照 |
 | `sourceMediaType` | Yes | 原文件媒体类型 |
 | `submittedMediaType` | Yes | 实际提交给 Provider 的媒体类型 |
+| `conversion` | No | 发生格式转换时保存的转换器类型、版本、参数快照和转换 Artifact ID |
 | `externalTaskId` | No | Provider 返回的任务 ID |
 | `attemptCount` | Yes | 已开始的执行尝试次数 |
 | `errorCode` | No | 稳定、可机器处理的 StructaDoc 错误码 |
@@ -100,6 +101,16 @@ Parse Run 表示对一个 Document 的一次不可变解析意图及其执行结
 | `completedAt` | No | 进入最终状态的时间 |
 
 Provider Token、存储凭据和完整密钥配置不得进入 `options` 或 API 响应。
+
+`conversion` 仅在 Worker 为当前 Parse Run 生成了提交用转换文件时存在，至少表达：
+
+- `converterType`：第一阶段固定为 `libreoffice`；
+- `converterVersion`：实际执行转换的 LibreOffice 版本；
+- `sourceMediaType` 和 `outputMediaType`；
+- `artifactId`：同一 Parse Run 下的 `normalized-pdf` Artifact；
+- 不含临时目录、命令行内部路径或其他主机信息的非敏感参数快照。
+
+转换快照用于重现和解释结果，不表示调用方可以指定任意转换命令。
 
 ## 7. Page and Source Location
 
@@ -219,7 +230,7 @@ Artifact 表示 Parse Run 产生但不适合作为 Block 保存的文件或大�
 - `model-output`
 - `provider-raw`
 
-每个 Artifact 在内部至少包含：`id`、`parseRunId`、`type`、`mediaType`、`sizeBytes`、`sha256`、`storageRef` 和 `createdAt`。公共 API 使用 Artifact ID 和下载端点，不返回 `storageRef`。
+每个 Artifact 在内部至少包含：`id`、`parseRunId`、`type`、`mediaType`、`sizeBytes`、`sha256`、`storageRef` 和 `createdAt`，并可以包含受类型约束的非敏感 `metadata`。`normalized-pdf` Artifact 的 metadata 应保存转换器类型、转换器版本和源媒体类型。公共 API 使用 Artifact ID 和下载端点，不返回 `storageRef`。
 
 同一 Parse Run 可以有多个相同类型 Artifact，但必须通过名称或分片信息区分。不得用“只保留第一个分片”代表完整文档结果。
 
@@ -262,6 +273,7 @@ Provider 归一化结果至少满足：
 - `bbox` 完整满足归一化约束；
 - `confidence` 为 null 或位于 0 到 1；
 - `assetId` 引用同一 Parse Run 的 Asset；
+- Parse Run 的 `conversion.artifactId` 引用同一 Parse Run 的 `normalized-pdf` Artifact；
 - Artifact 和 Asset 的哈希、大小与实际存储对象一致；
 - Raw Artifact 中不包含 StructaDoc 管理的明文凭据。
 - `providerData` 中不包含 Token、预签名 URL 查询参数、内部路径或其他敏感信息。

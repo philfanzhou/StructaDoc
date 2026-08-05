@@ -58,7 +58,7 @@ Provider 输出必须转换成 [`canonical-document-model.md`](../specifications
 Worker 根据 Provider 报告的能力决定如何提交文件：
 
 1. Provider 原生支持源格式时优先提交原文件。
-2. 不支持时，可以通过配置的转换服务生成 PDF 后提交。
+2. 不支持时，通过内置 LibreOffice 转换能力生成 PDF 后提交；默认部署形态见 [ADR-0003](./0003-technology-and-single-image-deployment.md)。
 3. 原文件始终保留，转换文件作为独立 Artifact。
 4. Parse Run 记录源格式、实际提交格式和转换信息。
 

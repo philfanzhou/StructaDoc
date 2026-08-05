@@ -26,7 +26,7 @@ StructaDoc 当前处于项目启动和架构设计阶段，尚未提供可运行
 - 将不同 MinerU 接口的结果归一化为稳定的内部结构。
 - 通过版本化 HTTP API 向其他应用提供文档、解析任务、内容块、图片和产物。
 - 支持本地文件系统和 S3 兼容对象存储。
-- 保持部署简单，并为后续独立扩展 API 和 Worker 留出边界。
+- 通过包含管理网页、API、Worker 和 LibreOffice 的单一应用镜像保持部署简单，同时保留以后用同一镜像拆分 API 与 Worker 运行模式的边界。
 
 ## 项目边界
 
@@ -44,25 +44,31 @@ StructaDoc 当前处于项目启动和架构设计阶段，尚未提供可运行
 
 ```mermaid
 flowchart LR
-    Admin["管理员"] --> Console["StructaDoc 管理网页"]
-    Console --> API["Document API"]
-    Client["其他应用"] --> IntegrationAPI["Integration API"]
-    IntegrationAPI --> API
+    Admin["管理员"] --> Host
+    Client["其他应用"] --> Host
 
-    API --> Database["PostgreSQL\n元数据与结构化内容块"]
-    API --> Storage["本地文件或 S3\n原文件与解析产物"]
-    API --> Queue["持久化解析任务"]
+    subgraph Image["StructaDoc 单一应用镜像"]
+        Host["ASP.NET Core Host\n管理网页 + API"]
+        Queue["内置 Parse Worker"]
+        Converter["内置 LibreOffice 转换"]
+        Normalizer["结果归一化"]
 
-    Queue --> Worker["Parse Worker"]
-    Worker --> Cloud["MinerU 在线服务"]
-    Worker --> Local["本地 mineru-api"]
-    Worker --> Converter["可选 Office 转 PDF 服务"]
+        Host --> Queue
+        Queue -. "格式不受 Provider 支持时" .-> Converter
+        Queue --> Normalizer
+    end
 
-    Cloud --> Normalizer["结果归一化"]
+    Host --> Database["PostgreSQL\n元数据、结构化内容与持久化任务"]
+    Host --> Storage["本地文件或 S3\n原文件与解析产物"]
+    Queue --> Cloud["MinerU 在线服务"]
+    Queue --> Local["本地 mineru-api"]
+    Cloud --> Normalizer
     Local --> Normalizer
     Normalizer --> Database
     Normalizer --> Storage
 ```
+
+第一阶段的 API、管理网页、Worker 和 LibreOffice 转换能力由同一个 Host 和应用镜像交付。Worker 仍以 PostgreSQL 中的 Parse Run 为权威任务来源，不使用进程内队列，因此服务重启或以后部署多个实例时仍能按租约恢复执行。
 
 ## 解析 Provider
 
@@ -125,11 +131,13 @@ Provider 配置采用不可变版本。修改配置会创建新版本，旧版�
 StructaDoc 始终保存用户上传的原始文件。对于 Office 文档，计划采用以下策略：
 
 1. Provider 原生支持该格式时，优先直接提交原文件。
-2. Provider 不支持该格式时，通过可选的 LibreOffice 转换服务生成 PDF。
+2. Provider 不支持该格式时，由镜像内置的 LibreOffice headless 转换适配器生成 PDF。
 3. 转换后的 PDF 作为独立产物保存，不覆盖原文件。
-4. 解析记录应保存源格式、实际提交格式和转换器版本，保证结果可追溯。
+4. 解析记录应保存源格式、实际提交格式、LibreOffice 版本和转换参数，保证结果可追溯。
 
 这种方式可以让本地 MinerU 直接处理其支持的 DOCX、PPTX、XLSX，同时为不支持 Excel 的在线接口提供 PDF 回退方案。
+
+转换由 .NET 直接启动受限的 LibreOffice 子进程，不在默认镜像中运行 Python、FastAPI 或内部转换 HTTP 服务。每次转换必须使用独立临时目录和 LibreOffice User Profile，并受到并发数、超时、输入大小、输出大小和临时磁盘限制。具体部署决策见 [`ADR-0003`](./docs/adr/0003-technology-and-single-image-deployment.md)。
 
 ## 数据模型
 
@@ -155,7 +163,7 @@ PostgreSQL 保存业务元数据和需要查询的结构化内容块。原文件
 文档解析必须使用持久化异步任务，而不是让上传请求一直等待：
 
 - API 创建 `queued` 状态的 Parse Run。
-- Worker 使用数据库原子抢占任务，避免多实例重复执行。
+- Host 内置的 Worker 使用数据库原子抢占任务，避免多实例重复执行。
 - 运行中的任务保存租约、心跳和尝试次数。
 - 短暂网络错误可以自动重试，永久错误保留明确的错误码和诊断信息。
 - Provider 外部任务 ID 与 StructaDoc Parse Run ID 分离。
@@ -196,37 +204,40 @@ GET    /api/v1/parse-runs/{parseRunId}/artifacts
 
 | 部分 | 计划技术 |
 |---|---|
-| API / Worker | .NET 8、ASP.NET Core |
+| Host / API / Worker | .NET 10、ASP.NET Core 10 |
 | 管理网页 | Vue 3、TypeScript、Vite |
 | 业务数据库 | PostgreSQL |
 | 文件与产物 | 本地文件系统或 S3 兼容对象存储 |
-| Office 转换 | 独立 LibreOffice headless 服务，可选 |
+| Office 转换 | .NET 本地适配器调用镜像内置 LibreOffice headless |
 | 文档解析 | MinerU Cloud / MinerU Local Provider |
-| 部署 | Docker Compose 起步，服务可独立扩展 |
+| 部署 | 单一 StructaDoc 应用镜像；PostgreSQL 独立运行 |
 
 StructaDoc 是独立项目，不依赖 Ruoyu.Study、QuantumZhou.Identity、Consul 或其共享代码。通用 OIDC、对象存储和配置实现将由本仓库自行定义。
+
+最终运行时镜像不包含 Node.js、.NET SDK 或 Python。Node.js 和 .NET SDK 只用于多阶段构建；管理网页编译后由 ASP.NET Core Host 提供静态文件。
 
 ## 计划目录结构
 
 ```text
 StructaDoc/
 ├── src/
-│   ├── StructaDoc.Api/
+│   ├── StructaDoc.Host/
+│   ├── StructaDoc.Contracts/
 │   ├── StructaDoc.Application/
 │   ├── StructaDoc.Domain/
 │   ├── StructaDoc.Infrastructure/
+│   ├── StructaDoc.Providers.Abstractions/
 │   ├── StructaDoc.Providers.MinerUCloud/
 │   ├── StructaDoc.Providers.MinerULocal/
-│   └── StructaDoc.Worker/
+│   ├── StructaDoc.Worker/
+│   └── StructaDoc.Conversion.LibreOffice/
 ├── web/
-├── services/
-│   └── doc-converter/
 ├── deploy/
 ├── docs/
 └── tests/
 ```
 
-目录会随首个可运行版本调整；在对应代码出现前不会创建空的占位项目。
+`StructaDoc.Host` 是第一阶段唯一的可执行项目；`StructaDoc.Worker` 和转换项目是由 Host 加载的逻辑组件，不单独发布镜像。目录会随首个可运行版本调整；在对应代码出现前不会创建空的占位项目。
 
 ## 路线图
 
@@ -242,7 +253,7 @@ StructaDoc/
 - 管理员登录和 Provider 配置。
 - 文档上传、列表、详情和删除。
 - MinerU Cloud / Local Provider。
-- 持久化异步 Worker。
+- Host 内置的持久化异步 Worker。
 - PostgreSQL 与本地文件存储。
 - Markdown、Block、图片和原始产物查看。
 
@@ -250,13 +261,15 @@ StructaDoc/
 
 - API Client 与权限范围。
 - S3 兼容对象存储。
-- Docker Compose 部署。
-- Office 转换服务。
+- 包含管理网页、API、Worker 和 LibreOffice 的单一应用镜像。
+- 内置 Office 转换适配器。
+- Docker Compose 部署，PostgreSQL 使用独立实例。
 - API 文档、健康检查、审计和备份说明。
 
 ### Phase 3：可靠性与扩展
 
 - 多 Worker、任务租约和并发控制。
+- 同一镜像按全部功能、仅 API 或仅 Worker 模式启动。
 - Webhook 通知。
 - Provider 能力发现与配置版本管理。
 - 更完善的可观测性、数据保留和灾难恢复。
