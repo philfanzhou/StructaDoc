@@ -1,0 +1,56 @@
+namespace StructaDoc.Infrastructure.Persistence.Entities;
+
+public sealed class ParseRunEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid DocumentId { get; set; }
+
+    public DocumentEntity Document { get; set; } = null!;
+
+    public required string Status { get; set; }
+
+    public string? Stage { get; set; }
+
+    public required string ProviderType { get; set; }
+
+    public Guid ProviderConfigId { get; set; }
+
+    public Guid ProviderConfigVersion { get; set; }
+
+    public required string OptionsJson { get; set; }
+
+    public required string SourceMediaType { get; set; }
+
+    public required string SubmittedMediaType { get; set; }
+
+    public string? ConversionJson { get; set; }
+
+    public string? ExternalTaskId { get; set; }
+
+    public int AttemptCount { get; set; }
+
+    public int MaxAttempts { get; set; }
+
+    public DateTime NextAttemptAtUtc { get; set; }
+
+    public string? ErrorCode { get; set; }
+
+    public string? ErrorMessage { get; set; }
+
+    public string? CreatedBy { get; set; }
+
+    public string? IdempotencyKey { get; set; }
+
+    public string? ClaimedBy { get; set; }
+
+    public DateTime? LeaseExpiresAtUtc { get; set; }
+
+    public DateTime CreatedAtUtc { get; set; }
+
+    public DateTime? StartedAtUtc { get; set; }
+
+    public DateTime? CompletedAtUtc { get; set; }
+
+    public long ConcurrencyVersion { get; set; }
+}

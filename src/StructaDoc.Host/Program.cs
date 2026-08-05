@@ -2,14 +2,24 @@ using System.Reflection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using StructaDoc.Contracts.System;
+using StructaDoc.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var databaseOptions = builder.Configuration
+    .GetSection(DatabaseOptions.SectionName)
+    .Get<DatabaseOptions>() ?? new DatabaseOptions();
 
 builder.Services
     .AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
+builder.Services.AddStructaDocPersistence(databaseOptions);
 
 var app = builder.Build();
+
+await app.Services.ApplyStructaDocMigrationsAsync(
+    databaseOptions,
+    app.Lifetime.ApplicationStopping);
 
 var serviceVersion = Assembly
     .GetExecutingAssembly()

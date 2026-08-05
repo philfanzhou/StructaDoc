@@ -10,3 +10,4 @@ coverage/
 *.ncrunch*
 *.DotSettings.user
 artifacts/
+data/

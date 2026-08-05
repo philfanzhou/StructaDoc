@@ -33,6 +33,23 @@ public sealed class LayerDependencyTests
             "StructaDoc.Domain");
     }
 
+    [Fact]
+    public void Migration_assemblies_only_reference_infrastructure()
+    {
+        var migrationAssemblies = new[]
+        {
+            typeof(Migrations.Sqlite.SqliteDesignTimeDbContextFactory).Assembly,
+            typeof(Migrations.PostgreSql.PostgreSqlDesignTimeDbContextFactory).Assembly,
+            typeof(Migrations.MySql.MySqlDesignTimeDbContextFactory).Assembly,
+            typeof(Migrations.MariaDb.MariaDbDesignTimeDbContextFactory).Assembly,
+        };
+
+        foreach (var migrationAssembly in migrationAssemblies)
+        {
+            AssertReferencesOnly(migrationAssembly, "StructaDoc.Infrastructure");
+        }
+    }
+
     private static void AssertReferencesOnly(Assembly assembly, params string[] allowedReferences)
     {
         var actualReferences = assembly

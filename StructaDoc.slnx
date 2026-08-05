@@ -5,9 +5,14 @@
     <Project Path="src/StructaDoc.Domain/StructaDoc.Domain.csproj" />
     <Project Path="src/StructaDoc.Host/StructaDoc.Host.csproj" />
     <Project Path="src/StructaDoc.Infrastructure/StructaDoc.Infrastructure.csproj" />
+    <Project Path="src/StructaDoc.Migrations.MariaDb/StructaDoc.Migrations.MariaDb.csproj" />
+    <Project Path="src/StructaDoc.Migrations.MySql/StructaDoc.Migrations.MySql.csproj" />
+    <Project Path="src/StructaDoc.Migrations.PostgreSql/StructaDoc.Migrations.PostgreSql.csproj" />
+    <Project Path="src/StructaDoc.Migrations.Sqlite/StructaDoc.Migrations.Sqlite.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/StructaDoc.ArchitectureTests/StructaDoc.ArchitectureTests.csproj" />
     <Project Path="tests/StructaDoc.Host.Tests/StructaDoc.Host.Tests.csproj" />
+    <Project Path="tests/StructaDoc.Persistence.Tests/StructaDoc.Persistence.Tests.csproj" />
   </Folder>
 </Solution>

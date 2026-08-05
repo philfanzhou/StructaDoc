@@ -27,6 +27,12 @@
 | [Canonical Document Model](./specifications/canonical-document-model.md) | StructaDoc 对外提供的统一结构化文档模型 |
 | [Parse Job Lifecycle](./specifications/parse-job-lifecycle.md) | 持久化解析任务的状态、抢占、重试和恢复语义 |
 
+## 实现说明
+
+| 文档 | 说明 |
+|---|---|
+| [Database Support](./development/database-support.md) | 当前数据库 Provider、迁移边界、配置和验证状态 |
+
 ## 文档原则
 
 - README 负责介绍和导航，不承载完整字段级契约。

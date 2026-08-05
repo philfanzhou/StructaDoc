@@ -1,10 +1,8 @@
 using System.Net;
-using Microsoft.AspNetCore.Mvc.Testing;
-
 namespace StructaDoc.Host.Tests;
 
-public sealed class HealthEndpointTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class HealthEndpointTests(StructaDocWebApplicationFactory factory)
+    : IClassFixture<StructaDocWebApplicationFactory>
 {
     [Theory]
     [InlineData("/health/live")]

@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 工程基线以及 Host 健康检查，但尚未实现文档上传、持久化、解析 Provider、Worker 和管理网页。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界以及 Document/Parse Run 的初始持久化模型。文档上传、解析 Provider、Worker 和管理网页尚未实现。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -21,6 +21,7 @@ StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和
 
 ```bash
 dotnet restore StructaDoc.slnx
+dotnet tool restore
 dotnet build StructaDoc.slnx --no-restore
 dotnet test StructaDoc.slnx --no-build --no-restore
 dotnet run --project src/StructaDoc.Host
@@ -30,7 +31,16 @@ dotnet run --project src/StructaDoc.Host
 
 - `GET /api/v1/system/info`：服务身份和版本；
 - `GET /health/live`：进程存活检查；
-- `GET /health/ready`：服务就绪检查。数据库和存储接入后会纳入该检查。
+- `GET /health/ready`：服务就绪检查，当前已包含数据库连通性；对象存储接入后也会纳入该检查。
+
+默认配置使用 `./data/structadoc.db` SQLite 文件并在启动时应用迁移。可以通过环境变量切换数据库：
+
+- `Database__Provider`：`Sqlite`、`PostgreSql`、`MySql` 或 `MariaDb`；
+- `Database__ConnectionString`：对应数据库连接字符串；
+- `Database__ServerVersion`：MySQL / MariaDB 必填，例如 `8.4.0` 或 `11.4.0`；
+- `Database__ApplyMigrationsOnStartup`：是否由 Host 在启动时应用迁移。
+
+连接字符串中的账号和密码必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)。
 
 ## 核心目标
 

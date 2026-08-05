@@ -1,12 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 using StructaDoc.Contracts.System;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class ServiceInfoEndpointTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ServiceInfoEndpointTests(StructaDocWebApplicationFactory factory)
+    : IClassFixture<StructaDocWebApplicationFactory>
 {
     [Fact]
     public async Task Service_info_returns_product_identity()
