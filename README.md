@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租、失败转换和到期恢复。Host 已运行只负责恢复未启动抢占及到期重试的维护 Worker；文档上传、解析 Provider、实际任务执行器和管理网页尚未实现。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租、失败转换和到期恢复。本地文件存储和受配置开关保护的开发期上传 API 已实现；认证、文档管理 API、解析 Provider、实际任务执行器和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -31,7 +31,8 @@ dotnet run --project src/StructaDoc.Host
 
 - `GET /api/v1/system/info`：服务身份和版本；
 - `GET /health/live`：进程存活检查；
-- `GET /health/ready`：服务就绪检查，当前已包含数据库连通性；对象存储接入后也会纳入该检查。
+- `GET /health/ready`：服务就绪检查，当前包含数据库连通性和本地文件存储可写性；S3 接入后也必须纳入该检查。
+- `POST /api/v1/documents`：单文件 `multipart/form-data` 上传，字段名为 `file`；默认关闭，仅用于认证实现前的隔离开发环境。
 
 默认配置使用 `./data/structadoc.db` SQLite 文件并在启动时应用迁移。可以通过环境变量切换数据库：
 
@@ -42,8 +43,12 @@ dotnet run --project src/StructaDoc.Host
 - `Worker__Enabled`：是否启用 Parse Run 维护循环；
 - `Worker__MaintenanceInterval`：检查到期抢占和重试的时间间隔；
 - `Worker__RecoveryBatchSize`：每轮每类任务的最大恢复数量。
+- `Documents__UploadApiEnabled`：是否映射当前尚未认证的开发期上传端点，默认 `false`；
+- `Documents__MaxUploadBytes`：单个原始文档的最大字节数；
+- `Storage__Provider`：当前只实现 `Local`；
+- `Storage__RootPath`：原文件存储卷在容器内的根目录。
 
-连接字符串中的账号和密码必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)。
+连接字符串中的账号和密码必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)，文件落盘和上传限制见 [`docs/development/file-storage.md`](./docs/development/file-storage.md)。
 
 ## 核心目标
 

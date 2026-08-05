@@ -11,12 +11,20 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
         "structadoc-host-tests",
         Guid.NewGuid().ToString("N"));
 
+    public string StorageRootPath => Path.Combine(testDirectory, "storage");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         Directory.CreateDirectory(testDirectory);
         builder.UseSetting("Worker:Enabled", "true");
         builder.UseSetting("Worker:MaintenanceInterval", "00:00:00.100");
         builder.UseSetting("Worker:RecoveryBatchSize", "20");
+        builder.UseSetting("Documents:UploadApiEnabled", "true");
+        builder.UseSetting("Documents:MaxUploadBytes", "1048576");
+        builder.UseSetting("Storage:Provider", "Local");
+        builder.UseSetting(
+            "Storage:RootPath",
+            StorageRootPath);
 
         builder.ConfigureAppConfiguration(
             configuration => configuration.AddInMemoryCollection(
