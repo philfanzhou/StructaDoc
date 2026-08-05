@@ -65,6 +65,8 @@ SQLite 数据库文件使用本地持久卷；不支持多个容器共享该文�
 
 `IParseRunExecutionContextStore` 只为仍持有未过期租约且并发版本匹配的 Worker 返回执行快照。快照从 Parse Run 固定的 Provider Config Version 读取 Base URL、model、backend 和加密凭据，而不是读取逻辑配置的当前版本；因此管理员更新或停用配置不会改变已经创建任务的执行意图。Provider 凭据和提交 continuation 只在该内部边界解密，不进入公共 DTO。
 
+`IParseRunConversionStore` 只允许当前 `converting` Stage 的运行租约首次写入转换快照。转换 JSON、实际提交媒体类型、`preparing-source` Stage 和并发版本在同一个条件更新中改变；已有快照不能被覆盖。该边界复用既有列，不引入本轮数据库结构或迁移变化。
+
 Host 注册的 `ParseRunLeaseHeartbeat` 为一个运行任务创建串行化租约会话。阶段写入、外部任务 ID/提交 checkpoint 写入、执行快照读取、失败转换、最终 Canonical 提交和后台续租共享最新并发令牌，避免彼此用旧 token 竞争；续租条件失败或已知租约到期会取消该会话的执行 token。`ParseRunExecutor` 为每个抢占或接管的任务创建并释放该会话。
 
 `IParseBundleCommitStore` 在事务前流式复核所有 Asset 和 Artifact 的大小及 SHA-256，然后使用当前运行租约和并发版本作为成功提交条件。Pages、Blocks、Assets、Artifacts、Bundle 指纹和 `succeeded` 状态在同一事务写入；相同指纹可幂等重放，不同指纹、取消竞争、失效租约或既有部分结果不能覆盖任务状态。
@@ -96,7 +98,7 @@ $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
 dotnet test tests/StructaDoc.DatabaseContractTests
 ```
 
-当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、Document 复合游标分页与详情查询、管理员持久化、API Client scope 更新、Key 轮换、并发版本和撤销，以及 Parse Run 并发抢占、续租令牌失效、未启动任务的租约过期恢复、Stage/外部任务 ID 条件写入、运行中任务无重复接管、失败、重试等待、到期回队列转换和 Canonical Bundle 幂等成功提交。测试成功前不得更新上面的发布支持状态。
+当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、Document 复合游标分页与详情查询、管理员持久化、API Client scope 更新、Key 轮换、并发版本和撤销，以及 Parse Run 并发抢占、续租令牌失效、未启动任务的租约过期恢复、Stage/外部任务 ID 条件写入、转换快照条件写入、运行中任务无重复接管、失败、重试等待、到期回队列转换和包含转换 Artifact 的 Canonical Bundle 幂等成功提交。测试成功前不得更新上面的发布支持状态。
 
 ## Remaining Verification
 

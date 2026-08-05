@@ -2,6 +2,7 @@ using System.IO.Compression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using StructaDoc.Application.Conversion;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
@@ -60,18 +61,72 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         Assert.True(provider.SubmitObservedCheckpoint);
     }
 
-    private async Task<ExecutionResult> ExecuteAsync(TestParseProvider provider)
+    [Fact]
+    public async Task Executor_converts_an_unsupported_office_source_and_commits_its_artifact()
+    {
+        const string sourceMediaType =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        var provider = new TestParseProvider(failSubmission: false);
+        var converter = new TestDocumentConverter();
+
+        var result = await ExecuteAsync(provider, sourceMediaType, converter);
+
+        Assert.Equal(ParseRunStatuses.Succeeded, result.Status);
+        Assert.Equal(DocumentConversionMediaTypes.Pdf, result.SubmittedMediaType);
+        var conversion = ParseRunConversion.FromJson(Assert.IsType<string>(result.ConversionJson));
+        Assert.Equal(sourceMediaType, conversion.SourceMediaType);
+        Assert.Equal(DocumentConversionMediaTypes.Pdf, conversion.OutputMediaType);
+        Assert.Equal(1, converter.ConversionCount);
+        Assert.True(converter.ResultDisposed);
+        Assert.Equal(DocumentConversionMediaTypes.Pdf, provider.SubmittedMediaType);
+        Assert.True(result.ArtifactCount >= 3);
+        Assert.True(result.HasConversionArtifact);
+    }
+
+    [Fact]
+    public async Task Executor_reuses_a_persisted_conversion_after_recovery()
+    {
+        const string sourceMediaType =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        var provider = new TestParseProvider(failSubmission: false);
+        var converter = new TestDocumentConverter();
+
+        var result = await ExecuteAsync(
+            provider,
+            sourceMediaType,
+            converter,
+            seedConversion: true);
+
+        Assert.Equal(ParseRunStatuses.Succeeded, result.Status);
+        Assert.Equal(0, converter.ConversionCount);
+        Assert.Equal(DocumentConversionMediaTypes.Pdf, provider.SubmittedMediaType);
+        Assert.True(result.HasConversionArtifact);
+    }
+
+    private async Task<ExecutionResult> ExecuteAsync(
+        TestParseProvider provider,
+        string sourceMediaType = "application/pdf",
+        IDocumentConverter? converter = null,
+        bool seedConversion = false)
     {
         using var application = factory.WithWebHostBuilder(builder =>
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IParseProvider>();
                 services.AddSingleton<IParseProvider>(provider);
+                if (converter is not null)
+                {
+                    services.RemoveAll<IDocumentConverter>();
+                    services.AddSingleton(converter);
+                }
             }));
         using var client = application.CreateClient();
         var parseRunId = Guid.NewGuid();
-        var sourceStorageRef = $"documents/{parseRunId:N}/source.pdf";
-        var sourceBytes = "%PDF-1.7\nexecutor-test"u8.ToArray();
+        var sourceExtension = sourceMediaType == "application/pdf" ? ".pdf" : ".xlsx";
+        var sourceStorageRef = $"documents/{parseRunId:N}/source{sourceExtension}";
+        var sourceBytes = sourceMediaType == "application/pdf"
+            ? "%PDF-1.7\nexecutor-test"u8.ToArray()
+            : "executor-spreadsheet-test"u8.ToArray();
 
         await using (var scope = application.Services.CreateAsyncScope())
         {
@@ -81,15 +136,38 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 sourceStorageRef,
                 source,
                 sourceBytes.Length);
+            ParseRunConversion? conversion = null;
+            if (seedConversion)
+            {
+                var artifactId = Guid.NewGuid();
+                var convertedBytes = "%PDF-1.7\nrecovered-conversion"u8.ToArray();
+                await using var converted = new MemoryStream(convertedBytes, writable: false);
+                var storedConversion = await storage.WriteAsync(
+                    $"parse-runs/{parseRunId:N}/conversions/{artifactId:N}.pdf",
+                    converted,
+                    convertedBytes.Length);
+                conversion = new ParseRunConversion(
+                    "libreoffice",
+                    "LibreOffice recovered-version",
+                    sourceMediaType,
+                    DocumentConversionMediaTypes.Pdf,
+                    artifactId,
+                    "normalized.pdf",
+                    storedConversion.SizeBytes,
+                    storedConversion.Sha256,
+                    storedConversion.StorageRef,
+                    "pdf");
+            }
+
             var nowUtc = DateTime.UtcNow;
             var configId = Guid.NewGuid();
             var versionId = Guid.NewGuid();
             var document = new DocumentEntity
             {
                 Id = Guid.NewGuid(),
-                OriginalFileName = "executor-test.pdf",
-                MediaType = "application/pdf",
-                Extension = ".pdf",
+                OriginalFileName = $"executor-test{sourceExtension}",
+                MediaType = sourceMediaType,
+                Extension = sourceExtension,
                 SizeBytes = storedSource.SizeBytes,
                 Sha256 = storedSource.Sha256,
                 StorageRef = storedSource.StorageRef,
@@ -125,7 +203,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 ProviderConfigVersion = versionId,
                 OptionsJson = "{}",
                 SourceMediaType = document.MediaType,
-                SubmittedMediaType = document.MediaType,
+                SubmittedMediaType = conversion?.OutputMediaType ?? document.MediaType,
+                ConversionJson = conversion?.ToJson(),
                 MaxAttempts = 3,
                 NextAttemptAtUtc = nowUtc,
                 CreatedAtUtc = nowUtc,
@@ -154,13 +233,19 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 .SingleAsync(item => item.Id == parseRunId);
             var artifactCount = await dbContext.ParseArtifacts.CountAsync(
                 artifact => artifact.ParseRunId == parseRunId);
+            var hasConversionArtifact = await dbContext.ParseArtifacts.AnyAsync(
+                artifact => artifact.ParseRunId == parseRunId
+                    && artifact.Type == "normalized-pdf");
             return new ExecutionResult(
                 run.Status,
                 run.ErrorCode,
                 run.ExternalTaskId,
                 run.ProtectedSubmissionContinuation,
                 run.ResultSha256,
-                artifactCount);
+                run.SubmittedMediaType,
+                run.ConversionJson,
+                artifactCount,
+                hasConversionArtifact);
         }
     }
 
@@ -181,6 +266,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         public int ResultCount { get; private set; }
 
         public bool SubmitObservedCheckpoint { get; private set; }
+
+        public string? SubmittedMediaType { get; private set; }
 
         public Task<ProviderCapabilities> GetCapabilitiesAsync(
             ProviderExecutionConfiguration configuration,
@@ -216,6 +303,7 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         {
             SubmitCount++;
             SubmitObservedCheckpoint = checkpoint is not null;
+            SubmittedMediaType = source.MediaType;
             if (failSubmission)
             {
                 throw new ProviderException(
@@ -269,11 +357,47 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         }
     }
 
+    private sealed class TestDocumentConverter : IDocumentConverter
+    {
+        public int ConversionCount { get; private set; }
+
+        public bool ResultDisposed { get; private set; }
+
+        public bool Supports(string sourceMediaType, string outputMediaType) =>
+            sourceMediaType.Contains("spreadsheet", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(
+                outputMediaType,
+                DocumentConversionMediaTypes.Pdf,
+                StringComparison.OrdinalIgnoreCase);
+
+        public Task<DocumentConversionResult> ConvertAsync(
+            DocumentConversionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ConversionCount++;
+            var bytes = "%PDF-1.7\nconverted-spreadsheet"u8.ToArray();
+            return Task.FromResult(new DocumentConversionResult(
+                "libreoffice",
+                "LibreOffice test-version",
+                DocumentConversionMediaTypes.Pdf,
+                bytes.Length,
+                new MemoryStream(bytes, writable: false),
+                () =>
+                {
+                    ResultDisposed = true;
+                    return ValueTask.CompletedTask;
+                }));
+        }
+    }
+
     private sealed record ExecutionResult(
         string Status,
         string? ErrorCode,
         string? ExternalTaskId,
         string? ProtectedSubmissionContinuation,
         string? ResultSha256,
-        int ArtifactCount);
+        string SubmittedMediaType,
+        string? ConversionJson,
+        int ArtifactCount,
+        bool HasConversionArtifact);
 }

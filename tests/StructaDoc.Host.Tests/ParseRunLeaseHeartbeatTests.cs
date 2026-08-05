@@ -70,13 +70,15 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
                         parseRun => parseRun.ConcurrencyVersion + 1));
         }
 
-        var deadlineUtc = DateTime.UtcNow.AddSeconds(3);
-        while (DateTime.UtcNow < deadlineUtc && !session.IsLeaseLost)
-        {
-            await Task.Delay(25);
-        }
+        var leaseLost = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = session.ExecutionCancellationToken.Register(
+            () => leaseLost.TrySetResult());
+        await Task.WhenAny(leaseLost.Task, Task.Delay(TimeSpan.FromSeconds(10)));
 
-        Assert.True(session.IsLeaseLost);
+        Assert.True(
+            session.IsLeaseLost,
+            "The heartbeat did not observe the rejected lease renewal within ten seconds.");
         Assert.True(session.ExecutionCancellationToken.IsCancellationRequested);
     }
 

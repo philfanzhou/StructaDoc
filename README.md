@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、Cloud 两阶段上传加密 checkpoint、运行中任务接管、串行化心跳会话、可恢复执行器、MinerU Cloud 签名上传与 Local multipart HTTP 适配、签名传输连接级公共地址策略、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现；LibreOffice 转换、管理员配置 Base URL 的部署级出站策略、统一结果读取 API、管理员账户管理、文档删除和管理网页尚未实现。实际解析执行默认关闭，只有显式设置 `Worker__ExecutionEnabled=true` 后，执行 Worker 才会抢占队列并产生 Provider 出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、Cloud 两阶段上传加密 checkpoint、运行中任务接管、串行化心跳会话、可恢复执行器、受限 LibreOffice Office-to-PDF 回退、MinerU Cloud 签名上传与 Local multipart HTTP 适配、签名传输连接级公共地址策略、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现；包含 LibreOffice 和字体的最终运行时镜像、管理员配置 Base URL 的部署级出站策略、统一结果读取 API、管理员账户管理、文档删除和管理网页尚未实现。实际解析执行默认关闭，只有显式设置 `Worker__ExecutionEnabled=true` 后，执行 Worker 才会抢占队列并产生 Provider 出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -75,6 +75,10 @@ dotnet run --project src/StructaDoc.Host
 - `ProviderResultNormalization__MaxMarkdownBytes`、`ProviderResultNormalization__MaxJsonBytes`：单个 Markdown / JSON 派生产物上限；
 - `ProviderResultNormalization__MaxAssetBytes`：单个图片 Asset 的流式存储上限；
 - `ProviderResultNormalization__TemporaryPath`：归一化读取不可 seek Archive 时的受限临时目录；
+- `LibreOffice__Enabled`：是否允许 Office-to-PDF 回退；
+- `LibreOffice__ExecutablePath`、`LibreOffice__TemporaryPath`：LibreOffice 可执行文件和隔离工作目录父路径；
+- `LibreOffice__MaxConcurrency`、`LibreOffice__Timeout`：转换并发与单次进程时间限制；
+- `LibreOffice__MaxInputBytes`、`LibreOffice__MaxOutputBytes`、`LibreOffice__MaxTemporaryBytes`：转换输入、输出和临时磁盘限制；
 - `Documents__UploadApiEnabled`：是否映射上传端点，默认 `true`；
 - `Documents__MaxUploadBytes`：单个原始文档的最大字节数；
 - `Storage__Provider`：当前只实现 `Local`；
@@ -84,7 +88,7 @@ dotnet run --project src/StructaDoc.Host
 - `Authentication__LoginPermitLimit`、`Authentication__LoginRateLimitWindow`：每个来源 IP 的管理员登录尝试限额和固定时间窗口；
 - `Authentication__BootstrapAdministratorEmail`、`Authentication__BootstrapAdministratorPassword`：仅通过环境变量或 Secret 注入的首个管理员凭据。
 
-连接字符串、bootstrap 密码和其他凭据必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)，文件落盘和上传限制见 [`docs/development/file-storage.md`](./docs/development/file-storage.md)，读取和下载语义见 [`docs/development/document-reading.md`](./docs/development/document-reading.md)，Provider 配置与 Parse Run 创建语义见 [`docs/development/provider-config-and-parse-runs.md`](./docs/development/provider-config-and-parse-runs.md)，Provider 执行边界见 [`docs/development/provider-execution.md`](./docs/development/provider-execution.md)，MinerU HTTP 协议与安全边界见 [`docs/development/mineru-http-providers.md`](./docs/development/mineru-http-providers.md)，Provider ZIP 接收见 [`docs/development/provider-result-intake.md`](./docs/development/provider-result-intake.md)，MinerU 结果归一化见 [`docs/development/provider-result-normalization.md`](./docs/development/provider-result-normalization.md)，Canonical 结果提交见 [`docs/development/canonical-result-persistence.md`](./docs/development/canonical-result-persistence.md)，认证细节见 [`docs/development/authentication.md`](./docs/development/authentication.md)。
+连接字符串、bootstrap 密码和其他凭据必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)，文件落盘和上传限制见 [`docs/development/file-storage.md`](./docs/development/file-storage.md)，读取和下载语义见 [`docs/development/document-reading.md`](./docs/development/document-reading.md)，Provider 配置与 Parse Run 创建语义见 [`docs/development/provider-config-and-parse-runs.md`](./docs/development/provider-config-and-parse-runs.md)，Provider 执行边界见 [`docs/development/provider-execution.md`](./docs/development/provider-execution.md)，Office 转 PDF 见 [`docs/development/office-conversion.md`](./docs/development/office-conversion.md)，MinerU HTTP 协议与安全边界见 [`docs/development/mineru-http-providers.md`](./docs/development/mineru-http-providers.md)，Provider ZIP 接收见 [`docs/development/provider-result-intake.md`](./docs/development/provider-result-intake.md)，MinerU 结果归一化见 [`docs/development/provider-result-normalization.md`](./docs/development/provider-result-normalization.md)，Canonical 结果提交见 [`docs/development/canonical-result-persistence.md`](./docs/development/canonical-result-persistence.md)，认证细节见 [`docs/development/authentication.md`](./docs/development/authentication.md)。
 
 ## 核心目标
 
@@ -199,16 +203,16 @@ Provider 配置采用不可变版本。修改配置会创建新版本，旧版�
 
 ## Office 文档处理
 
-StructaDoc 始终保存用户上传的原始文件。对于 Office 文档，计划采用以下策略：
+StructaDoc 始终保存用户上传的原始文件。当前执行器采用以下策略：
 
 1. Provider 原生支持该格式时，优先直接提交原文件。
 2. Provider 不支持该格式时，由镜像内置的 LibreOffice headless 转换适配器生成 PDF。
 3. 转换后的 PDF 作为独立产物保存，不覆盖原文件。
-4. 解析记录应保存源格式、实际提交格式、LibreOffice 版本和转换参数，保证结果可追溯。
+4. 解析记录保存源格式、实际提交格式、LibreOffice 版本、大小、哈希和转换参数，保证结果可追溯与恢复。
 
 这种方式可以让本地 MinerU 直接处理其支持的 DOCX、PPTX、XLSX，同时为不支持 Excel 的在线接口提供 PDF 回退方案。
 
-转换由 .NET 直接启动受限的 LibreOffice 子进程，不在默认镜像中运行 Python、FastAPI 或内部转换 HTTP 服务。每次转换必须使用独立临时目录和 LibreOffice User Profile，并受到并发数、超时、输入大小、输出大小和临时磁盘限制。具体部署决策见 [`ADR-0003`](./docs/adr/0003-technology-and-single-image-deployment.md)。
+转换由 .NET 直接启动受限的 LibreOffice 子进程，不运行 Python、FastAPI 或内部转换 HTTP 服务。每次转换使用独立临时目录和 LibreOffice User Profile，并受到并发数、超时、输入大小、输出大小和临时磁盘限制。当前适配器和恢复语义见 [`office-conversion.md`](./docs/development/office-conversion.md)，具体部署决策见 [`ADR-0003`](./docs/adr/0003-technology-and-single-image-deployment.md)。最终运行时镜像和字体层仍待实现。
 
 ## 数据模型
 

@@ -121,6 +121,22 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task<ParseRunLease?> TrySaveConversionAsync(
+        ParseRunConversion conversion,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(conversion);
+
+        return ApplyMutationAsync(
+            (services, lease, nowUtc, operationToken) =>
+                services.GetRequiredService<IParseRunConversionStore>().TrySaveAsync(
+                    lease,
+                    conversion,
+                    nowUtc,
+                    operationToken),
+            cancellationToken);
+    }
+
     public Task<ParseRunLease?> TrySaveSubmissionCheckpointAsync(
         ProviderSubmissionCheckpoint checkpoint,
         CancellationToken cancellationToken = default)

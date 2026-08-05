@@ -198,6 +198,20 @@ internal static class ParseRunLeaseContract
         var resultFile = resultStorage.Add(
             $"results/{resultLease.ParseRunId:N}/full.md",
             Encoding.UTF8.GetBytes("# Contract result"));
+        var convertedFile = resultStorage.Add(
+            $"parse-runs/{resultLease.ParseRunId:N}/conversions/normalized.pdf",
+            "%PDF-1.7\ncontract-conversion"u8.ToArray());
+        var conversion = new ParseRunConversion(
+            "libreoffice",
+            "LibreOffice contract-version",
+            "application/pdf",
+            "application/pdf",
+            Guid.NewGuid(),
+            "normalized.pdf",
+            convertedFile.SizeBytes,
+            convertedFile.Sha256,
+            convertedFile.StorageRef,
+            "pdf");
         var bundle = new ParseBundle(
             ParseBundleValidator.CurrentSchemaVersion,
             resultLease.ParseRunId,
@@ -211,29 +225,50 @@ internal static class ParseRunLeaseContract
                 "text/markdown",
                 resultFile.SizeBytes,
                 resultFile.Sha256,
-                resultFile.StorageRef)],
+                resultFile.StorageRef),
+             conversion.ToArtifact()],
             "{\"providerType\":\"test-provider\"}");
         await using (var dbContext = new StructaDocDbContext(options))
         {
             var stateStore = new EfCoreParseRunStateStore(dbContext);
             var runningLease = await stateStore.TryStartAsync(
                 resultLease,
-                ParseRunStages.Persisting,
+                ParseRunStages.Converting,
                 nowUtc.AddSeconds(1));
             Assert.NotNull(runningLease);
+            var convertedLease = await new EfCoreParseRunConversionStore(dbContext).TrySaveAsync(
+                runningLease,
+                conversion,
+                nowUtc.AddSeconds(2));
+            Assert.NotNull(convertedLease);
+            var submittingLease = await stateStore.TryUpdateStageAsync(
+                convertedLease,
+                ParseRunStages.Submitting,
+                nowUtc.AddSeconds(3));
+            Assert.NotNull(submittingLease);
+            var submittedLease = await stateStore.TryRecordProviderSubmissionAsync(
+                submittingLease,
+                "result-task-1",
+                nowUtc.AddSeconds(4));
+            Assert.NotNull(submittedLease);
+            var persistingLease = await stateStore.TryUpdateStageAsync(
+                submittedLease,
+                ParseRunStages.Persisting,
+                nowUtc.AddSeconds(5));
+            Assert.NotNull(persistingLease);
 
             var resultStore = new EfCoreParseBundleCommitStore(dbContext, resultStorage);
             var commit = await resultStore.TryCommitAsync(
-                runningLease,
+                persistingLease,
                 bundle,
-                nowUtc.AddSeconds(2));
+                nowUtc.AddSeconds(6));
             Assert.Equal(ParseBundleCommitStatus.Committed, commit.Status);
             Assert.Equal(
                 ParseBundleCommitStatus.AlreadyCommitted,
                 (await resultStore.TryCommitAsync(
-                    runningLease,
+                    persistingLease,
                     bundle,
-                    nowUtc.AddSeconds(3))).Status);
+                    nowUtc.AddSeconds(7))).Status);
         }
 
         await using var verificationContext = new StructaDocDbContext(options);
@@ -262,11 +297,12 @@ internal static class ParseRunLeaseContract
             && parseRun.ClaimedBy == recoveredRunningLease.WorkerId);
         Assert.Single(persistedRuns, parseRun =>
             parseRun.Status == ParseRunStatuses.Succeeded
+            && parseRun.ConversionJson == conversion.ToJson()
             && parseRun.ResultSchemaVersion == ParseBundleValidator.CurrentSchemaVersion
             && parseRun.ResultSha256 == ParseBundleValidator.ComputeFingerprint(bundle));
         Assert.Single(await verificationContext.ParsePages.ToListAsync());
         Assert.Single(await verificationContext.ParseBlocks.ToListAsync());
-        Assert.Single(await verificationContext.ParseArtifacts.ToListAsync());
+        Assert.Equal(2, await verificationContext.ParseArtifacts.CountAsync());
 
         var administrator = await verificationContext.AdminUsers
             .AsNoTracking()

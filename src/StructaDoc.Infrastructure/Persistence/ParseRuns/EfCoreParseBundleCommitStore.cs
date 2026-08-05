@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Security.Cryptography;
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
@@ -304,20 +303,10 @@ public sealed class EfCoreParseBundleCommitStore(
 
         try
         {
-            using var document = JsonDocument.Parse(conversionJson);
-            if (document.RootElement.ValueKind != JsonValueKind.Object
-                || !document.RootElement.TryGetProperty("artifactId", out var artifactIdElement)
-                || artifactIdElement.ValueKind != JsonValueKind.String
-                || !Guid.TryParse(artifactIdElement.GetString(), out var artifactId))
-            {
-                return false;
-            }
-
-            return artifacts.Any(artifact =>
-                artifact.Id == artifactId
-                && artifact.Type == ArtifactTypes.NormalizedPdf);
+            var expected = ParseRunConversion.FromJson(conversionJson).ToArtifact();
+            return artifacts.Any(artifact => artifact == expected);
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or ArgumentException)
         {
             return false;
         }

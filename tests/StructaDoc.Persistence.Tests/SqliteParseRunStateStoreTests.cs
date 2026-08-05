@@ -85,6 +85,55 @@ public sealed class SqliteParseRunStateStoreTests
     }
 
     [Fact]
+    public async Task Conversion_snapshot_is_saved_atomically_under_the_current_lease()
+    {
+        const string sourceMediaType =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        await using var database = await StateTestDatabase.CreateAsync(
+            maxAttempts: 3,
+            sourceMediaType,
+            ".xlsx");
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var stateStore = new EfCoreParseRunStateStore(dbContext);
+        var convertingLease = Assert.IsType<ParseRunLease>(
+            await stateStore.TryUpdateStageAsync(
+                runningLease,
+                ParseRunStages.Converting,
+                nowUtc.AddSeconds(2)));
+        var conversion = new ParseRunConversion(
+            "libreoffice",
+            "LibreOffice 25.2.4.2",
+            sourceMediaType,
+            "application/pdf",
+            Guid.NewGuid(),
+            "normalized.pdf",
+            1024,
+            new string('b', 64),
+            $"parse-runs/{convertingLease.ParseRunId:N}/conversions/output.pdf",
+            "pdf");
+        var store = new EfCoreParseRunConversionStore(dbContext);
+
+        var staleSave = await store.TrySaveAsync(
+            runningLease,
+            conversion,
+            nowUtc.AddSeconds(3));
+        var savedLease = await store.TrySaveAsync(
+            convertingLease,
+            conversion,
+            nowUtc.AddSeconds(3));
+
+        Assert.Null(staleSave);
+        Assert.NotNull(savedLease);
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        Assert.Equal(ParseRunStages.PreparingSource, persistedRun.Stage);
+        Assert.Equal("application/pdf", persistedRun.SubmittedMediaType);
+        Assert.Equal(conversion, ParseRunConversion.FromJson(persistedRun.ConversionJson!));
+    }
+
+    [Fact]
     public async Task Provider_submission_rejects_unsafe_external_task_ids()
     {
         await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
@@ -298,7 +347,10 @@ public sealed class SqliteParseRunStateStoreTests
 
         public DbContextOptions<StructaDocDbContext> Options { get; }
 
-        public static async Task<StateTestDatabase> CreateAsync(int maxAttempts)
+        public static async Task<StateTestDatabase> CreateAsync(
+            int maxAttempts,
+            string sourceMediaType = "application/pdf",
+            string sourceExtension = ".pdf")
         {
             var directoryPath = Path.Combine(
                 Path.GetTempPath(),
@@ -321,9 +373,9 @@ public sealed class SqliteParseRunStateStoreTests
             var document = new DocumentEntity
             {
                 Id = Guid.NewGuid(),
-                OriginalFileName = "state-test.pdf",
-                MediaType = "application/pdf",
-                Extension = ".pdf",
+                OriginalFileName = $"state-test{sourceExtension}",
+                MediaType = sourceMediaType,
+                Extension = sourceExtension,
                 SizeBytes = 128,
                 Sha256 = new string('a', 64),
                 StorageRef = "documents/state-test.pdf",
@@ -339,8 +391,8 @@ public sealed class SqliteParseRunStateStoreTests
                 ProviderConfigId = Guid.NewGuid(),
                 ProviderConfigVersion = Guid.NewGuid(),
                 OptionsJson = "{}",
-                SourceMediaType = "application/pdf",
-                SubmittedMediaType = "application/pdf",
+                SourceMediaType = sourceMediaType,
+                SubmittedMediaType = sourceMediaType,
                 MaxAttempts = maxAttempts,
                 NextAttemptAtUtc = nowUtc.AddMinutes(-1),
                 CreatedAtUtc = nowUtc,

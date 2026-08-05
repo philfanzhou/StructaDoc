@@ -38,6 +38,7 @@
 | [Document Reading](./development/document-reading.md) | Document 键集分页、详情、下载、缓存和 Range 语义 |
 | [Provider Config and Parse Runs](./development/provider-config-and-parse-runs.md) | Provider 配置版本、凭据保护、Parse Run 创建与状态查询 |
 | [Provider Execution](./development/provider-execution.md) | Provider 能力、异步任务、流式结果和租约约束的执行快照边界 |
+| [Office Conversion](./development/office-conversion.md) | LibreOffice 受限子进程、转换快照、恢复和 normalized-pdf Artifact |
 | [MinerU HTTP Providers](./development/mineru-http-providers.md) | Cloud 签名上传、Local multipart、状态/结果流和当前安全边界 |
 | [Provider Result Intake](./development/provider-result-intake.md) | Provider ZIP 的幂等落盘、资源限制、安全校验和当前归一化边界 |
 | [Provider Result Normalization](./development/provider-result-normalization.md) | 已验证 MinerU ZIP 的条目识别、派生存储、确定性 ID 和 Canonical 映射 |

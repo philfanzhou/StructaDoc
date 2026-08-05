@@ -11,6 +11,7 @@ using StructaDoc.Host.ParseRuns;
 using StructaDoc.Host.Providers;
 using StructaDoc.Host.Workers;
 using StructaDoc.Infrastructure.Authentication;
+using StructaDoc.Infrastructure.Conversion;
 using StructaDoc.Infrastructure.Documents;
 using StructaDoc.Infrastructure.Persistence;
 using StructaDoc.Infrastructure.ProviderResults;
@@ -38,10 +39,14 @@ var providerResultOptions = builder.Configuration
 var providerResultNormalizationOptions = builder.Configuration
     .GetSection(ProviderResultNormalizationOptions.SectionName)
     .Get<ProviderResultNormalizationOptions>() ?? new ProviderResultNormalizationOptions();
+var conversionOptions = builder.Configuration
+    .GetSection(LibreOfficeConversionOptions.SectionName)
+    .Get<LibreOfficeConversionOptions>() ?? new LibreOfficeConversionOptions();
 ingestionOptions.Validate();
 storageOptions.Validate();
 providerResultOptions.Validate();
 providerResultNormalizationOptions.Validate();
+conversionOptions.Validate();
 var authenticationOptions = builder.Configuration
     .GetSection(StructaDocAuthenticationOptions.SectionName)
     .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
@@ -52,6 +57,7 @@ builder.Services
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
 builder.Services.AddStructaDocPersistence(databaseOptions);
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions);
+builder.Services.AddStructaDocDocumentConversion(conversionOptions);
 builder.Services.AddStructaDocParseProviders();
 builder.Services.AddStructaDocProviderResults(
     providerResultOptions,

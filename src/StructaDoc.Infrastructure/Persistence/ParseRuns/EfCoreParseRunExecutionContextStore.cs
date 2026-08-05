@@ -47,6 +47,7 @@ public sealed class EfCoreParseRunExecutionContextStore(
                 document.StorageRef,
                 parseRun.OptionsJson,
                 parseRun.Stage,
+                parseRun.ConversionJson,
                 parseRun.ExternalTaskId,
                 parseRun.ProtectedSubmissionContinuation,
                 parseRun.AttemptCount,
@@ -92,6 +93,9 @@ public sealed class EfCoreParseRunExecutionContextStore(
             snapshot.StorageRef,
             snapshot.OptionsJson,
             snapshot.Stage,
+            snapshot.ConversionJson is null
+                ? null
+                : ParseRunConversion.FromJson(snapshot.ConversionJson),
             snapshot.ExternalTaskId,
             submissionCheckpoint,
             snapshot.AttemptCount,

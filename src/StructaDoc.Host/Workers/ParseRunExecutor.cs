@@ -1,4 +1,6 @@
+using System.Text.Json;
 using StructaDoc.Application.Canonical;
+using StructaDoc.Application.Conversion;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Providers;
@@ -10,6 +12,7 @@ namespace StructaDoc.Host.Workers;
 public sealed class ParseRunExecutor(
     IParseProviderResolver providerResolver,
     IEnumerable<IProviderResultNormalizer> normalizers,
+    IEnumerable<IDocumentConverter> converters,
     IProviderResultIntake resultIntake,
     IFileStorage fileStorage,
     ParseRunLeaseHeartbeat heartbeat,
@@ -17,6 +20,7 @@ public sealed class ParseRunExecutor(
     ILogger<ParseRunExecutor> logger)
 {
     private readonly IReadOnlyList<IProviderResultNormalizer> normalizers = normalizers.ToArray();
+    private readonly IReadOnlyList<IDocumentConverter> converters = converters.ToArray();
 
     public async Task ExecuteAsync(
         ParseRunLease lease,
@@ -48,6 +52,7 @@ public sealed class ParseRunExecutor(
                     retryable: false);
             var normalizer = ResolveNormalizer(context.ProviderConfiguration.ProviderType);
             var source = CreateSource(context);
+            var conversion = context.Conversion;
 
             var externalTaskId = context.ExternalTaskId;
             var checkpoint = context.SubmissionCheckpoint;
@@ -55,12 +60,13 @@ public sealed class ParseRunExecutor(
 
             if (externalTaskId is null)
             {
-                await ValidateAndPrepareSourceAsync(
+                var preparedSource = await ValidateAndPrepareSourceAsync(
                     session,
                     provider,
                     context,
-                    source,
                     stoppingToken);
+                source = preparedSource.Source;
+                conversion = preparedSource.Conversion;
                 stage = ParseRunStages.Submitting;
 
                 try
@@ -226,6 +232,10 @@ public sealed class ParseRunExecutor(
                     context.ProviderConfiguration.Model,
                     context.ProviderConfiguration.Backend),
                 session.ExecutionCancellationToken);
+            if (conversion is not null)
+            {
+                bundle = AddConversionArtifact(bundle, conversion);
+            }
 
             if (stage != ParseRunStages.Persisting
                 && await session.TryUpdateStageAsync(
@@ -277,6 +287,19 @@ public sealed class ParseRunExecutor(
         {
             await RecordFailureAsync(session, exception.ErrorCode, exception.Message, exception.Retryable, stoppingToken);
         }
+        catch (DocumentConversionException exception)
+        {
+            await RecordFailureAsync(session, exception.ErrorCode, exception.Message, exception.Retryable, stoppingToken);
+        }
+        catch (JsonException)
+        {
+            await RecordFailureAsync(
+                session,
+                "parse-run-conversion-invalid",
+                "The persisted document conversion snapshot is invalid.",
+                retryable: false,
+                stoppingToken);
+        }
         catch (Exception exception)
         {
             logger.LogError(
@@ -292,49 +315,113 @@ public sealed class ParseRunExecutor(
         }
     }
 
-    private async Task ValidateAndPrepareSourceAsync(
+    private async Task<PreparedSource> ValidateAndPrepareSourceAsync(
         ParseRunLeaseSession session,
         IParseProvider provider,
         ParseRunExecutionContext context,
-        ProviderDocumentSource source,
         CancellationToken cancellationToken)
     {
         var capabilities = await provider.GetCapabilitiesAsync(
             context.ProviderConfiguration,
             session.ExecutionCancellationToken);
-        if (!capabilities.SupportsMediaType(context.SubmittedMediaType))
+
+        ParseRunConversion? conversion = context.Conversion;
+        ProviderDocumentSource source;
+        if (conversion is not null)
+        {
+            ValidateConversion(context, conversion);
+            source = CreateSource(context);
+        }
+        else if (capabilities.SupportsMediaType(context.SourceMediaType))
+        {
+            source = CreateSource(context);
+        }
+        else
+        {
+            if (!capabilities.SupportsMediaType(DocumentConversionMediaTypes.Pdf))
+            {
+                throw Failure(
+                    "provider-source-media-type-unsupported",
+                    "The Provider supports neither the source document media type nor PDF fallback.",
+                    retryable: false);
+            }
+
+            var converter = ResolveConverter(
+                context.SourceMediaType,
+                DocumentConversionMediaTypes.Pdf);
+            if (await session.TryUpdateStageAsync(
+                ParseRunStages.Converting,
+                cancellationToken) is null)
+            {
+                throw new OperationCanceledException(session.ExecutionCancellationToken);
+            }
+
+            await using var converted = await converter.ConvertAsync(
+                new DocumentConversionRequest(
+                    context.SourceMediaType,
+                    context.SourceSizeBytes,
+                    operationToken => fileStorage.OpenReadAsync(
+                        context.SourceStorageRef,
+                        operationToken)),
+                session.ExecutionCancellationToken);
+            var artifactId = Guid.NewGuid();
+            var storageRef = $"parse-runs/{context.ParseRunId:N}/conversions/{artifactId:N}.pdf";
+            var stored = await fileStorage.WriteAsync(
+                storageRef,
+                converted.Content,
+                converted.SizeBytes,
+                session.ExecutionCancellationToken);
+            if (stored.SizeBytes != converted.SizeBytes)
+            {
+                throw new DocumentConversionException(
+                    "document-conversion-output-size-mismatch",
+                    "The stored converted PDF size does not match the converter output.");
+            }
+
+            conversion = new ParseRunConversion(
+                converted.ConverterType,
+                converted.ConverterVersion,
+                context.SourceMediaType,
+                converted.OutputMediaType,
+                artifactId,
+                "normalized.pdf",
+                stored.SizeBytes,
+                stored.Sha256,
+                stored.StorageRef,
+                "pdf");
+            if (await session.TrySaveConversionAsync(
+                conversion,
+                cancellationToken) is null)
+            {
+                throw new OperationCanceledException(session.ExecutionCancellationToken);
+            }
+
+            source = CreateConvertedSource(conversion);
+        }
+
+        if (!capabilities.SupportsMediaType(source.MediaType))
         {
             throw Failure(
                 "provider-source-media-type-unsupported",
-                "The Provider does not support the submitted document media type.",
+                "The Provider does not support the prepared document media type.",
                 retryable: false);
         }
 
         if (capabilities.MaxFileBytes.HasValue
-            && context.SourceSizeBytes > capabilities.MaxFileBytes.Value)
+            && source.SizeBytes > capabilities.MaxFileBytes.Value)
         {
             throw Failure(
                 "provider-source-file-too-large",
-                "The source document exceeds the Provider file size limit.",
+                "The prepared document exceeds the Provider file size limit.",
                 retryable: false);
         }
 
-        if (await session.TryUpdateStageAsync(
-            ParseRunStages.PreparingSource,
-            cancellationToken) is null)
+        if (conversion is null
+            && await session.TryUpdateStageAsync(
+                ParseRunStages.PreparingSource,
+                cancellationToken) is null)
         {
             throw new OperationCanceledException(session.ExecutionCancellationToken);
-        }
-
-        if (!string.Equals(
-            context.SourceMediaType,
-            context.SubmittedMediaType,
-            StringComparison.OrdinalIgnoreCase))
-        {
-            throw Failure(
-                "source-conversion-not-available",
-                "The prepared source requires a converter that is not available.",
-                retryable: false);
         }
 
         if (await session.TryUpdateStageAsync(
@@ -343,6 +430,8 @@ public sealed class ParseRunExecutor(
         {
             throw new OperationCanceledException(session.ExecutionCancellationToken);
         }
+
+        return new PreparedSource(source, conversion);
     }
 
     private async Task WaitForProviderAsync(
@@ -402,13 +491,88 @@ public sealed class ParseRunExecutor(
         };
     }
 
-    private ProviderDocumentSource CreateSource(ParseRunExecutionContext context) => new(
-        context.OriginalFileName,
-        context.SubmittedMediaType,
-        context.SourceSizeBytes,
+    private IDocumentConverter ResolveConverter(string sourceMediaType, string outputMediaType)
+    {
+        var matches = converters
+            .Where(converter => converter.Supports(sourceMediaType, outputMediaType))
+            .ToArray();
+        return matches.Length switch
+        {
+            1 => matches[0],
+            0 => throw Failure(
+                "document-converter-not-registered",
+                "No document converter is registered for the required format fallback.",
+                retryable: false),
+            _ => throw Failure(
+                "document-converter-ambiguous",
+                "More than one document converter is registered for the required format fallback.",
+                retryable: false),
+        };
+    }
+
+    private ProviderDocumentSource CreateSource(ParseRunExecutionContext context) =>
+        context.Conversion is null
+            ? new ProviderDocumentSource(
+                context.OriginalFileName,
+                context.SourceMediaType,
+                context.SourceSizeBytes,
+                cancellationToken => fileStorage.OpenReadAsync(
+                    context.SourceStorageRef,
+                    cancellationToken))
+            : CreateConvertedSource(context.Conversion);
+
+    private ProviderDocumentSource CreateConvertedSource(ParseRunConversion conversion) => new(
+        conversion.ArtifactName,
+        conversion.OutputMediaType,
+        conversion.SizeBytes,
         cancellationToken => fileStorage.OpenReadAsync(
-            context.SourceStorageRef,
+            conversion.StorageRef,
             cancellationToken));
+
+    private static void ValidateConversion(
+        ParseRunExecutionContext context,
+        ParseRunConversion conversion)
+    {
+        conversion.Validate();
+        if (!string.Equals(
+                conversion.SourceMediaType,
+                context.SourceMediaType,
+                StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(
+                conversion.OutputMediaType,
+                context.SubmittedMediaType,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw Failure(
+                "parse-run-conversion-inconsistent",
+                "The persisted document conversion is inconsistent with the Parse Run.",
+                retryable: false);
+        }
+    }
+
+    private static ParseBundle AddConversionArtifact(
+        ParseBundle bundle,
+        ParseRunConversion conversion)
+    {
+        if (bundle.Artifacts.Any(artifact =>
+                artifact.Id == conversion.ArtifactId
+                || (artifact.Type == ArtifactTypes.NormalizedPdf
+                    && string.Equals(
+                        artifact.Name,
+                        conversion.ArtifactName,
+                        StringComparison.Ordinal))))
+        {
+            throw Failure(
+                "parse-run-conversion-artifact-conflict",
+                "The normalized result conflicts with the persisted conversion Artifact.",
+                retryable: false);
+        }
+
+        return bundle with
+        {
+            Artifacts = [.. bundle.Artifacts, conversion.ToArtifact()],
+        };
+    }
 
     private static string ValidateSubmission(
         ProviderSubmission submission,
@@ -488,4 +652,8 @@ public sealed class ParseRunExecutor(
 
         public bool Retryable { get; } = retryable;
     }
+
+    private sealed record PreparedSource(
+        ProviderDocumentSource Source,
+        ParseRunConversion? Conversion);
 }

@@ -66,4 +66,4 @@ Local backend 来自不可变 Provider 配置的 `backend`；Cloud model version
 - 接入取消请求和执行尝试明细；
 - 根据部署网络明确管理员配置的 Cloud/Local Base URL 允许范围；Local 为支持同机和受信内网部署不会套用公网限定。
 
-当前执行器只直接提交 Provider 原生支持的源格式；LibreOffice 回退尚未接入。不支持的媒体类型会在读取和出站前失败，不会静默转换或发送。
+当前执行器优先直接提交 Provider 原生支持的源格式。Provider 不支持已登记的 Office 源格式但支持 PDF 时，受限 LibreOffice 适配器会先生成、持久化并记录独立 PDF Artifact；其他不支持的媒体类型仍会在出站前失败。转换细节见 [`office-conversion.md`](./office-conversion.md)。

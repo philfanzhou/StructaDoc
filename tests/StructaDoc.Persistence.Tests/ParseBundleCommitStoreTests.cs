@@ -199,6 +199,57 @@ public sealed class ParseBundleCommitStoreTests
     }
 
     [Fact]
+    public async Task Conversion_artifact_must_match_the_entire_persisted_snapshot()
+    {
+        await using var database = await BundleTestDatabase.CreateAsync();
+        var nowUtc = DateTime.UtcNow;
+        var lease = await database.CreateRunningLeaseAsync(nowUtc);
+        var bundle = await database.CreateBundleAsync(lease.ParseRunId);
+        var artifactId = Guid.NewGuid();
+        var conversion = new ParseRunConversion(
+            "libreoffice",
+            "LibreOffice test-version",
+            "application/pdf",
+            "application/pdf",
+            artifactId,
+            "normalized.pdf",
+            123,
+            new string('c', 64),
+            $"parse-runs/{lease.ParseRunId:N}/conversions/expected.pdf",
+            "pdf");
+        var existingFile = bundle.Artifacts[0];
+        bundle = bundle with
+        {
+            Artifacts =
+            [
+                .. bundle.Artifacts,
+                new ParseArtifact(
+                    artifactId,
+                    ArtifactTypes.NormalizedPdf,
+                    "normalized.pdf",
+                    "application/pdf",
+                    existingFile.SizeBytes,
+                    existingFile.Sha256,
+                    existingFile.StorageRef,
+                    "{\"converterType\":\"different\"}"),
+            ],
+        };
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        await dbContext.ParseRuns
+            .Where(parseRun => parseRun.Id == lease.ParseRunId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(parseRun => parseRun.ConversionJson, conversion.ToJson()));
+        var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
+
+        var result = await store.TryCommitAsync(lease, bundle, nowUtc.AddSeconds(2));
+
+        Assert.Equal(ParseBundleCommitStatus.InvalidBundle, result.Status);
+        Assert.Equal("invalid-conversion-artifact", result.ErrorCode);
+        await database.AssertTargetRunHasNoResultAsync(ParseRunStatuses.Running);
+    }
+
+    [Fact]
     public void Validator_rejects_non_contiguous_blocks_and_sensitive_provider_data()
     {
         var parseRunId = Guid.NewGuid();

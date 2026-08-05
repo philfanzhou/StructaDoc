@@ -24,6 +24,7 @@ public static class PersistenceServiceCollectionExtensions
             options => ConfigureDatabase(options, databaseOptions));
         services.AddScoped<IParseRunLeaseStore, EfCoreParseRunLeaseStore>();
         services.AddScoped<IParseRunStateStore, EfCoreParseRunStateStore>();
+        services.AddScoped<IParseRunConversionStore, EfCoreParseRunConversionStore>();
         services.AddScoped<IParseRunSubmissionCheckpointStore, EfCoreParseRunSubmissionCheckpointStore>();
         services.AddScoped<IParseRunExecutionContextStore, EfCoreParseRunExecutionContextStore>();
         services.AddScoped<IParseBundleCommitStore, EfCoreParseBundleCommitStore>();
