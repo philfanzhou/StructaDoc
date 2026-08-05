@@ -283,7 +283,7 @@ Provider 归一化结果至少满足：
 以下细节在首个实现前通过代码和 API 规格确定，不在本文件中伪定：
 
 - DTO 的具体语言类型和序列化命名策略；
-- PostgreSQL 表名、索引和迁移实现；
+- 各受支持数据库的表名、类型映射、索引和迁移实现；
 - 分页 API、下载 URL 和错误响应的具体形状；
 - 自定义 metadata 和 `providerData` 的大小上限；
 - 不同 Office Provider 对 sheet、slide 和 section 的精确映射规则。

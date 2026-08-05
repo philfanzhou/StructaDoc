@@ -9,14 +9,14 @@ StructaDoc 是一个低频写入、以读取结构化结果为主的自托管服
 
 项目仍然需要清晰隔离 HTTP、任务执行、Provider、存储和转换职责，但这种代码边界不要求第一阶段把每项职责部署为独立容器。尤其是 Office 转 PDF 只需要受控调用 LibreOffice headless；为此额外维护 Python、FastAPI、内部 HTTP 协议和第二个常驻进程没有足够收益。
 
-StructaDoc 同时需要长期维护的公共 DTO、PostgreSQL 事务、持久化任务恢复、流式文件处理、认证和管理网页托管。.NET 10 已经是正式发布的 LTS 版本，适合作为新项目基线。.NET 8 的支持周期接近结束，不再作为首个实现的目标框架。
+StructaDoc 同时需要长期维护的公共 DTO、关系数据库事务、持久化任务恢复、流式文件处理、认证和管理网页托管。.NET 10 已经是正式发布的 LTS 版本，适合作为新项目基线。.NET 8 的支持周期接近结束，不再作为首个实现的目标框架。
 
 ## Decision
 
 ### 1. 技术基线
 
 - API、后台任务、Provider 和基础设施代码使用 .NET 10 与 ASP.NET Core 10。
-- PostgreSQL 是业务数据和持久化任务的权威数据库。
+- 所配置的受支持关系数据库是业务数据和持久化任务的权威数据库；数据库可移植性见 [ADR-0004](./0004-relational-database-portability.md)。
 - 管理网页使用 Vue 3、TypeScript 和 Vite，并在镜像构建阶段生成静态文件。
 - 前端静态文件由 ASP.NET Core Host 提供，不部署独立 Web Server 或前端容器。
 - 默认 JSON、HTTP、日志、健康检查和可观测性优先使用 .NET 平台内置能力；新增第三方依赖前需要证明现有能力不足。
@@ -37,7 +37,7 @@ StructaDoc 同时需要长期维护的公共 DTO、PostgreSQL 事务、持久化
 - Provider 适配器；
 - 本地 LibreOffice 转换适配器。
 
-Worker 是独立的逻辑组件，但第一阶段作为 `BackgroundService` 运行在 Host 内，而不是单独发布可执行程序或镜像。任务仍必须通过 PostgreSQL 原子抢占、租约和心跳执行，不能依赖进程内队列；因此未来可以让同一镜像按全部功能、仅 API 或仅 Worker 的模式启动，而无需改变领域模型或公共 API。
+Worker 是独立的逻辑组件，但第一阶段作为 `BackgroundService` 运行在 Host 内，而不是单独发布可执行程序或镜像。任务仍必须通过数据库原子抢占、租约和心跳执行，不能依赖进程内队列；因此未来可以让同一镜像按全部功能、仅 API 或仅 Worker 的模式启动，而无需改变领域模型或公共 API。
 
 ### 3. 内置 Office 转换
 
@@ -67,14 +67,15 @@ Node.js、.NET SDK 和 Python 不进入最终运行时镜像。
 
 ### 5. 外部状态依赖
 
-“单一应用镜像”不表示把数据库也嵌入应用容器：
+“单一应用镜像”不表示在应用容器中运行数据库服务器：
 
-- PostgreSQL 使用独立实例或官方数据库容器；
+- SQLite 作为进程内数据库使用，数据库文件必须位于持久卷，不打包进镜像层；
+- PostgreSQL、MySQL 或 MariaDB 使用独立实例或官方数据库容器；
 - 默认文件存储可以使用挂载卷；
 - S3 兼容对象存储是可选部署能力；
-- 不在 StructaDoc 镜像中启动或管理 PostgreSQL。
+- 不在 StructaDoc 镜像中启动或管理数据库服务器。
 
-最小自托管拓扑是一个 StructaDoc 应用容器加一个 PostgreSQL 实例；如果已有外部 PostgreSQL，则只需部署一个 StructaDoc 容器。
+最小自托管拓扑是一个使用 SQLite 持久卷的 StructaDoc 应用容器。需要多实例或使用既有数据库基础设施时，部署一个或多个 StructaDoc 容器并连接外部 PostgreSQL、MySQL 或 MariaDB。
 
 ## Consequences
 
@@ -84,7 +85,7 @@ Node.js、.NET SDK 和 Python 不进入最终运行时镜像。
 - 不需要维护 Python 运行时、内部转换 HTTP 协议或额外常驻进程。
 - 低频转换不会为默认部署引入独立服务发现、健康检查和网络故障面。
 - 代码仍保留模块边界，未来可以使用同一镜像拆分 API 与 Worker 运行模式。
-- PostgreSQL 任务租约使单 Host 和多实例部署遵守同一套可靠性语义。
+- 数据库任务租约使单 Host 和受支持的多实例部署遵守同一套可靠性语义。
 
 ### Trade-offs
 
@@ -107,10 +108,10 @@ Node.js、.NET SDK 和 Python 不进入最终运行时镜像。
 
 拒绝作为默认形态。逻辑边界会保留，但当前负载没有证明独立部署和扩缩的复杂度是必要的。
 
-### 把 PostgreSQL 打包进应用容器
+### 把数据库服务器打包进应用容器
 
 拒绝。数据库备份、恢复、升级、持久卷和生命周期必须独立于应用镜像管理。
 
 ### 使用 Go 作为核心实现语言
 
-Go 在镜像体积、启动速度和单二进制交付方面有优势，但 StructaDoc 的主要复杂度是长期演进的数据契约、认证、PostgreSQL 事务和持久化任务，而不是 CPU 密集计算。结合现有 .NET 领域经验和 .NET 10 LTS 的平台能力，Go 的运行时优势不足以抵消重建工程惯例和降低开发效率的成本。
+Go 在镜像体积、启动速度和单二进制交付方面有优势，但 StructaDoc 的主要复杂度是长期演进的数据契约、认证、关系数据库事务和持久化任务，而不是 CPU 密集计算。结合现有 .NET 领域经验和 .NET 10 LTS 的平台能力，Go 的运行时优势不足以抵消重建工程惯例和降低开发效率的成本。

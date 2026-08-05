@@ -58,7 +58,7 @@ flowchart LR
         Queue --> Normalizer
     end
 
-    Host --> Database["PostgreSQL\n元数据、结构化内容与持久化任务"]
+    Host --> Database["SQLite / PostgreSQL / MySQL / MariaDB\n元数据、结构化内容与持久化任务"]
     Host --> Storage["本地文件或 S3\n原文件与解析产物"]
     Queue --> Cloud["MinerU 在线服务"]
     Queue --> Local["本地 mineru-api"]
@@ -68,7 +68,7 @@ flowchart LR
     Normalizer --> Storage
 ```
 
-第一阶段的 API、管理网页、Worker 和 LibreOffice 转换能力由同一个 Host 和应用镜像交付。Worker 仍以 PostgreSQL 中的 Parse Run 为权威任务来源，不使用进程内队列，因此服务重启或以后部署多个实例时仍能按租约恢复执行。
+第一阶段的 API、管理网页、Worker 和 LibreOffice 转换能力由同一个 Host 和应用镜像交付。Worker 以所配置关系数据库中的 Parse Run 为权威任务来源，不使用进程内队列，因此服务重启后仍能按租约恢复执行。SQLite 面向单应用实例的轻量部署；PostgreSQL、MySQL 和 MariaDB 还必须支持多实例 Worker 竞争任务。
 
 ## 解析 Provider
 
@@ -154,7 +154,7 @@ StructaDoc 始终保存用户上传的原始文件。对于 Office 文档，计�
 | API Client | 其他应用使用的访问凭据、权限范围和状态 |
 | Audit Log | 配置修改、删除、重试等管理操作记录 |
 
-PostgreSQL 保存业务元数据和需要查询的结构化内容块。原文件、图片、ZIP 和大型 JSON 等二进制或大体积产物保存到本地文件系统或 S3 兼容对象存储，数据库保存引用、哈希、大小和内容类型。
+SQLite、PostgreSQL、MySQL 或 MariaDB 保存业务元数据和需要查询的结构化内容块。原文件、图片、ZIP 和大型 JSON 等二进制或大体积产物保存到本地文件系统或 S3 兼容对象存储，数据库保存引用、哈希、大小和内容类型。数据库选择不改变公共 API 和领域语义。
 
 对象存储内部引用不会通过公共 API 暴露。调用方通过 StructaDoc 资源 ID 和受控下载端点获取文件或短时下载 URL。
 
@@ -206,11 +206,11 @@ GET    /api/v1/parse-runs/{parseRunId}/artifacts
 |---|---|
 | Host / API / Worker | .NET 10、ASP.NET Core 10 |
 | 管理网页 | Vue 3、TypeScript、Vite |
-| 业务数据库 | PostgreSQL |
+| 业务数据库 | SQLite、PostgreSQL、MySQL / MariaDB；EF Core 通用模型与数据库方言适配层 |
 | 文件与产物 | 本地文件系统或 S3 兼容对象存储 |
 | Office 转换 | .NET 本地适配器调用镜像内置 LibreOffice headless |
 | 文档解析 | MinerU Cloud / MinerU Local Provider |
-| 部署 | 单一 StructaDoc 应用镜像；PostgreSQL 独立运行 |
+| 部署 | 单一 StructaDoc 应用镜像；SQLite 使用持久卷，服务端数据库独立运行 |
 
 StructaDoc 是独立项目，不依赖 Ruoyu.Study、QuantumZhou.Identity、Consul 或其共享代码。通用 OIDC、对象存储和配置实现将由本仓库自行定义。
 
@@ -254,7 +254,8 @@ StructaDoc/
 - 文档上传、列表、详情和删除。
 - MinerU Cloud / Local Provider。
 - Host 内置的持久化异步 Worker。
-- PostgreSQL 与本地文件存储。
+- SQLite、PostgreSQL、MySQL / MariaDB 持久化实现与本地文件存储。
+- 各数据库的迁移、任务抢占和生命周期契约测试。
 - Markdown、Block、图片和原始产物查看。
 
 ### Phase 2：应用集成与部署
@@ -263,7 +264,7 @@ StructaDoc/
 - S3 兼容对象存储。
 - 包含管理网页、API、Worker 和 LibreOffice 的单一应用镜像。
 - 内置 Office 转换适配器。
-- Docker Compose 部署，PostgreSQL 使用独立实例。
+- Docker Compose 部署示例：SQLite 单容器模式，以及 PostgreSQL、MySQL、MariaDB 外部数据库模式。
 - API 文档、健康检查、审计和备份说明。
 
 ### Phase 3：可靠性与扩展

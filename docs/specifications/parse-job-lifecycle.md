@@ -97,14 +97,18 @@ Provider 配置版本是不可变快照。配置更新创建新版本；旧版�
 
 ## 8. Atomic Claim and Lease
 
-第一阶段使用 PostgreSQL 作为持久化任务来源。Worker 抢占需要满足：
+所配置的 SQLite、PostgreSQL、MySQL 或 MariaDB 是持久化任务来源。Worker 抢占需要满足：
 
 1. 在数据库事务中选择已到执行时间的 `queued` 任务。
-2. 使用行锁或等价原子更新，避免两个 Worker 同时成功抢占。
+2. 使用条件更新、并发版本或数据库方言提供的等价原子操作，避免两个 Worker 同时成功抢占。
 3. 写入 `claimedBy`、`leaseExpiresAt` 和新的执行尝试信息。
 4. 提交事务后才开始网络或文件处理。
 
 Worker 在处理期间定期续租。租约必须长于正常心跳间隔，并允许短暂数据库抖动。
+
+任务存储实现必须提供独立于 EF Core 通用 CRUD 的抢占边界。PostgreSQL、MySQL 和 MariaDB 可以使用各自的行锁或 `SKIP LOCKED` 能力优化竞争；SQLite 可以通过短写事务和带状态、租约及并发版本谓词的 compare-and-set 更新实现。同一候选任务只有一个 Worker 的条件更新可以成功，受影响行数为零的 Worker 必须继续竞争其他任务，不能执行该任务。
+
+SQLite 只承诺单个 StructaDoc 应用实例内的 Worker 并发，不支持多个容器共享 SQLite 文件或把数据库文件放在网络文件系统上。PostgreSQL、MySQL 和 MariaDB 必须支持多个应用实例并发抢占。不同数据库实现必须通过同一组抢占、续租、过期恢复、取消、幂等提交和竞争压力契约测试。
 
 ### Expired Lease
 

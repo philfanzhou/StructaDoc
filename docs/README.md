@@ -18,6 +18,7 @@
 | [ADR-0001](./adr/0001-product-boundary.md) | Accepted | 产品边界：只负责文档摄取与结构化解析 |
 | [ADR-0002](./adr/0002-parser-provider-abstraction.md) | Accepted | 通过 Provider 适配在线和本地解析服务 |
 | [ADR-0003](./adr/0003-technology-and-single-image-deployment.md) | Accepted | 使用 .NET 10 和包含管理网页、Worker、LibreOffice 的单一应用镜像 |
+| [ADR-0004](./adr/0004-relational-database-portability.md) | Accepted | 支持 SQLite、PostgreSQL、MySQL / MariaDB，并保持任务可靠性语义一致 |
 
 ## 规格
 
@@ -33,3 +34,4 @@
 - 规格记录需要被多个组件共同遵守的目标行为。
 - 具体数据库表、端点请求响应和部署命令应与首个实现同步产生。
 - 规划、实现和验证状态必须明确区分。
+- 业务持久化支持 SQLite、PostgreSQL、MySQL 和 MariaDB；数据库差异不得改变领域模型、公共 API 或任务生命周期语义。
