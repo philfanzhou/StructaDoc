@@ -164,6 +164,35 @@ internal static class ParseRunLeaseContract
             Assert.Equal(1, recoveredRun.AttemptCount);
         }
 
+        var safeUnsubmittedLease = successfulClaims[5]!;
+        var unknownSubmissionLease = successfulClaims[6]!;
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            Assert.NotNull(await stateStore.TryStartAsync(
+                safeUnsubmittedLease,
+                ParseRunStages.Validating,
+                nowUtc.AddSeconds(1)));
+            Assert.NotNull(await stateStore.TryStartAsync(
+                unknownSubmissionLease,
+                ParseRunStages.Submitting,
+                nowUtc.AddSeconds(1)));
+            await dbContext.ParseRuns
+                .Where(parseRun =>
+                    parseRun.Id == safeUnsubmittedLease.ParseRunId
+                    || parseRun.Id == unknownSubmissionLease.ParseRunId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    parseRun => parseRun.LeaseExpiresAtUtc,
+                    nowUtc.AddSeconds(-1)));
+
+            var recovery = await new EfCoreParseRunLeaseStore(dbContext)
+                .RecoverExpiredUnsubmittedRunsAsync(
+                    nowUtc,
+                    maxCount: ParseRunCount);
+            Assert.Equal(1, recovery.RequeuedCount);
+            Assert.Equal(1, recovery.FailedUnknownSubmissionCount);
+        }
+
         var resultLease = successfulClaims[4]!;
         var resultStorage = new ContractFileStorage();
         var resultFile = resultStorage.Add(
@@ -215,12 +244,16 @@ internal static class ParseRunLeaseContract
             .ToListAsync();
         Assert.Equal(ParseRunCount, persistedRuns.Count);
         Assert.Equal(
-            ParseRunCount - 4,
+            ParseRunCount - 6,
             persistedRuns.Count(parseRun => parseRun.Status == ParseRunStatuses.Claimed));
-        Assert.Equal(2, persistedRuns.Count(parseRun =>
+        Assert.Equal(3, persistedRuns.Count(parseRun =>
             parseRun.Status == ParseRunStatuses.Queued
             && parseRun.ClaimedBy == null
             && parseRun.LeaseExpiresAtUtc == null));
+        Assert.Single(persistedRuns, parseRun =>
+            parseRun.Status == ParseRunStatuses.Failed
+            && parseRun.ErrorCode == "provider-submission-outcome-unknown"
+            && parseRun.CompletedAtUtc != null);
         Assert.Single(persistedRuns, parseRun =>
             parseRun.Status == ParseRunStatuses.Running
             && parseRun.ExternalTaskId == "provider-task-1"

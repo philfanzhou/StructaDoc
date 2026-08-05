@@ -1,3 +1,4 @@
+using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Providers;
 
@@ -76,6 +77,20 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
     public CancellationToken ExecutionCancellationToken => executionSource.Token;
 
     public bool IsLeaseLost => Volatile.Read(ref leaseLost) != 0;
+
+    public Task<ParseRunLease?> TryStartAsync(
+        string initialStage,
+        CancellationToken cancellationToken = default)
+    {
+        return ApplyMutationAsync(
+            (services, lease, nowUtc, operationToken) =>
+                services.GetRequiredService<IParseRunStateStore>().TryStartAsync(
+                    lease,
+                    initialStage,
+                    nowUtc,
+                    operationToken),
+            cancellationToken);
+    }
 
     public Task<ParseRunLease?> TryUpdateStageAsync(
         string stage,
@@ -162,6 +177,118 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
                     CurrentLease,
                     timeProvider.GetUtcNow().UtcDateTime,
                     operationSource.Token);
+        }
+        finally
+        {
+            mutationGate.Release();
+        }
+    }
+
+    public async Task<ParseRunFailureTransition?> TryRecordFailureAsync(
+        string errorCode,
+        string? errorMessage,
+        bool retryable,
+        TimeSpan retryDelay,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorCode);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(retryDelay, TimeSpan.Zero);
+        ThrowIfDisposed();
+
+        using var operationSource = CancellationTokenSource.CreateLinkedTokenSource(
+            executionSource.Token,
+            cancellationToken);
+        await mutationGate.WaitAsync(operationSource.Token);
+
+        try
+        {
+            if (IsLeaseLost)
+            {
+                return null;
+            }
+
+            var lease = CurrentLease;
+            var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+            await using var scope = serviceScopeFactory.CreateAsyncScope();
+            var transition = await scope.ServiceProvider
+                .GetRequiredService<IParseRunStateStore>()
+                .TryRecordFailureAsync(
+                    lease,
+                    errorCode,
+                    errorMessage,
+                    retryable,
+                    nowUtc.Add(retryDelay),
+                    nowUtc,
+                    operationSource.Token);
+
+            if (transition is null)
+            {
+                MarkLeaseLost(lease);
+                return null;
+            }
+
+            stopSource.Cancel();
+            return transition;
+        }
+        finally
+        {
+            mutationGate.Release();
+        }
+    }
+
+    public async Task<ParseBundleCommitResult?> TryCommitBundleAsync(
+        ParseBundle bundle,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bundle);
+        ThrowIfDisposed();
+
+        using var operationSource = CancellationTokenSource.CreateLinkedTokenSource(
+            executionSource.Token,
+            cancellationToken);
+        await mutationGate.WaitAsync(operationSource.Token);
+
+        try
+        {
+            if (IsLeaseLost)
+            {
+                return null;
+            }
+
+            await using var scope = serviceScopeFactory.CreateAsyncScope();
+            var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+            var renewedLease = await scope.ServiceProvider
+                .GetRequiredService<IParseRunLeaseStore>()
+                .TryRenewLeaseAsync(
+                    CurrentLease,
+                    nowUtc,
+                    options.LeaseDuration,
+                    operationSource.Token);
+            if (renewedLease is null)
+            {
+                MarkLeaseLost(CurrentLease);
+                return null;
+            }
+
+            Volatile.Write(ref currentLease, renewedLease);
+            var result = await scope.ServiceProvider
+                .GetRequiredService<IParseBundleCommitStore>()
+                .TryCommitAsync(
+                    renewedLease,
+                    bundle,
+                    timeProvider.GetUtcNow().UtcDateTime,
+                    operationSource.Token);
+            if (result.Status == ParseBundleCommitStatus.LeaseLost)
+            {
+                MarkLeaseLost(renewedLease);
+            }
+            else if (result.Status is ParseBundleCommitStatus.Committed
+                     or ParseBundleCommitStatus.AlreadyCommitted)
+            {
+                stopSource.Cancel();
+            }
+
+            return result;
         }
         finally
         {

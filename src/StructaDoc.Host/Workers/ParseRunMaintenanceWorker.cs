@@ -48,16 +48,25 @@ public sealed class ParseRunMaintenanceWorker(
                 nowUtc,
                 options.RecoveryBatchSize,
                 cancellationToken);
+            var recoveredRuns = await leaseStore.RecoverExpiredUnsubmittedRunsAsync(
+                nowUtc,
+                options.RecoveryBatchSize,
+                cancellationToken);
             var queuedRetries = await stateStore.QueueDueRetriesAsync(
                 nowUtc,
                 options.RecoveryBatchSize,
                 cancellationToken);
 
-            if (recoveredClaims > 0 || queuedRetries > 0)
+            if (recoveredClaims > 0
+                || recoveredRuns.RequeuedCount > 0
+                || recoveredRuns.FailedUnknownSubmissionCount > 0
+                || queuedRetries > 0)
             {
                 logger.LogInformation(
-                    "Parse Run maintenance recovered {RecoveredClaims} claims and queued {QueuedRetries} retries.",
+                    "Parse Run maintenance recovered {RecoveredClaims} claims, requeued {RequeuedRuns} pre-submission runs, failed {UnknownSubmissions} unknown submissions, and queued {QueuedRetries} retries.",
                     recoveredClaims,
+                    recoveredRuns.RequeuedCount,
+                    recoveredRuns.FailedUnknownSubmissionCount,
                     queuedRetries);
             }
         }

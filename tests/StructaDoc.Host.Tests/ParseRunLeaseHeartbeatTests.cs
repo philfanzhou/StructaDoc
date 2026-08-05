@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Workers;
@@ -89,6 +90,19 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
         };
 
         Assert.Throws<InvalidOperationException>(options.Validate);
+    }
+
+    [Fact]
+    public void Worker_execution_is_opt_in_by_default()
+    {
+        using var client = factory.CreateClient();
+
+        Assert.False(factory.Services
+            .GetRequiredService<ParseRunWorkerOptions>()
+            .ExecutionEnabled);
+        Assert.Contains(
+            factory.Services.GetServices<IHostedService>(),
+            service => service is ParseRunExecutionWorker);
     }
 
     private async Task<ParseRunLease> AddRunningParseRunAsync()

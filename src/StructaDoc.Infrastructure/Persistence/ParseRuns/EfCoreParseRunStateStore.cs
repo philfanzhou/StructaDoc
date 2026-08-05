@@ -24,13 +24,18 @@ public sealed class EfCoreParseRunStateStore(StructaDocDbContext dbContext)
             .Where(parseRun =>
                 parseRun.Id == currentLease.ParseRunId
                 && parseRun.Status == ParseRunStatuses.Claimed
+                && (parseRun.ExternalTaskId == null || parseRun.Stage != null)
                 && parseRun.ClaimedBy == currentLease.WorkerId
                 && parseRun.ConcurrencyVersion == currentLease.ConcurrencyVersion
                 && parseRun.LeaseExpiresAtUtc > nowUtc)
             .ExecuteUpdateAsync(
                 setters => setters
                     .SetProperty(parseRun => parseRun.Status, ParseRunStatuses.Running)
-                    .SetProperty(parseRun => parseRun.Stage, initialStage)
+                    .SetProperty(
+                        parseRun => parseRun.Stage,
+                        parseRun => parseRun.ExternalTaskId == null
+                            ? initialStage
+                            : parseRun.Stage)
                     .SetProperty(
                         parseRun => parseRun.StartedAtUtc,
                         parseRun => parseRun.StartedAtUtc ?? nowUtc)

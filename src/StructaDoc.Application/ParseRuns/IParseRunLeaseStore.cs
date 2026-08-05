@@ -24,4 +24,9 @@ public interface IParseRunLeaseStore
         DateTime nowUtc,
         int maxCount,
         CancellationToken cancellationToken = default);
+
+    Task<ParseRunUnsubmittedRecovery> RecoverExpiredUnsubmittedRunsAsync(
+        DateTime nowUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default);
 }

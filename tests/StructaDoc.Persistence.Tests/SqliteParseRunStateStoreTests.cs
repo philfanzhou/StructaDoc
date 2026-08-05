@@ -194,6 +194,65 @@ public sealed class SqliteParseRunStateStoreTests
         Assert.Equal(4, persistedRun.ConcurrencyVersion);
     }
 
+    [Fact]
+    public async Task Retried_run_with_external_task_preserves_its_recovery_stage()
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var store = new EfCoreParseRunStateStore(dbContext);
+            var submittingLease = Assert.IsType<ParseRunLease>(
+                await store.TryUpdateStageAsync(
+                    runningLease,
+                    ParseRunStages.Submitting,
+                    nowUtc.AddSeconds(2)));
+            var submittedLease = Assert.IsType<ParseRunLease>(
+                await store.TryRecordProviderSubmissionAsync(
+                    submittingLease,
+                    "provider-task-1",
+                    nowUtc.AddSeconds(3)));
+            Assert.NotNull(await store.TryRecordFailureAsync(
+                submittedLease,
+                "provider-temporary-error",
+                "The Provider is temporarily unavailable.",
+                retryable: true,
+                nowUtc.AddMinutes(1),
+                nowUtc.AddSeconds(4)));
+            Assert.Equal(1, await store.QueueDueRetriesAsync(
+                nowUtc.AddMinutes(1),
+                maxCount: 1));
+        }
+
+        ParseRunLease claimedRetry;
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+            claimedRetry = Assert.IsType<ParseRunLease>(
+                await leaseStore.TryClaimNextAsync(
+                    "retry-worker",
+                    nowUtc.AddMinutes(1),
+                    TimeSpan.FromMinutes(5)));
+        }
+
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var store = new EfCoreParseRunStateStore(dbContext);
+            Assert.NotNull(await store.TryStartAsync(
+                claimedRetry,
+                ParseRunStages.Validating,
+                nowUtc.AddMinutes(1).AddSeconds(1)));
+
+            var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+            Assert.Equal(ParseRunStatuses.Running, persistedRun.Status);
+            Assert.Equal(ParseRunStages.WaitingProvider, persistedRun.Stage);
+            Assert.Equal("provider-task-1", persistedRun.ExternalTaskId);
+            Assert.Equal(2, persistedRun.AttemptCount);
+        }
+    }
+
     [Theory]
     [InlineData(false, 3)]
     [InlineData(true, 1)]

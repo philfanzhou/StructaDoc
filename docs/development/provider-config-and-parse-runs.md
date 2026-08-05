@@ -29,7 +29,7 @@ Provider 配置分成逻辑配置和不可变版本：
 
 `POST /api/v1/documents/{documentId}/parse-runs` 要求管理员会话或 `parses:write`。管理员请求还要求 antiforgery token。请求可指定 `providerConfigId`；省略时使用当前启用的默认配置。没有可用配置时返回 `503`，显式 ID 不存在时返回 `404`。
 
-成功创建会持久化 `queued` 状态、Document ID、Provider 类型、逻辑配置 ID、不可变版本 ID、非敏感 options JSON、源/计划提交媒体类型、最大尝试次数、调用主体和时间。默认最大尝试次数为 3，可请求 1–10；options 必须是最多 16 KiB 的 JSON object，并拒绝任何层级中名为 credential、password、secret、token、API key 或 authorization 的字段。当前阶段尚未执行 Provider 能力协商，因此 `submittedMediaType` 初始等于源媒体类型，未来 Worker 决定需要 LibreOffice 转换时会记录独立转换信息。
+成功创建会持久化 `queued` 状态、Document ID、Provider 类型、逻辑配置 ID、不可变版本 ID、非敏感 options JSON、源/计划提交媒体类型、最大尝试次数、调用主体和时间。默认最大尝试次数为 3，可请求 1–10；options 必须是最多 16 KiB 的 JSON object，并拒绝任何层级中名为 credential、password、secret、token、API key 或 authorization 的字段。`submittedMediaType` 当前初始等于源媒体类型；执行器会在出站前用固定 Provider 版本做能力和大小校验，不支持的格式在 LibreOffice 转换器接入前失败且不会发送。未来发生转换时会记录独立转换信息。
 
 调用方可发送单个、最多 256 个可见 ASCII 字符的 `Idempotency-Key`。幂等范围是认证主体、Document 和 Parse Run 创建操作：首次创建返回 `201`；重复请求返回原记录、`200` 和 `Idempotency-Replayed: true`，不会因默认 Provider 后续改变而创建新任务。不提供该 Header 时，每次请求都会创建独立 Parse Run。
 

@@ -8,7 +8,7 @@
 
 本规格定义 StructaDoc Parse Run 的持久化状态、执行阶段、原子抢占、租约、重试、取消和崩溃恢复语义。它描述完整目标行为；具体已实现范围以本节及代码、测试为准。
 
-当前基础实现已覆盖 Parse Run 创建与幂等返回、状态查询、Provider 配置版本快照、原子抢占、续租、未启动抢占过期恢复、`claimed → running`、失败进入 `retry-wait` 或 `failed`，以及 Host 维护 Worker 将到期重试恢复为 `queued`。Provider 执行契约、Cloud/Local HTTP 适配、只允许当前租约持有者读取执行上下文、Stage 与外部任务 ID 条件写入、Cloud 两阶段上传加密 checkpoint、已有外部任务的过期运行接管、串行化心跳会话、签名传输连接级公共地址策略、Provider ZIP 结果的幂等受限接收、Cloud/Local MinerU ZIP 到 Parse Bundle 的确定性归一化，以及 Canonical 结果存储复核和 `running → succeeded` 幂等事务也已实现。实际执行器、更多 MinerU 输出版本、取消和尝试明细记录仍未实现，因此当前 Worker 不会抢占并执行解析任务。
+当前基础实现已覆盖 Parse Run 创建与幂等返回、状态查询、Provider 配置版本快照、原子抢占、续租、未启动抢占过期恢复、`claimed → running`、失败进入 `retry-wait` 或 `failed`，以及 Host 维护 Worker 将到期重试恢复为 `queued`。Provider 执行契约、Cloud/Local HTTP 适配、只允许当前租约持有者读取执行上下文、Stage 与外部任务 ID 条件写入、Cloud 两阶段上传加密 checkpoint、已有外部任务的过期运行接管、串行化心跳会话、签名传输连接级公共地址策略、Provider ZIP 结果的幂等受限接收、Cloud/Local MinerU ZIP 到 Parse Bundle 的确定性归一化、Canonical 结果存储复核和 `running → succeeded` 幂等事务，以及把这些边界串联起来的可恢复执行器均已实现。真实执行默认由 `Worker:ExecutionEnabled=false` 关闭；LibreOffice 转换、更多 MinerU 输出版本、取消和尝试明细记录仍未实现。
 
 ## 2. Authority
 
@@ -116,6 +116,7 @@ SQLite 只承诺单个 StructaDoc 应用实例内的 Worker 并发，不支持�
 
 - `claimed` 且没有外部任务 ID：租约过期后可回到 `queued`。
 - `running` 且已有外部任务 ID：新 Worker 应恢复查询现有外部任务，不得默认重新提交。
+- `running`、尚无外部任务 ID且处于提交前 Stage：租约过期后可以回到 `queued`；处于 `submitting` 时为避免未知远端结果被重复提交，保守进入 `failed` 并记录 `provider-submission-outcome-unknown`。
 - `persisting` 阶段中断：新 Worker 执行幂等持久化和完整性检查。
 - 无法确定外部任务是否已创建时，必须依赖 Provider 幂等能力或人工可诊断状态，不能盲目重复提交。
 

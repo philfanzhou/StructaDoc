@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、Cloud 两阶段上传加密 checkpoint、运行中任务接管、串行化心跳会话、MinerU Cloud 签名上传与 Local multipart HTTP 适配、签名传输连接级公共地址策略、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现；实际任务执行器、管理员配置 Base URL 的部署级出站策略、统一结果读取 API、管理员账户管理、文档删除和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试，不会调用 MinerU；HTTP 适配器已经注册但只有在可恢复执行器接入后才会产生出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、Cloud 两阶段上传加密 checkpoint、运行中任务接管、串行化心跳会话、可恢复执行器、MinerU Cloud 签名上传与 Local multipart HTTP 适配、签名传输连接级公共地址策略、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现；LibreOffice 转换、管理员配置 Base URL 的部署级出站策略、统一结果读取 API、管理员账户管理、文档删除和管理网页尚未实现。实际解析执行默认关闭，只有显式设置 `Worker__ExecutionEnabled=true` 后，执行 Worker 才会抢占队列并产生 Provider 出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -58,10 +58,13 @@ dotnet run --project src/StructaDoc.Host
 - `Database__ServerVersion`：MySQL / MariaDB 必填，例如 `8.4.0` 或 `11.4.0`；
 - `Database__ApplyMigrationsOnStartup`：是否由 Host 在启动时应用迁移。
 - `Worker__Enabled`：是否启用 Parse Run 维护循环；
+- `Worker__ExecutionEnabled`：是否启用真实 Parse Run 执行，默认 `false`；启用后会向所选 Provider 发送文档；
 - `Worker__MaintenanceInterval`：检查到期抢占和重试的时间间隔；
 - `Worker__RecoveryBatchSize`：每轮每类任务的最大恢复数量。
 - `Worker__LeaseDuration`：执行租约每次授予或续租后的有效时间；
 - `Worker__HeartbeatInterval`：执行期间的续租间隔，必须短于租约有效时间。
+- `Worker__RetryDelay`：瞬时执行错误进入 `retry-wait` 后的固定等待时间；
+- `Worker__MinimumPollDelay`、`Worker__MaximumPollDelay`：约束 Provider 建议轮询间隔的下限和上限；
 - `ProviderResults__MaxArchiveBytes`：Provider ZIP 压缩包大小上限；
 - `ProviderResults__MaxEntryCount`：ZIP 最大条目数；
 - `ProviderResults__MaxEntryBytes`、`ProviderResults__MaxExpandedBytes`：单条目和总展开字节上限；

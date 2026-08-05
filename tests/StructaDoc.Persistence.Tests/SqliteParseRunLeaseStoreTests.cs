@@ -180,6 +180,57 @@ public sealed class SqliteParseRunLeaseStoreTests
         Assert.Equal(4, persistedRun.ConcurrencyVersion);
     }
 
+    [Theory]
+    [InlineData(ParseRunStages.Validating, ParseRunStatuses.Queued, null)]
+    [InlineData(
+        ParseRunStages.Submitting,
+        ParseRunStatuses.Failed,
+        "provider-submission-outcome-unknown")]
+    public async Task Expired_running_task_without_external_id_is_recovered_conservatively(
+        string stage,
+        string expectedStatus,
+        string? expectedErrorCode)
+    {
+        await using var database = await SqliteLeaseTestDatabase.CreateAsync(parseRunCount: 1);
+        var nowUtc = DateTime.UtcNow;
+        var claimedLease = await ClaimOneAsync(
+            database.Options,
+            "worker-1",
+            nowUtc,
+            TimeSpan.FromSeconds(1));
+        Assert.NotNull(claimedLease);
+
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            Assert.NotNull(await stateStore.TryStartAsync(
+                claimedLease,
+                stage,
+                nowUtc.AddMilliseconds(100)));
+        }
+
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+            var recovery = await leaseStore.RecoverExpiredUnsubmittedRunsAsync(
+                nowUtc.AddSeconds(2),
+                maxCount: 10);
+
+            Assert.Equal(expectedStatus == ParseRunStatuses.Queued ? 1 : 0, recovery.RequeuedCount);
+            Assert.Equal(expectedStatus == ParseRunStatuses.Failed ? 1 : 0, recovery.FailedUnknownSubmissionCount);
+        }
+
+        await using var verificationContext = new StructaDocDbContext(database.Options);
+        var persistedRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync();
+        Assert.Equal(expectedStatus, persistedRun.Status);
+        Assert.Equal(expectedErrorCode, persistedRun.ErrorCode);
+        Assert.Null(persistedRun.ClaimedBy);
+        Assert.Null(persistedRun.LeaseExpiresAtUtc);
+        Assert.Equal(
+            expectedStatus == ParseRunStatuses.Failed,
+            persistedRun.CompletedAtUtc.HasValue);
+    }
+
     private static async Task<StructaDoc.Application.ParseRuns.ParseRunLease?> ClaimOneAsync(
         DbContextOptions<StructaDocDbContext> options,
         string workerId,

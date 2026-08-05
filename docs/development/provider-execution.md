@@ -31,7 +31,7 @@
 
 `IParseRunStateStore` 只允许当前运行租约更新 Stage。Local 等原子提交在获得任务 ID 后，从 `submitting` 使用同一个 compare-and-set 写入 ID 并进入 `waiting-provider`。Cloud 先由 `IParseRunSubmissionCheckpointStore` 原子写入外部 ID 与加密 continuation、保持 `submitting`，确认上传后再清除 continuation 并进入 `waiting-provider`；ID 不允许覆盖。租约过期的 `running` 任务只要已有外部任务 ID即可进入自动接管候选，新 Worker 保留原 Stage 和 attempt，复用已有 checkpoint 或继续查询既有任务。
 
-Host 的 `ParseRunLeaseHeartbeat` 把心跳续租与阶段、外部任务 ID 写入串行化在一个会话内，并始终传播最新并发版本。续租失败会取消会话执行 token，使后续 Provider 调用可以停止。它不会取消已经在远端完成的请求，因此所有数据库写入仍必须验证当前租约。
+Host 的 `ParseRunLeaseHeartbeat` 把心跳续租与阶段、外部任务 ID/checkpoint 写入、失败转换和最终 Canonical 提交串行化在一个会话内，并始终传播最新并发版本。最终提交前先续满一次租约，再在同一互斥边界内复核存储并执行数据库事务。续租失败会取消会话执行 token，使后续 Provider 调用可以停止。它不会取消已经在远端完成的请求，因此所有数据库写入仍必须验证当前租约。
 
 `IProviderResultIntake` 已提供 Provider ZIP 结果的固定逻辑键落盘和只读安全校验。它限制压缩包大小、条目数、单条目/总展开大小、压缩比和路径，并拒绝路径穿越、跨平台重复路径、链接及特殊文件。具体行为见 [`provider-result-intake.md`](./provider-result-intake.md)。
 
@@ -39,17 +39,21 @@ Host 的 `ParseRunLeaseHeartbeat` 把心跳续租与阶段、外部任务 ID 写
 
 `MinerUCloudParseProvider` 和 `MinerULocalParseProvider` 已按两套独立协议实现能力报告、提交、状态查询、流式结果和当前上游取消能力。Cloud 使用可恢复的签名 batch 上传且不向上传/CDN 主机转发 Token；Local 使用 multipart `/tasks`。适配器、options 白名单、错误分类与出站边界见 [`mineru-http-providers.md`](./mineru-http-providers.md)。
 
-## 当前未启用执行的原因
+## 可恢复执行器
 
-Host 的维护 Worker 仍只做过期抢占和重试恢复。HTTP 适配器已注册，但当前不会解析 `queued` 任务，因此不会产生 MinerU 出站请求。启用真实提交前还需要同一执行链具备：
+`ParseRunExecutionWorker` 和 `ParseRunExecutor` 已把现有边界串成一条执行链：
 
-1. 把 Provider 调用、现有心跳会话、结果接收、归一化和 Canonical 成功事务接入完整执行器；
-2. 用部署目标的真实 MinerU 版本和样本补齐协议/输出差异；
-3. 取消请求传播和尝试明细记录；
-4. 明确管理员配置 Base URL 的部署级出站策略和受信网络边界。
+1. 优先接管租约过期且已有外部任务 ID 的 `running` 任务，再抢占新的 `queued` 任务；
+2. 在当前租约下加载固定配置版本和源文档，执行能力、媒体类型与大小校验；
+3. 执行 Local 原子提交或 Cloud checkpoint 两阶段提交；
+4. 按受限间隔轮询，流式接收并验证 Provider ZIP；
+5. 从已保存 Archive 确定性重建 Parse Bundle；
+6. 在最终租约和数据库事务下提交 Canonical 结果。
 
-Cloud 的远端预分配中间状态已可恢复，Canonical 结果持久化边界也已实现；但完整编排器和部署集成证据尚未完成，因此当前只注册适配器，不由维护 Worker 调用。
+恢复时如果 Archive 已存在，执行器不再依赖 Provider 长期保存结果，而是从本地 Archive 继续归一化或提交。瞬时轮询、下载、归一化和存储错误进入 `retry-wait`；已有外部 ID/checkpoint 和 Stage 会保留。Local 等没有 checkpoint 的原子提交如果响应结果未知，不会自动重发，而是以 `provider-submission-outcome-unknown` 失败；Cloud 分配请求在 checkpoint 落库前结果未知时也采用同一保守规则。
+
+真实执行由 `Worker:ExecutionEnabled` 显式开启且默认 `false`。启用意味着文档会发送到管理员选择的 Cloud 或 Local Provider。当前每个 Host 串行执行一个任务；服务端数据库可通过多个 Host 实例并行，SQLite 仍只支持单实例。尚未完成的执行能力包括 LibreOffice 格式回退、取消传播、独立尝试明细、部署目标真实 MinerU 集成样本，以及管理员配置 Base URL 的部署级受信网络策略。
 
 ## 已验证行为
 
-SQLite 与本地存储测试覆盖：媒体类型能力匹配、凭据默认脱敏、重复 Provider 类型拒绝、Cloud checkpoint 加密保存/清除与恢复提交、签名上传不转发 Token、私网目标拒绝、Local multipart、Provider 状态/错误映射和结果流所有权、按类型解析适配器、执行上下文固定读取旧配置版本并拒绝过期并发令牌、阶段与外部 ID 条件写入、运行任务单次接管、心跳与状态写入共享最新租约、ZIP 受限接收，以及 Cloud/Local MinerU 条目识别、Canonical 映射和确定性重放。服务端数据库契约也包含 checkpoint、状态写入与接管，但本机缺少容器运行时，仍待实际执行。
+SQLite 与本地存储测试覆盖：媒体类型能力匹配、凭据默认脱敏、重复 Provider 类型拒绝、Cloud checkpoint 加密保存/清除与恢复提交、签名上传不转发 Token、私网目标拒绝、Local multipart、Provider 状态/错误映射和结果流所有权、按类型解析适配器、执行上下文固定读取旧配置版本并拒绝过期并发令牌、阶段与外部 ID 条件写入、运行任务单次接管、无外部 ID 过期恢复、心跳与状态写入共享最新租约、ZIP 受限接收、Cloud/Local MinerU 条目识别、Canonical 映射和确定性重放，以及从抢占到 Canonical 成功的执行器端到端路径。服务端数据库契约也包含 checkpoint、状态写入、保守恢复与接管，但本机缺少容器运行时，仍待实际执行。

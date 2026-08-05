@@ -60,7 +60,9 @@ builder.Services.AddStructaDocHostAuthentication(authenticationOptions);
 builder.Services.AddSingleton(workerOptions);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ParseRunLeaseHeartbeat>();
+builder.Services.AddScoped<ParseRunExecutor>();
 builder.Services.AddHostedService<ParseRunMaintenanceWorker>();
+builder.Services.AddHostedService<ParseRunExecutionWorker>();
 builder.Services.Configure<FormOptions>(options =>
     options.MultipartBodyLengthLimit = checked(ingestionOptions.MaxUploadBytes + (1024 * 1024)));
 

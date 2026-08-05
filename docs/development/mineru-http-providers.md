@@ -58,13 +58,12 @@ Local backend 来自不可变 Provider 配置的 `backend`；Cloud model version
 - 结果响应所有权随 `ProviderResultContent` 转移，调用方释放结果时同时释放网络流和 `HttpResponseMessage`；
 - 外部 task ID 只作为转义后的单个 URL path segment 使用；源文件名必须是安全的单段名称。
 
-## 尚未启用和剩余风险
+## 执行启用和剩余风险
 
-适配器已注册到 Host DI，但维护 Worker 仍不会抢占并执行新的 Parse Run。真实执行启用前还必须完成：
+适配器已接入可恢复执行器，但 `Worker:ExecutionEnabled` 默认 `false`。管理员显式开启后，执行 Worker 才会抢占 Parse Run 并发送文档。仍需完成：
 
-- 把租约心跳、Provider 调用、结果接收、归一化和 Canonical 提交编排为可恢复执行器；
 - 使用部署目标的真实 MinerU 版本和样本执行集成测试；
-- 接入取消请求和执行尝试明细。
+- 接入取消请求和执行尝试明细；
 - 根据部署网络明确管理员配置的 Cloud/Local Base URL 允许范围；Local 为支持同机和受信内网部署不会套用公网限定。
 
-因此，本实现使协议适配层可独立测试和继续集成，但尚不代表生产任务执行已经开启。
+当前执行器只直接提交 Provider 原生支持的源格式；LibreOffice 回退尚未接入。不支持的媒体类型会在读取和出站前失败，不会静默转换或发送。

@@ -203,12 +203,101 @@ public sealed class EfCoreParseRunLeaseStore(StructaDocDbContext dbContext)
                         .SetProperty(parseRun => parseRun.ClaimedBy, (string?)null)
                         .SetProperty(parseRun => parseRun.LeaseExpiresAtUtc, (DateTime?)null)
                         .SetProperty(
+                            parseRun => parseRun.ProtectedSubmissionContinuation,
+                            (string?)null)
+                        .SetProperty(
                             parseRun => parseRun.ConcurrencyVersion,
                             parseRun => parseRun.ConcurrencyVersion + 1),
                     cancellationToken);
         }
 
         return recoveredCount;
+    }
+
+    public async Task<ParseRunUnsubmittedRecovery> RecoverExpiredUnsubmittedRunsAsync(
+        DateTime nowUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUtc(nowUtc);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
+
+        var candidates = await dbContext.ParseRuns
+            .AsNoTracking()
+            .Where(parseRun =>
+                parseRun.Status == ParseRunStatuses.Running
+                && parseRun.ExternalTaskId == null
+                && parseRun.LeaseExpiresAtUtc <= nowUtc)
+            .OrderBy(parseRun => parseRun.LeaseExpiresAtUtc)
+            .ThenBy(parseRun => parseRun.Id)
+            .Select(parseRun => new
+            {
+                parseRun.Id,
+                parseRun.Stage,
+                parseRun.ConcurrencyVersion,
+            })
+            .Take(maxCount)
+            .ToListAsync(cancellationToken);
+
+        var requeuedCount = 0;
+        var failedCount = 0;
+        foreach (var candidate in candidates)
+        {
+            var submissionOutcomeUnknown = candidate.Stage == ParseRunStages.Submitting;
+            var affectedRows = await dbContext.ParseRuns
+                .Where(parseRun =>
+                    parseRun.Id == candidate.Id
+                    && parseRun.Status == ParseRunStatuses.Running
+                    && parseRun.ExternalTaskId == null
+                    && parseRun.LeaseExpiresAtUtc <= nowUtc
+                    && parseRun.ConcurrencyVersion == candidate.ConcurrencyVersion)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(
+                            parseRun => parseRun.Status,
+                            submissionOutcomeUnknown
+                                ? ParseRunStatuses.Failed
+                                : ParseRunStatuses.Queued)
+                        .SetProperty(
+                            parseRun => parseRun.ErrorCode,
+                            submissionOutcomeUnknown
+                                ? "provider-submission-outcome-unknown"
+                                : null)
+                        .SetProperty(
+                            parseRun => parseRun.ErrorMessage,
+                            submissionOutcomeUnknown
+                                ? "The Provider submission outcome is unknown and cannot be retried safely."
+                                : null)
+                        .SetProperty(
+                            parseRun => parseRun.ProtectedSubmissionContinuation,
+                            (string?)null)
+                        .SetProperty(parseRun => parseRun.ClaimedBy, (string?)null)
+                        .SetProperty(parseRun => parseRun.LeaseExpiresAtUtc, (DateTime?)null)
+                        .SetProperty(
+                            parseRun => parseRun.NextAttemptAtUtc,
+                            nowUtc)
+                        .SetProperty(
+                            parseRun => parseRun.CompletedAtUtc,
+                            submissionOutcomeUnknown ? nowUtc : null)
+                        .SetProperty(
+                            parseRun => parseRun.ConcurrencyVersion,
+                            parseRun => parseRun.ConcurrencyVersion + 1),
+                    cancellationToken);
+
+            if (affectedRows == 1)
+            {
+                if (submissionOutcomeUnknown)
+                {
+                    failedCount++;
+                }
+                else
+                {
+                    requeuedCount++;
+                }
+            }
+        }
+
+        return new ParseRunUnsubmittedRecovery(requeuedCount, failedCount);
     }
 
     private static void ValidateLeaseArguments(DateTime nowUtc, TimeSpan leaseDuration)

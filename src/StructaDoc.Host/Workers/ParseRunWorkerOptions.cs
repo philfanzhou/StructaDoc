@@ -6,6 +6,8 @@ public sealed class ParseRunWorkerOptions
 
     public bool Enabled { get; init; } = true;
 
+    public bool ExecutionEnabled { get; init; }
+
     public TimeSpan MaintenanceInterval { get; init; } = TimeSpan.FromSeconds(5);
 
     public int RecoveryBatchSize { get; init; } = 100;
@@ -13,6 +15,12 @@ public sealed class ParseRunWorkerOptions
     public TimeSpan LeaseDuration { get; init; } = TimeSpan.FromMinutes(2);
 
     public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(30);
+
+    public TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(30);
+
+    public TimeSpan MinimumPollDelay { get; init; } = TimeSpan.FromSeconds(1);
+
+    public TimeSpan MaximumPollDelay { get; init; } = TimeSpan.FromSeconds(30);
 
     public void Validate()
     {
@@ -43,6 +51,23 @@ public sealed class ParseRunWorkerOptions
         {
             throw new InvalidOperationException(
                 "Worker:HeartbeatInterval must be shorter than Worker:LeaseDuration.");
+        }
+
+        if (RetryDelay <= TimeSpan.Zero)
+        {
+            throw new InvalidOperationException("Worker:RetryDelay must be positive.");
+        }
+
+        if (MinimumPollDelay < TimeSpan.FromMilliseconds(100))
+        {
+            throw new InvalidOperationException(
+                "Worker:MinimumPollDelay must be at least 100 milliseconds.");
+        }
+
+        if (MaximumPollDelay < MinimumPollDelay)
+        {
+            throw new InvalidOperationException(
+                "Worker:MaximumPollDelay must not be shorter than Worker:MinimumPollDelay.");
         }
     }
 }
