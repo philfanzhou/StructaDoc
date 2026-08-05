@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using StructaDoc.Application.Documents;
 using StructaDoc.Contracts.System;
+using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
 using StructaDoc.Host.Workers;
+using StructaDoc.Infrastructure.Authentication;
 using StructaDoc.Infrastructure.Documents;
 using StructaDoc.Infrastructure.Persistence;
 using StructaDoc.Infrastructure.Storage;
@@ -27,12 +29,17 @@ var storageOptions = builder.Configuration
     .Get<FileStorageOptions>() ?? new FileStorageOptions();
 ingestionOptions.Validate();
 storageOptions.Validate();
+var authenticationOptions = builder.Configuration
+    .GetSection(StructaDocAuthenticationOptions.SectionName)
+    .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
+authenticationOptions.Validate();
 
 builder.Services
     .AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
 builder.Services.AddStructaDocPersistence(databaseOptions);
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions);
+builder.Services.AddStructaDocHostAuthentication(authenticationOptions);
 builder.Services.AddSingleton(workerOptions);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHostedService<ParseRunMaintenanceWorker>();
@@ -44,6 +51,13 @@ var app = builder.Build();
 await app.Services.ApplyStructaDocMigrationsAsync(
     databaseOptions,
     app.Lifetime.ApplicationStopping);
+await app.Services.BootstrapStructaDocAdministratorAsync(
+    authenticationOptions,
+    app.Lifetime.ApplicationStopping);
+
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
 
 var serviceVersion = Assembly
     .GetExecutingAssembly()
@@ -59,6 +73,9 @@ if (ingestionOptions.UploadApiEnabled)
 {
     app.MapDocumentUpload(ingestionOptions.MaxUploadBytes);
 }
+
+app.MapAdministratorSessionEndpoints(
+    authenticationOptions.AdministratorSessionLifetime);
 
 app.MapHealthChecks(
     "/health/live",

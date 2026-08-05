@@ -7,6 +7,10 @@ namespace StructaDoc.Infrastructure.Persistence;
 public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> options)
     : DbContext(options)
 {
+    public DbSet<AdminUserEntity> AdminUsers => Set<AdminUserEntity>();
+
+    public DbSet<ApiClientEntity> ApiClients => Set<ApiClientEntity>();
+
     public DbSet<DocumentEntity> Documents => Set<DocumentEntity>();
 
     public DbSet<ParseRunEntity> ParseRuns => Set<ParseRunEntity>();

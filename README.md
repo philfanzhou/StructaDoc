@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租、失败转换和到期恢复。本地文件存储和受配置开关保护的开发期上传 API 已实现；认证、文档管理 API、解析 Provider、实际任务执行器和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租、失败转换和到期恢复。本地文件存储、Document 上传、管理员 Cookie 会话、API Key scope 授权和 antiforgery 防护已经实现；管理员/API Client 管理、文档读取 API、解析 Provider、实际任务执行器和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -32,7 +32,11 @@ dotnet run --project src/StructaDoc.Host
 - `GET /api/v1/system/info`：服务身份和版本；
 - `GET /health/live`：进程存活检查；
 - `GET /health/ready`：服务就绪检查，当前包含数据库连通性和本地文件存储可写性；S3 接入后也必须纳入该检查。
-- `POST /api/v1/documents`：单文件 `multipart/form-data` 上传，字段名为 `file`；默认关闭，仅用于认证实现前的隔离开发环境。
+- `GET /api/v1/admin/antiforgery`：获取管理员登录或写操作使用的 antiforgery token；
+- `POST /api/v1/admin/session`：管理员登录；
+- `GET /api/v1/admin/session`：读取当前管理员会话；
+- `DELETE /api/v1/admin/session`：退出管理员会话；
+- `POST /api/v1/documents`：单文件 `multipart/form-data` 上传，字段名为 `file`；要求管理员会话或具有 `documents:write` 的 API Key。
 
 默认配置使用 `./data/structadoc.db` SQLite 文件并在启动时应用迁移。可以通过环境变量切换数据库：
 
@@ -43,12 +47,16 @@ dotnet run --project src/StructaDoc.Host
 - `Worker__Enabled`：是否启用 Parse Run 维护循环；
 - `Worker__MaintenanceInterval`：检查到期抢占和重试的时间间隔；
 - `Worker__RecoveryBatchSize`：每轮每类任务的最大恢复数量。
-- `Documents__UploadApiEnabled`：是否映射当前尚未认证的开发期上传端点，默认 `false`；
+- `Documents__UploadApiEnabled`：是否映射上传端点，默认 `true`；
 - `Documents__MaxUploadBytes`：单个原始文档的最大字节数；
 - `Storage__Provider`：当前只实现 `Local`；
 - `Storage__RootPath`：原文件存储卷在容器内的根目录。
+- `Authentication__DataProtectionKeysPath`：管理员 Cookie 和 antiforgery key ring 的持久化目录；
+- `Authentication__AdministratorSessionLifetime`：管理员会话寿命；
+- `Authentication__LoginPermitLimit`、`Authentication__LoginRateLimitWindow`：每个来源 IP 的管理员登录尝试限额和固定时间窗口；
+- `Authentication__BootstrapAdministratorEmail`、`Authentication__BootstrapAdministratorPassword`：仅通过环境变量或 Secret 注入的首个管理员凭据。
 
-连接字符串中的账号和密码必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)，文件落盘和上传限制见 [`docs/development/file-storage.md`](./docs/development/file-storage.md)。
+连接字符串、bootstrap 密码和其他凭据必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)，文件落盘和上传限制见 [`docs/development/file-storage.md`](./docs/development/file-storage.md)，认证细节见 [`docs/development/authentication.md`](./docs/development/authentication.md)。
 
 ## 核心目标
 
@@ -226,14 +234,14 @@ GET    /api/v1/parse-runs/{parseRunId}/artifacts
 
 ### 调用方认证
 
-管理网页会话与应用调用凭据相互独立。其他应用计划通过 API Key 或 Client Credential 调用，并使用最小权限范围，例如：
+管理网页会话与应用调用凭据相互独立。当前管理员使用 Cookie 会话，其他应用使用 `Authorization: ApiKey <credential>` 调用，并使用最小权限范围，例如：
 
 - `documents:read`
 - `documents:write`
 - `parses:read`
 - `parses:write`
 
-调用方不需要也不允许复用管理员浏览器 Cookie。
+调用方不需要也不允许复用管理员浏览器 Cookie。API Client 管理端点尚未实现；目前只有认证、哈希存储和 scope 授权基础。
 
 ## 计划技术栈
 

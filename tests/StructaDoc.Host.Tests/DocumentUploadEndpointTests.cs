@@ -5,8 +5,11 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using StructaDoc.Application.Authentication;
 using StructaDoc.Contracts.Documents;
+using StructaDoc.Infrastructure.Authentication;
 using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Infrastructure.Persistence.Entities;
 
 namespace StructaDoc.Host.Tests;
 
@@ -17,6 +20,7 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
     public async Task Pdf_upload_uses_detected_type_and_persists_original_bytes()
     {
         using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
         var contentBytes = "%PDF-1.7\nStructaDoc test\n%%EOF"u8.ToArray();
         using var requestContent = CreateUpload(contentBytes, "../unsafe.PDF", "text/plain");
 
@@ -43,6 +47,7 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
             .AsNoTracking()
             .SingleAsync(entity => entity.Id == document.Id);
         Assert.Equal(document.Sha256, persisted.Sha256);
+        Assert.StartsWith("administrator:", persisted.CreatedBy, StringComparison.Ordinal);
 
         await using var storedContent = File.OpenRead(
             Path.Combine(factory.StorageRootPath, persisted.StorageRef.Replace('/', Path.DirectorySeparatorChar)));
@@ -55,6 +60,7 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
     public async Task Unsupported_upload_is_rejected_without_creating_a_document()
     {
         using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
         var countBefore = await CountDocumentsAsync();
         var fileCountBefore = CountStoredFiles();
         using var requestContent = CreateUpload("plain text"u8.ToArray(), "notes.txt", "text/plain");
@@ -70,6 +76,7 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
     public async Task Oversized_upload_returns_payload_too_large()
     {
         using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
         using var requestContent = CreateUpload(
             new byte[(1024 * 1024) + 1],
             "large.pdf",
@@ -96,6 +103,145 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Upload_requires_an_authenticated_subject()
+    {
+        using var client = factory.CreateClient();
+        using var requestContent = CreateUpload(
+            "%PDF-1.7\n%%EOF"u8.ToArray(),
+            "sample.pdf",
+            "application/pdf");
+
+        using var response = await client.PostAsync("/api/v1/documents", requestContent);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Administrator_upload_requires_antiforgery_token()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        using var requestContent = CreateUpload(
+            "%PDF-1.7\n%%EOF"u8.ToArray(),
+            "sample.pdf",
+            "application/pdf");
+
+        using var response = await client.PostAsync("/api/v1/documents", requestContent);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Api_client_with_documents_write_scope_can_upload_without_antiforgery()
+    {
+        using var client = factory.CreateClient();
+        var apiKey = await CreateApiClientAsync(AuthenticationScopes.DocumentsWrite);
+        using var requestContent = CreateUpload(
+            "%PDF-1.7\nAPI client\n%%EOF"u8.ToArray(),
+            "api-client.pdf",
+            "application/pdf");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/documents")
+        {
+            Content = requestContent,
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "ApiKey",
+            apiKey.Credential);
+
+        using var response = await client.SendAsync(request);
+        var document = await response.Content.ReadFromJsonAsync<DocumentResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(document);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+        var createdBy = await dbContext.Documents
+            .Where(entity => entity.Id == document.Id)
+            .Select(entity => entity.CreatedBy)
+            .SingleAsync();
+        Assert.Equal($"api-client:{apiKey.ClientId:D}", createdBy);
+    }
+
+    [Fact]
+    public async Task Api_client_without_documents_write_scope_is_forbidden()
+    {
+        using var client = factory.CreateClient();
+        var apiKey = await CreateApiClientAsync(AuthenticationScopes.DocumentsRead);
+        using var requestContent = CreateUpload(
+            "%PDF-1.7\nRead only\n%%EOF"u8.ToArray(),
+            "read-only.pdf",
+            "application/pdf");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/documents")
+        {
+            Content = requestContent,
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "ApiKey",
+            apiKey.Credential);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Invalid_api_key_is_unauthorized()
+    {
+        using var client = factory.CreateClient();
+        var clientId = Guid.NewGuid();
+        var apiKey = ApiKeyCredential.Create(clientId);
+        using var requestContent = CreateUpload(
+            "%PDF-1.7\nInvalid key\n%%EOF"u8.ToArray(),
+            "invalid-key.pdf",
+            "application/pdf");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/documents")
+        {
+            Content = requestContent,
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "ApiKey",
+            apiKey.Credential);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Revoked_api_client_is_unauthorized()
+    {
+        using var client = factory.CreateClient();
+        var apiKey = await CreateApiClientAsync(AuthenticationScopes.DocumentsWrite);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+            var apiClient = await dbContext.ApiClients.SingleAsync(
+                entity => entity.Id == apiKey.ClientId);
+            apiClient.RevokedAtUtc = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync();
+        }
+
+        using var requestContent = CreateUpload(
+            "%PDF-1.7\nRevoked key\n%%EOF"u8.ToArray(),
+            "revoked-key.pdf",
+            "application/pdf");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/documents")
+        {
+            Content = requestContent,
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "ApiKey",
+            apiKey.Credential);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     private async Task<int> CountDocumentsAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -108,6 +254,25 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
         return Directory.Exists(factory.StorageRootPath)
             ? Directory.GetFiles(factory.StorageRootPath, "*", SearchOption.AllDirectories).Length
             : 0;
+    }
+
+    private async Task<IssuedApiKey> CreateApiClientAsync(string scopes)
+    {
+        var clientId = Guid.NewGuid();
+        var apiKey = ApiKeyCredential.Create(clientId);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+        dbContext.ApiClients.Add(new ApiClientEntity
+        {
+            Id = clientId,
+            Name = $"Test client {clientId:N}",
+            SecretHash = apiKey.SecretHash,
+            Scopes = scopes,
+            IsActive = true,
+            CreatedAtUtc = DateTime.UtcNow,
+        });
+        await dbContext.SaveChangesAsync();
+        return apiKey;
     }
 
     private static MultipartFormDataContent CreateUpload(

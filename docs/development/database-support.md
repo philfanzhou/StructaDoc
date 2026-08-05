@@ -11,10 +11,10 @@
 
 | Database | EF Core Provider | Migration assembly | Current verification |
 |---|---|---|---|
-| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、CRUD、乐观并发、抢占、续租、失败/重试转换和过期恢复 |
-| PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `StructaDoc.Migrations.PostgreSql` | Provider、初始迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
-| MySQL | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MySql` | MySQL 8.4 方言、初始迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
-| MariaDB | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | MariaDB 11.4 方言、初始迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
+| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、Document/Parse Run/认证数据 CRUD、乐观并发、抢占、续租、失败/重试转换和过期恢复 |
+| PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `StructaDoc.Migrations.PostgreSql` | Provider、包含认证表的迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
+| MySQL | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MySql` | MySQL 8.4 方言、包含认证表的迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
+| MariaDB | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | MariaDB 11.4 方言、包含认证表的迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
 
 在真实数据库迁移、CRUD、并发抢占、租约恢复和升级测试全部通过前，PostgreSQL、MySQL 和 MariaDB 不标记为发布支持。MySQL 与 MariaDB 即使使用同一 Provider，也保留独立迁移和测试目标。
 
@@ -87,7 +87,7 @@ $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
 dotnet test tests/StructaDoc.DatabaseContractTests
 ```
 
-当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、并发抢占不重复、续租令牌失效、未启动任务的租约过期恢复，以及运行、失败、重试等待和到期回队列转换。测试成功前不得更新上面的发布支持状态。
+当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、Document/管理员/API Client 持久化、并发抢占不重复、续租令牌失效、未启动任务的租约过期恢复，以及运行、失败、重试等待和到期回队列转换。测试成功前不得更新上面的发布支持状态。
 
 ## Remaining Verification
 

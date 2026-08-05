@@ -1,7 +1,11 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
+using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.Storage;
 using StructaDoc.Contracts.Documents;
+using StructaDoc.Host.Authentication;
 
 namespace StructaDoc.Host.Documents;
 
@@ -20,6 +24,7 @@ public static class DocumentUploadEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
             .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
+            .RequireAuthorization(AuthorizationPolicies.DocumentsWrite)
             .WithMetadata(new RequestSizeLimitAttribute(
                 checked(maxUploadBytes + MultipartOverheadAllowance)));
     }
@@ -27,6 +32,7 @@ public static class DocumentUploadEndpoints
     private static async Task<IResult> UploadDocumentAsync(
         HttpRequest request,
         IDocumentIngestionService ingestionService,
+        IAntiforgery antiforgery,
         CancellationToken cancellationToken)
     {
         if (!request.HasFormContentType)
@@ -39,6 +45,13 @@ public static class DocumentUploadEndpoints
 
         try
         {
+            if (request.HttpContext.User.HasClaim(
+                    StructaDocClaimTypes.SubjectType,
+                    SubjectTypes.Administrator))
+            {
+                await antiforgery.ValidateRequestAsync(request.HttpContext);
+            }
+
             var form = await request.ReadFormAsync(cancellationToken);
             var file = form.Files.GetFile("file");
 
@@ -55,7 +68,8 @@ public static class DocumentUploadEndpoints
                 new DocumentIngestionRequest(
                     file.FileName,
                     file.ContentType,
-                    content),
+                    content,
+                    GetActorId(request.HttpContext.User)),
                 cancellationToken);
             var response = new DocumentResponse(
                 document.Id,
@@ -74,6 +88,13 @@ public static class DocumentUploadEndpoints
                 StatusCodes.Status413PayloadTooLarge,
                 "file-too-large",
                 exception.Message);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return UploadProblem(
+                StatusCodes.Status400BadRequest,
+                "invalid-antiforgery-token",
+                "A valid antiforgery token is required for administrator uploads.");
         }
         catch (UnsupportedDocumentTypeException exception)
         {
@@ -96,6 +117,15 @@ public static class DocumentUploadEndpoints
                 "invalid-upload",
                 exception.Message);
         }
+    }
+
+    private static string GetActorId(ClaimsPrincipal user)
+    {
+        var subjectType = user.FindFirstValue(StructaDocClaimTypes.SubjectType)
+            ?? throw new InvalidOperationException("Authenticated subject type is missing.");
+        var subjectId = user.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new InvalidOperationException("Authenticated subject ID is missing.");
+        return $"{subjectType}:{subjectId}";
     }
 
     private static IResult UploadProblem(int statusCode, string code, string detail)

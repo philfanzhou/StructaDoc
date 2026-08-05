@@ -6,6 +6,9 @@ namespace StructaDoc.Host.Tests;
 
 public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Program>
 {
+    public const string AdministratorEmail = "admin@structadoc.test";
+    public const string AdministratorPassword = "StructaDoc-Test-Password-2026!";
+
     private readonly string testDirectory = Path.Combine(
         Path.GetTempPath(),
         "structadoc-host-tests",
@@ -21,6 +24,18 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
         builder.UseSetting("Worker:RecoveryBatchSize", "20");
         builder.UseSetting("Documents:UploadApiEnabled", "true");
         builder.UseSetting("Documents:MaxUploadBytes", "1048576");
+        builder.UseSetting(
+            "Authentication:DataProtectionKeysPath",
+            Path.Combine(testDirectory, "keys"));
+        builder.UseSetting(
+            "Authentication:BootstrapAdministratorEmail",
+            AdministratorEmail);
+        builder.UseSetting(
+            "Authentication:BootstrapAdministratorPassword",
+            AdministratorPassword);
+        builder.UseSetting(
+            "Authentication:BootstrapAdministratorDisplayName",
+            "StructaDoc Test Administrator");
         builder.UseSetting("Storage:Provider", "Local");
         builder.UseSetting(
             "Storage:RootPath",

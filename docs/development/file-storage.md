@@ -44,13 +44,13 @@ file=<exactly one file>
 
 成功返回 `201` 和不含内部存储引用的 Document 摘要。空文件、无效文件名和错误表单返回 `400`，超过 `Documents:MaxUploadBytes` 返回 `413`，不支持或无法识别的格式返回 `415`。
 
-`Documents:UploadApiEnabled` 默认是 `false`。认证和权限边界尚未实现，因此只能在隔离开发环境中显式开启；不得把当前端点直接暴露到不受信网络。正式启用前必须接入管理员会话与 API Client 权限，并记录 `createdBy`。
+`Documents:UploadApiEnabled` 默认是 `true`。端点要求已登录管理员，或具有 `documents:write` scope 的 API Client。管理员 Cookie 上传还必须携带 antiforgery token；API Key 请求不需要该 token。保存的 `createdBy` 会记录主体类型和不透明主体 ID。
 
 ## Configuration
 
 | Key | Default | Meaning |
 |---|---:|---|
-| `Documents:UploadApiEnabled` | `false` | 是否映射尚未认证的开发期上传端点 |
+| `Documents:UploadApiEnabled` | `true` | 是否映射受授权策略保护的上传端点 |
 | `Documents:MaxUploadBytes` | `104857600` | 单文件大小上限 |
 | `Storage:Provider` | `Local` | 当前文件存储实现 |
 | `Storage:RootPath` | `./data/storage` | 本地存储根目录，应映射到持久卷 |
@@ -59,7 +59,7 @@ file=<exactly one file>
 
 ## Remaining Work
 
-- 管理员会话和 API Client 上传权限；
+- 管理员和 API Client 管理界面；
 - S3 兼容对象存储实现及就绪检查；
 - Document 详情、分页列表、受控下载和删除 API；
 - 孤儿对象扫描与删除重试；

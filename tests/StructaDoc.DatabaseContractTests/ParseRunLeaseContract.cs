@@ -123,6 +123,17 @@ internal static class ParseRunLeaseContract
             parseRun.Status == ParseRunStatuses.Claimed
             && parseRun.ExternalTaskId == "provider-task-1"
             && parseRun.ClaimedBy != null);
+
+        var administrator = await verificationContext.AdminUsers
+            .AsNoTracking()
+            .SingleAsync();
+        Assert.Equal("ADMIN@STRUCTADOC.TEST", administrator.NormalizedEmail);
+
+        var apiClient = await verificationContext.ApiClients
+            .AsNoTracking()
+            .SingleAsync();
+        Assert.Equal(32, apiClient.SecretHash.Length);
+        Assert.Equal("documents:write", apiClient.Scopes);
     }
 
     private static DbContextOptions<StructaDocDbContext> CreateOptions(
@@ -163,6 +174,26 @@ internal static class ParseRunLeaseContract
             CreatedAtUtc = nowUtc,
         };
         dbContext.Documents.Add(document);
+        dbContext.AdminUsers.Add(new AdminUserEntity
+        {
+            Id = Guid.NewGuid(),
+            Email = "admin@structadoc.test",
+            NormalizedEmail = "ADMIN@STRUCTADOC.TEST",
+            DisplayName = "Contract administrator",
+            PasswordHash = "contract-test-password-hash",
+            IsActive = true,
+            SecurityStamp = Guid.NewGuid(),
+            CreatedAtUtc = nowUtc,
+        });
+        dbContext.ApiClients.Add(new ApiClientEntity
+        {
+            Id = Guid.NewGuid(),
+            Name = "Contract client",
+            SecretHash = Enumerable.Range(0, 32).Select(value => (byte)value).ToArray(),
+            Scopes = "documents:write",
+            IsActive = true,
+            CreatedAtUtc = nowUtc,
+        });
 
         for (var index = 0; index < ParseRunCount; index++)
         {
