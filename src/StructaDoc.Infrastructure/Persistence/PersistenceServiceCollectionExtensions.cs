@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Providers;
 using StructaDoc.Infrastructure.Persistence.ParseRuns;
@@ -24,6 +25,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IParseRunLeaseStore, EfCoreParseRunLeaseStore>();
         services.AddScoped<IParseRunStateStore, EfCoreParseRunStateStore>();
         services.AddScoped<IParseRunExecutionContextStore, EfCoreParseRunExecutionContextStore>();
+        services.AddScoped<IParseBundleCommitStore, EfCoreParseBundleCommitStore>();
         services.AddScoped<IParseRunService, EfCoreParseRunService>();
         services.AddScoped<IProviderConfigAdministrationService, EfCoreProviderConfigAdministrationService>();
         services.AddScoped<IParseProviderResolver, ParseProviderResolver>();

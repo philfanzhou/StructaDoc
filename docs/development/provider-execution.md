@@ -34,9 +34,9 @@ Host 的维护 Worker 仍只做过期抢占和重试恢复。当前不会解析 
 1. 外部任务 ID 的租约约束持久化和运行中租约恢复；
 2. 处理期间心跳续租和丢失租约后的取消传播；
 3. Raw Artifact 的受限流式保存、ZIP 安全检查和 Provider 结果归一化；
-4. Canonical Pages、Blocks、Assets、Artifacts 与 `succeeded` 的幂等最终事务。
+4. 把现有 Canonical Pages、Blocks、Assets、Artifacts 幂等成功事务接入完整执行链。
 
-在这些条件完成前提交真实外部任务会产生无法可靠恢复或无法安全发布结果的中间状态，因此本轮只建立可测试的边界，不把占位适配器注册为可用 Provider。
+Canonical 结果持久化边界已经实现，但在其余条件完成前提交真实外部任务仍会产生无法可靠恢复的中间状态，因此当前不把占位适配器注册为可用 Provider。
 
 ## 已验证行为
 

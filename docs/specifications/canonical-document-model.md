@@ -6,7 +6,7 @@
 
 ## 1. Purpose
 
-本规格定义 StructaDoc 在 Provider、数据库、管理网页和公共 API 之间共享的统一结构化文档语义。它是完整目标契约；当前只实现 Document 初始持久化、响应 DTO、本地原文件存储和默认关闭的开发期上传端点，Parse Run 之外的统一结果表和读取端点仍未实现。
+本规格定义 StructaDoc 在 Provider、数据库、管理网页和公共 API 之间共享的统一结构化文档语义。它是完整目标契约；当前已实现 Document 持久化与读取，以及 Parse Bundle、Page、Block、Asset、Artifact 的验证和幂等成功提交。统一结果的公共读取 DTO、下载端点和 Provider 归一化器仍未实现。
 
 MinerU Cloud、MinerU Local 和未来 Provider 的输出必须先映射到本模型，再提供给调用方。Provider 原始产物可以保留，但不能替代本模型。
 

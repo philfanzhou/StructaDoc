@@ -1,6 +1,9 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using StructaDoc.Application.Authentication;
+using StructaDoc.Application.Canonical;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Storage;
@@ -111,6 +114,49 @@ internal static class ParseRunLeaseContract
             Assert.Equal(1, recoveredCount);
         }
 
+        var resultLease = successfulClaims[4]!;
+        var resultStorage = new ContractFileStorage();
+        var resultFile = resultStorage.Add(
+            $"results/{resultLease.ParseRunId:N}/full.md",
+            Encoding.UTF8.GetBytes("# Contract result"));
+        var bundle = new ParseBundle(
+            ParseBundleValidator.CurrentSchemaVersion,
+            resultLease.ParseRunId,
+            [new ParsePage(1, 1000, 1400, "pixel")],
+            [new ParseBlock(Guid.NewGuid(), 0, 1, "text", Content: "Contract result")],
+            [],
+            [new ParseArtifact(
+                Guid.NewGuid(),
+                ArtifactTypes.Markdown,
+                "full.md",
+                "text/markdown",
+                resultFile.SizeBytes,
+                resultFile.Sha256,
+                resultFile.StorageRef)],
+            "{\"providerType\":\"test-provider\"}");
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            var runningLease = await stateStore.TryStartAsync(
+                resultLease,
+                ParseRunStages.Persisting,
+                nowUtc.AddSeconds(1));
+            Assert.NotNull(runningLease);
+
+            var resultStore = new EfCoreParseBundleCommitStore(dbContext, resultStorage);
+            var commit = await resultStore.TryCommitAsync(
+                runningLease,
+                bundle,
+                nowUtc.AddSeconds(2));
+            Assert.Equal(ParseBundleCommitStatus.Committed, commit.Status);
+            Assert.Equal(
+                ParseBundleCommitStatus.AlreadyCommitted,
+                (await resultStore.TryCommitAsync(
+                    runningLease,
+                    bundle,
+                    nowUtc.AddSeconds(3))).Status);
+        }
+
         await using var verificationContext = new StructaDocDbContext(options);
         Assert.Empty(await verificationContext.Database.GetPendingMigrationsAsync());
 
@@ -119,7 +165,7 @@ internal static class ParseRunLeaseContract
             .ToListAsync();
         Assert.Equal(ParseRunCount, persistedRuns.Count);
         Assert.Equal(
-            ParseRunCount - 2,
+            ParseRunCount - 3,
             persistedRuns.Count(parseRun => parseRun.Status == ParseRunStatuses.Claimed));
         Assert.Equal(2, persistedRuns.Count(parseRun =>
             parseRun.Status == ParseRunStatuses.Queued
@@ -129,6 +175,13 @@ internal static class ParseRunLeaseContract
             parseRun.Status == ParseRunStatuses.Claimed
             && parseRun.ExternalTaskId == "provider-task-1"
             && parseRun.ClaimedBy != null);
+        Assert.Single(persistedRuns, parseRun =>
+            parseRun.Status == ParseRunStatuses.Succeeded
+            && parseRun.ResultSchemaVersion == ParseBundleValidator.CurrentSchemaVersion
+            && parseRun.ResultSha256 == ParseBundleValidator.ComputeFingerprint(bundle));
+        Assert.Single(await verificationContext.ParsePages.ToListAsync());
+        Assert.Single(await verificationContext.ParseBlocks.ToListAsync());
+        Assert.Single(await verificationContext.ParseArtifacts.ToListAsync());
 
         var administrator = await verificationContext.AdminUsers
             .AsNoTracking()
@@ -334,5 +387,38 @@ internal static class ParseRunLeaseContract
         {
             throw new NotSupportedException();
         }
+    }
+
+    private sealed class ContractFileStorage : IFileStorage
+    {
+        private readonly Dictionary<string, byte[]> files = new(StringComparer.Ordinal);
+
+        public StoredFile Add(string storageRef, byte[] content)
+        {
+            files.Add(storageRef, content);
+            return new StoredFile(
+                storageRef,
+                content.LongLength,
+                Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant());
+        }
+
+        public Task<Stream> OpenReadAsync(
+            string storageRef,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Stream stream = new MemoryStream(files[storageRef], writable: false);
+            return Task.FromResult(stream);
+        }
+
+        public Task<StoredFile> WriteAsync(
+            string storageRef,
+            Stream content,
+            long maxBytes,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task DeleteIfExistsAsync(
+            string storageRef,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

@@ -46,6 +46,16 @@ internal sealed class ParseRunEntityConfiguration : IEntityTypeConfiguration<Par
         builder.Property(parseRun => parseRun.ExternalTaskId)
             .HasColumnName("external_task_id")
             .HasMaxLength(512);
+        builder.Property(parseRun => parseRun.ResultSchemaVersion)
+            .HasColumnName("result_schema_version")
+            .HasMaxLength(16)
+            .IsUnicode(false);
+        builder.Property(parseRun => parseRun.ResultSha256)
+            .HasColumnName("result_sha256")
+            .HasMaxLength(64)
+            .IsUnicode(false);
+        builder.Property(parseRun => parseRun.ProviderMetadataJson)
+            .HasColumnName("provider_metadata_json");
         builder.Property(parseRun => parseRun.AttemptCount)
             .HasColumnName("attempt_count");
         builder.Property(parseRun => parseRun.MaxAttempts)

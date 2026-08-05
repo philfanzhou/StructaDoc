@@ -15,6 +15,14 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
 
     public DbSet<ParseRunEntity> ParseRuns => Set<ParseRunEntity>();
 
+    public DbSet<ParsePageEntity> ParsePages => Set<ParsePageEntity>();
+
+    public DbSet<ParseBlockEntity> ParseBlocks => Set<ParseBlockEntity>();
+
+    public DbSet<ParseAssetEntity> ParseAssets => Set<ParseAssetEntity>();
+
+    public DbSet<ParseArtifactEntity> ParseArtifacts => Set<ParseArtifactEntity>();
+
     public DbSet<ProviderConfigEntity> ProviderConfigs => Set<ProviderConfigEntity>();
 
     public DbSet<ProviderConfigVersionEntity> ProviderConfigVersions =>

@@ -28,6 +28,12 @@ public sealed class ParseRunEntity
 
     public string? ExternalTaskId { get; set; }
 
+    public string? ResultSchemaVersion { get; set; }
+
+    public string? ResultSha256 { get; set; }
+
+    public string? ProviderMetadataJson { get; set; }
+
     public int AttemptCount { get; set; }
 
     public int MaxAttempts { get; set; }
@@ -53,4 +59,12 @@ public sealed class ParseRunEntity
     public DateTime? CompletedAtUtc { get; set; }
 
     public long ConcurrencyVersion { get; set; }
+
+    public ICollection<ParsePageEntity> Pages { get; } = [];
+
+    public ICollection<ParseBlockEntity> Blocks { get; } = [];
+
+    public ICollection<ParseAssetEntity> Assets { get; } = [];
+
+    public ICollection<ParseArtifactEntity> Artifacts { get; } = [];
 }

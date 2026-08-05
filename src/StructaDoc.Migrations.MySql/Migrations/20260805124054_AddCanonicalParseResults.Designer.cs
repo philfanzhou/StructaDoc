@@ -3,17 +3,20 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using StructaDoc.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace StructaDoc.Migrations.MariaDb.Migrations
+namespace StructaDoc.Migrations.MySql.Migrations
 {
     [DbContext(typeof(StructaDocDbContext))]
-    partial class StructaDocDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260805124054_AddCanonicalParseResults")]
+    partial class AddCanonicalParseResults
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

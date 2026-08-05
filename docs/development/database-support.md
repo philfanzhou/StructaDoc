@@ -11,10 +11,10 @@
 
 | Database | EF Core Provider | Migration assembly | Current verification |
 |---|---|---|---|
-| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、Document 查询与键集分页、Parse Run/认证数据 CRUD、乐观并发、抢占、续租、失败/重试转换和过期恢复 |
-| PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `StructaDoc.Migrations.PostgreSql` | Provider、包含认证表的迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
-| MySQL | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MySql` | MySQL 8.4 方言、包含认证表的迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
-| MariaDB | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | MariaDB 11.4 方言、包含认证表的迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
+| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、Document 查询与键集分页、Parse Run/认证数据 CRUD、乐观并发、租约状态机和 Canonical Bundle 幂等成功事务 |
+| PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `StructaDoc.Migrations.PostgreSql` | Provider、Canonical 结果迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
+| MySQL | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MySql` | MySQL 8.4 方言、Canonical 结果迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
+| MariaDB | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | MariaDB 11.4 方言、Canonical 结果迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
 
 在真实数据库迁移、CRUD、并发抢占、租约恢复和升级测试全部通过前，PostgreSQL、MySQL 和 MariaDB 不标记为发布支持。MySQL 与 MariaDB 即使使用同一 Provider，也保留独立迁移和测试目标。
 
@@ -62,6 +62,8 @@ SQLite 数据库文件使用本地持久卷；不支持多个容器共享该文�
 
 `IParseRunExecutionContextStore` 只为仍持有未过期租约且并发版本匹配的 Worker 返回执行快照。快照从 Parse Run 固定的 Provider Config Version 读取 Base URL、model、backend 和加密凭据，而不是读取逻辑配置的当前版本；因此管理员更新或停用配置不会改变已经创建任务的执行意图。凭据只在该内部边界解密，不进入公共 DTO。
 
+`IParseBundleCommitStore` 在事务前流式复核所有 Asset 和 Artifact 的大小及 SHA-256，然后使用当前运行租约和并发版本作为成功提交条件。Pages、Blocks、Assets、Artifacts、Bundle 指纹和 `succeeded` 状态在同一事务写入；相同指纹可幂等重放，不同指纹、取消竞争、失效租约或既有部分结果不能覆盖任务状态。
+
 当前维护 Worker 不抢占或执行 `queued` 任务。Provider HTTP 适配器、处理期间续租和成功结果事务完成前，不得把它描述为完整解析 Worker。
 
 该实现不依赖某个数据库的专有 SQL。后续真实数据库竞争测试若证明有必要，可以在同一接口后为服务端数据库增加 `SKIP LOCKED` 等方言优化，而不改变 Worker 和公共 API。
@@ -89,7 +91,7 @@ $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
 dotnet test tests/StructaDoc.DatabaseContractTests
 ```
 
-当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、Document 复合游标分页与详情查询、管理员持久化、API Client scope 更新、Key 轮换、并发版本和撤销，以及 Parse Run 并发抢占、续租令牌失效、未启动任务的租约过期恢复、运行、失败、重试等待和到期回队列转换。测试成功前不得更新上面的发布支持状态。
+当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、Document 复合游标分页与详情查询、管理员持久化、API Client scope 更新、Key 轮换、并发版本和撤销，以及 Parse Run 并发抢占、续租令牌失效、未启动任务的租约过期恢复、运行、失败、重试等待、到期回队列转换和 Canonical Bundle 幂等成功提交。测试成功前不得更新上面的发布支持状态。
 
 ## Remaining Verification
 

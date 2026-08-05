@@ -191,6 +191,255 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("documents", (string)null);
                 });
 
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseArtifactEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("media_type");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("metadata_json");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("ParseRunId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("parse_run_id");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("sha256");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("StorageRef")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("varchar(2048)")
+                        .HasColumnName("storage_ref");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Sha256")
+                        .HasDatabaseName("ix_parse_artifacts_sha256");
+
+                    b.HasIndex("ParseRunId", "Type", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_parse_artifacts_key");
+
+                    b.ToTable("parse_artifacts", (string)null);
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseAssetEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("int")
+                        .HasColumnName("height");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("media_type");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("ParseRunId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("parse_run_id");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("sha256");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("StorageRef")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("varchar(2048)")
+                        .HasColumnName("storage_ref");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("int")
+                        .HasColumnName("width");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Sha256")
+                        .HasDatabaseName("ix_parse_assets_sha256");
+
+                    b.HasIndex("ParseRunId", "Name")
+                        .HasDatabaseName("ix_parse_assets_name");
+
+                    b.ToTable("parse_assets", (string)null);
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseBlockEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AssetId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("asset_id");
+
+                    b.Property<double?>("BoundingBoxX0")
+                        .HasColumnType("double")
+                        .HasColumnName("bbox_x0");
+
+                    b.Property<double?>("BoundingBoxX1")
+                        .HasColumnType("double")
+                        .HasColumnName("bbox_x1");
+
+                    b.Property<double?>("BoundingBoxY0")
+                        .HasColumnType("double")
+                        .HasColumnName("bbox_y0");
+
+                    b.Property<double?>("BoundingBoxY1")
+                        .HasColumnType("double")
+                        .HasColumnName("bbox_y1");
+
+                    b.Property<double?>("Confidence")
+                        .HasColumnType("double")
+                        .HasColumnName("confidence");
+
+                    b.Property<string>("Content")
+                        .HasColumnType("longtext")
+                        .HasColumnName("content");
+
+                    b.Property<string>("ContentFormat")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("content_format");
+
+                    b.Property<int?>("PageNumber")
+                        .HasColumnType("int")
+                        .HasColumnName("page_number");
+
+                    b.Property<Guid>("ParseRunId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("parse_run_id");
+
+                    b.Property<string>("ProviderDataJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("provider_data_json");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int")
+                        .HasColumnName("sequence");
+
+                    b.Property<string>("SourceLocatorJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("source_locator_json");
+
+                    b.Property<string>("Subtype")
+                        .HasMaxLength(100)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("subtype");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParseRunId", "AssetId")
+                        .HasDatabaseName("ix_parse_blocks_asset");
+
+                    b.HasIndex("ParseRunId", "PageNumber")
+                        .HasDatabaseName("ix_parse_blocks_page");
+
+                    b.HasIndex("ParseRunId", "Sequence")
+                        .IsUnique()
+                        .HasDatabaseName("ux_parse_blocks_sequence");
+
+                    b.ToTable("parse_blocks", (string)null);
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParsePageEntity", b =>
+                {
+                    b.Property<Guid>("ParseRunId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("parse_run_id");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("int")
+                        .HasColumnName("number");
+
+                    b.Property<double?>("Height")
+                        .HasColumnType("double")
+                        .HasColumnName("height");
+
+                    b.Property<string>("SourceLocatorJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("source_locator_json");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("unit");
+
+                    b.Property<double?>("Width")
+                        .HasColumnType("double")
+                        .HasColumnName("width");
+
+                    b.HasKey("ParseRunId", "Number");
+
+                    b.ToTable("parse_pages", (string)null);
+                });
+
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -279,12 +528,28 @@ namespace StructaDoc.Migrations.MySql.Migrations
                         .HasColumnType("char(36)")
                         .HasColumnName("provider_config_version");
 
+                    b.Property<string>("ProviderMetadataJson")
+                        .HasColumnType("longtext")
+                        .HasColumnName("provider_metadata_json");
+
                     b.Property<string>("ProviderType")
                         .IsRequired()
                         .HasMaxLength(100)
                         .IsUnicode(false)
                         .HasColumnType("varchar(100)")
                         .HasColumnName("provider_type");
+
+                    b.Property<string>("ResultSchemaVersion")
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("result_schema_version");
+
+                    b.Property<string>("ResultSha256")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("result_sha256");
 
                     b.Property<string>("SourceMediaType")
                         .IsRequired()
@@ -439,6 +704,63 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("provider_config_versions", (string)null);
                 });
 
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseArtifactEntity", b =>
+                {
+                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
+                        .WithMany("Artifacts")
+                        .HasForeignKey("ParseRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ParseRun");
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseAssetEntity", b =>
+                {
+                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
+                        .WithMany("Assets")
+                        .HasForeignKey("ParseRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ParseRun");
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseBlockEntity", b =>
+                {
+                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
+                        .WithMany("Blocks")
+                        .HasForeignKey("ParseRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseAssetEntity", "Asset")
+                        .WithMany("Blocks")
+                        .HasForeignKey("ParseRunId", "AssetId")
+                        .HasPrincipalKey("ParseRunId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParsePageEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ParseRunId", "PageNumber")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Asset");
+
+                    b.Navigation("ParseRun");
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParsePageEntity", b =>
+                {
+                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
+                        .WithMany("Pages")
+                        .HasForeignKey("ParseRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ParseRun");
+                });
+
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
                 {
                     b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", "Document")
@@ -464,6 +786,22 @@ namespace StructaDoc.Migrations.MySql.Migrations
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Navigation("ParseRuns");
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseAssetEntity", b =>
+                {
+                    b.Navigation("Blocks");
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
+                {
+                    b.Navigation("Artifacts");
+
+                    b.Navigation("Assets");
+
+                    b.Navigation("Blocks");
+
+                    b.Navigation("Pages");
                 });
 
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", b =>
