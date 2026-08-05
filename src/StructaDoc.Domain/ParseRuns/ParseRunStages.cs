@@ -11,4 +11,17 @@ public static class ParseRunStages
     public const string Normalizing = "normalizing";
     public const string Persisting = "persisting";
     public const string CleaningUp = "cleaning-up";
+
+    public static bool IsKnown(string stage)
+    {
+        return stage is Validating
+            or PreparingSource
+            or Converting
+            or Submitting
+            or WaitingProvider
+            or Downloading
+            or Normalizing
+            or Persisting
+            or CleaningUp;
+    }
 }

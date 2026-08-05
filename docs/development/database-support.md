@@ -11,7 +11,7 @@
 
 | Database | EF Core Provider | Migration assembly | Current verification |
 |---|---|---|---|
-| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、CRUD、乐观并发、并发抢占、续租和过期恢复 |
+| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、CRUD、乐观并发、抢占、续租、失败/重试转换和过期恢复 |
 | PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `StructaDoc.Migrations.PostgreSql` | Provider、初始迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
 | MySQL | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MySql` | MySQL 8.4 方言、初始迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
 | MariaDB | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | MariaDB 11.4 方言、初始迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
@@ -53,6 +53,15 @@ SQLite 数据库文件使用本地持久卷；不支持多个容器共享该文�
 - 续租要求 Worker 和并发版本仍匹配、旧租约尚未过期；
 - `claimed`、没有外部任务 ID 且租约过期的任务可以原子恢复为 `queued`。
 
+`IParseRunStateStore` 进一步限制租约持有者能够执行的状态转换：
+
+- 当前租约可以把 `claimed` 原子转换为 `running` 并写入初始 Stage；
+- 可重试错误在尝试次数未耗尽时进入 `retry-wait`，否则进入最终状态 `failed`；
+- 永久错误直接进入 `failed`；
+- Host 内置维护 Worker 分批把已到时间的 `retry-wait` 转回 `queued`。
+
+当前维护 Worker 不抢占或执行 `queued` 任务。Provider 执行器、处理期间续租和成功结果事务完成前，不得把它描述为完整解析 Worker。
+
 该实现不依赖某个数据库的专有 SQL。后续真实数据库竞争测试若证明有必要，可以在同一接口后为服务端数据库增加 `SKIP LOCKED` 等方言优化，而不改变 Worker 和公共 API。
 
 ## Migration Workflow
@@ -78,7 +87,7 @@ $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
 dotnet test tests/StructaDoc.DatabaseContractTests
 ```
 
-当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、并发抢占不重复、续租令牌失效以及未启动任务的租约过期恢复。测试成功前不得更新上面的发布支持状态。
+当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、并发抢占不重复、续租令牌失效、未启动任务的租约过期恢复，以及运行、失败、重试等待和到期回队列转换。测试成功前不得更新上面的发布支持状态。
 
 ## Remaining Verification
 

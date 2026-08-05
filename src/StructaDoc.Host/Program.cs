@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using StructaDoc.Contracts.System;
+using StructaDoc.Host.Workers;
 using StructaDoc.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,11 +10,18 @@ var builder = WebApplication.CreateBuilder(args);
 var databaseOptions = builder.Configuration
     .GetSection(DatabaseOptions.SectionName)
     .Get<DatabaseOptions>() ?? new DatabaseOptions();
+var workerOptions = builder.Configuration
+    .GetSection(ParseRunWorkerOptions.SectionName)
+    .Get<ParseRunWorkerOptions>() ?? new ParseRunWorkerOptions();
+workerOptions.Validate();
 
 builder.Services
     .AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
 builder.Services.AddStructaDocPersistence(databaseOptions);
+builder.Services.AddSingleton(workerOptions);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHostedService<ParseRunMaintenanceWorker>();
 
 var app = builder.Build();
 

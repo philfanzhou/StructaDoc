@@ -1,0 +1,206 @@
+using Microsoft.EntityFrameworkCore;
+using StructaDoc.Application.ParseRuns;
+using StructaDoc.Domain.ParseRuns;
+
+namespace StructaDoc.Infrastructure.Persistence.ParseRuns;
+
+public sealed class EfCoreParseRunStateStore(StructaDocDbContext dbContext)
+    : IParseRunStateStore
+{
+    public async Task<ParseRunLease?> TryStartAsync(
+        ParseRunLease currentLease,
+        string initialStage,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLease(currentLease, nowUtc);
+
+        if (!ParseRunStages.IsKnown(initialStage))
+        {
+            throw new ArgumentException("The initial parse stage is not recognized.", nameof(initialStage));
+        }
+
+        var affectedRows = await dbContext.ParseRuns
+            .Where(parseRun =>
+                parseRun.Id == currentLease.ParseRunId
+                && parseRun.Status == ParseRunStatuses.Claimed
+                && parseRun.ClaimedBy == currentLease.WorkerId
+                && parseRun.ConcurrencyVersion == currentLease.ConcurrencyVersion
+                && parseRun.LeaseExpiresAtUtc > nowUtc)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(parseRun => parseRun.Status, ParseRunStatuses.Running)
+                    .SetProperty(parseRun => parseRun.Stage, initialStage)
+                    .SetProperty(
+                        parseRun => parseRun.StartedAtUtc,
+                        parseRun => parseRun.StartedAtUtc ?? nowUtc)
+                    .SetProperty(parseRun => parseRun.ErrorCode, (string?)null)
+                    .SetProperty(parseRun => parseRun.ErrorMessage, (string?)null)
+                    .SetProperty(
+                        parseRun => parseRun.ConcurrencyVersion,
+                        parseRun => parseRun.ConcurrencyVersion + 1),
+                cancellationToken);
+
+        return affectedRows == 1
+            ? currentLease with
+            {
+                ConcurrencyVersion = currentLease.ConcurrencyVersion + 1,
+            }
+            : null;
+    }
+
+    public async Task<ParseRunFailureTransition?> TryRecordFailureAsync(
+        ParseRunLease currentLease,
+        string errorCode,
+        string? errorMessage,
+        bool retryable,
+        DateTime nextAttemptAtUtc,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLease(currentLease, nowUtc);
+        ValidateUtc(nextAttemptAtUtc, nameof(nextAttemptAtUtc));
+        ValidateError(errorCode, errorMessage);
+
+        if (retryable && nextAttemptAtUtc <= nowUtc)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(nextAttemptAtUtc),
+                "A retry must be scheduled after the failure time.");
+        }
+
+        var candidate = await dbContext.ParseRuns
+            .AsNoTracking()
+            .Where(parseRun =>
+                parseRun.Id == currentLease.ParseRunId
+                && parseRun.Status == ParseRunStatuses.Running
+                && parseRun.ClaimedBy == currentLease.WorkerId
+                && parseRun.ConcurrencyVersion == currentLease.ConcurrencyVersion
+                && parseRun.LeaseExpiresAtUtc > nowUtc)
+            .Select(parseRun => new
+            {
+                parseRun.AttemptCount,
+                parseRun.MaxAttempts,
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        var willRetry = retryable && candidate.AttemptCount < candidate.MaxAttempts;
+        var nextStatus = willRetry
+            ? ParseRunStatuses.RetryWait
+            : ParseRunStatuses.Failed;
+
+        var affectedRows = await dbContext.ParseRuns
+            .Where(parseRun =>
+                parseRun.Id == currentLease.ParseRunId
+                && parseRun.Status == ParseRunStatuses.Running
+                && parseRun.ClaimedBy == currentLease.WorkerId
+                && parseRun.ConcurrencyVersion == currentLease.ConcurrencyVersion
+                && parseRun.LeaseExpiresAtUtc > nowUtc)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(parseRun => parseRun.Status, nextStatus)
+                    .SetProperty(parseRun => parseRun.ErrorCode, errorCode)
+                    .SetProperty(parseRun => parseRun.ErrorMessage, errorMessage)
+                    .SetProperty(parseRun => parseRun.ClaimedBy, (string?)null)
+                    .SetProperty(parseRun => parseRun.LeaseExpiresAtUtc, (DateTime?)null)
+                    .SetProperty(
+                        parseRun => parseRun.NextAttemptAtUtc,
+                        willRetry ? nextAttemptAtUtc : nowUtc)
+                    .SetProperty(
+                        parseRun => parseRun.CompletedAtUtc,
+                        willRetry ? null : nowUtc)
+                    .SetProperty(
+                        parseRun => parseRun.ConcurrencyVersion,
+                        parseRun => parseRun.ConcurrencyVersion + 1),
+                cancellationToken);
+
+        return affectedRows == 1
+            ? new ParseRunFailureTransition(
+                currentLease.ParseRunId,
+                nextStatus,
+                currentLease.ConcurrencyVersion + 1)
+            : null;
+    }
+
+    public async Task<int> QueueDueRetriesAsync(
+        DateTime nowUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUtc(nowUtc, nameof(nowUtc));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
+
+        var candidates = await dbContext.ParseRuns
+            .AsNoTracking()
+            .Where(parseRun =>
+                parseRun.Status == ParseRunStatuses.RetryWait
+                && parseRun.NextAttemptAtUtc <= nowUtc)
+            .OrderBy(parseRun => parseRun.NextAttemptAtUtc)
+            .ThenBy(parseRun => parseRun.Id)
+            .Select(parseRun => new
+            {
+                parseRun.Id,
+                parseRun.ConcurrencyVersion,
+            })
+            .Take(maxCount)
+            .ToListAsync(cancellationToken);
+
+        var queuedCount = 0;
+
+        foreach (var candidate in candidates)
+        {
+            queuedCount += await dbContext.ParseRuns
+                .Where(parseRun =>
+                    parseRun.Id == candidate.Id
+                    && parseRun.Status == ParseRunStatuses.RetryWait
+                    && parseRun.NextAttemptAtUtc <= nowUtc
+                    && parseRun.ConcurrencyVersion == candidate.ConcurrencyVersion)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(parseRun => parseRun.Status, ParseRunStatuses.Queued)
+                        .SetProperty(
+                            parseRun => parseRun.ConcurrencyVersion,
+                            parseRun => parseRun.ConcurrencyVersion + 1),
+                    cancellationToken);
+        }
+
+        return queuedCount;
+    }
+
+    private static void ValidateLease(ParseRunLease currentLease, DateTime nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(currentLease);
+        ValidateUtc(nowUtc, nameof(nowUtc));
+        ArgumentException.ThrowIfNullOrWhiteSpace(currentLease.WorkerId);
+    }
+
+    private static void ValidateUtc(DateTime value, string parameterName)
+    {
+        if (value.Kind != DateTimeKind.Utc)
+        {
+            throw new ArgumentException("Parse Run timestamps must use UTC.", parameterName);
+        }
+    }
+
+    private static void ValidateError(string errorCode, string? errorMessage)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorCode);
+
+        if (errorCode.Length > 128)
+        {
+            throw new ArgumentException("Error code cannot exceed 128 characters.", nameof(errorCode));
+        }
+
+        if (errorMessage?.Length > 2048)
+        {
+            throw new ArgumentException(
+                "Error message cannot exceed 2048 characters.",
+                nameof(errorMessage));
+        }
+    }
+}

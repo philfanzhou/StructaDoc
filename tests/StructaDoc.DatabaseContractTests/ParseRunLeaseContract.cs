@@ -51,6 +51,34 @@ internal static class ParseRunLeaseContract
             Assert.Null(staleRenewal);
         }
 
+        var retryLease = successfulClaims[3]!;
+        var retryAtUtc = nowUtc.AddMinutes(2);
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var store = new EfCoreParseRunStateStore(dbContext);
+            var runningLease = await store.TryStartAsync(
+                retryLease,
+                ParseRunStages.Validating,
+                nowUtc.AddSeconds(1));
+            Assert.NotNull(runningLease);
+
+            var failure = await store.TryRecordFailureAsync(
+                runningLease,
+                "provider-temporary-error",
+                "The provider is temporarily unavailable.",
+                retryable: true,
+                retryAtUtc,
+                nowUtc.AddSeconds(5));
+            Assert.NotNull(failure);
+            Assert.Equal(ParseRunStatuses.RetryWait, failure.Status);
+            Assert.Equal(0, await store.QueueDueRetriesAsync(
+                retryAtUtc.AddTicks(-1),
+                maxCount: ParseRunCount));
+            Assert.Equal(1, await store.QueueDueRetriesAsync(
+                retryAtUtc,
+                maxCount: ParseRunCount));
+        }
+
         var expiringLease = successfulClaims[1]!;
         var externalTaskLease = successfulClaims[2]!;
         await using (var dbContext = new StructaDocDbContext(options))
@@ -85,12 +113,12 @@ internal static class ParseRunLeaseContract
             .ToListAsync();
         Assert.Equal(ParseRunCount, persistedRuns.Count);
         Assert.Equal(
-            ParseRunCount - 1,
+            ParseRunCount - 2,
             persistedRuns.Count(parseRun => parseRun.Status == ParseRunStatuses.Claimed));
-        Assert.Single(persistedRuns, parseRun =>
+        Assert.Equal(2, persistedRuns.Count(parseRun =>
             parseRun.Status == ParseRunStatuses.Queued
             && parseRun.ClaimedBy == null
-            && parseRun.LeaseExpiresAtUtc == null);
+            && parseRun.LeaseExpiresAtUtc == null));
         Assert.Single(persistedRuns, parseRun =>
             parseRun.Status == ParseRunStatuses.Claimed
             && parseRun.ExternalTaskId == "provider-task-1"

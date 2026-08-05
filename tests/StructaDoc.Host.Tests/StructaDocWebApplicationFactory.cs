@@ -14,6 +14,9 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         Directory.CreateDirectory(testDirectory);
+        builder.UseSetting("Worker:Enabled", "true");
+        builder.UseSetting("Worker:MaintenanceInterval", "00:00:00.100");
+        builder.UseSetting("Worker:RecoveryBatchSize", "20");
 
         builder.ConfigureAppConfiguration(
             configuration => configuration.AddInMemoryCollection(

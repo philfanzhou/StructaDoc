@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租和未启动任务过期恢复。文档上传、解析 Provider、Worker 和管理网页尚未实现。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、数据库 Provider 配置边界、Document/Parse Run 初始持久化模型，以及 Parse Run 的原子抢占、续租、失败转换和到期恢复。Host 已运行只负责恢复未启动抢占及到期重试的维护 Worker；文档上传、解析 Provider、实际任务执行器和管理网页尚未实现。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -39,6 +39,9 @@ dotnet run --project src/StructaDoc.Host
 - `Database__ConnectionString`：对应数据库连接字符串；
 - `Database__ServerVersion`：MySQL / MariaDB 必填，例如 `8.4.0` 或 `11.4.0`；
 - `Database__ApplyMigrationsOnStartup`：是否由 Host 在启动时应用迁移。
+- `Worker__Enabled`：是否启用 Parse Run 维护循环；
+- `Worker__MaintenanceInterval`：检查到期抢占和重试的时间间隔；
+- `Worker__RecoveryBatchSize`：每轮每类任务的最大恢复数量。
 
 连接字符串中的账号和密码必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)。
 

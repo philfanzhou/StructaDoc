@@ -20,6 +20,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddDbContext<StructaDocDbContext>(
             options => ConfigureDatabase(options, databaseOptions));
         services.AddScoped<IParseRunLeaseStore, EfCoreParseRunLeaseStore>();
+        services.AddScoped<IParseRunStateStore, EfCoreParseRunStateStore>();
         services
             .AddHealthChecks()
             .AddDbContextCheck<StructaDocDbContext>(
