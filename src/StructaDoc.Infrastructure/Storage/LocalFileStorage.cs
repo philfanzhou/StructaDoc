@@ -75,14 +75,27 @@ public sealed class LocalFileStorage
                 throw new InvalidDataException("The uploaded file is empty.");
             }
 
-            cancellationToken.ThrowIfCancellationRequested();
-            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
-            File.Move(temporaryPath, destinationPath);
-
-            return new StoredFile(
+            var storedFile = new StoredFile(
                 storageRef,
                 sizeBytes,
                 Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant());
+            cancellationToken.ThrowIfCancellationRequested();
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+
+            try
+            {
+                File.Move(temporaryPath, destinationPath);
+                return storedFile;
+            }
+            catch (IOException) when (File.Exists(destinationPath))
+            {
+                if (await MatchesExistingAsync(destinationPath, storedFile, cancellationToken))
+                {
+                    return storedFile;
+                }
+
+                throw new StorageObjectConflictException(storageRef);
+            }
         }
         finally
         {
@@ -153,5 +166,30 @@ public sealed class LocalFileStorage
         }
 
         return resolvedPath;
+    }
+
+    private static async Task<bool> MatchesExistingAsync(
+        string path,
+        StoredFile candidate,
+        CancellationToken cancellationToken)
+    {
+        var fileInfo = new FileInfo(path);
+        if (fileInfo.Length != candidate.SizeBytes)
+        {
+            return false;
+        }
+
+        await using var existing = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            BufferSize,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var hash = await SHA256.HashDataAsync(existing, cancellationToken);
+        return string.Equals(
+            Convert.ToHexString(hash),
+            candidate.Sha256,
+            StringComparison.OrdinalIgnoreCase);
     }
 }

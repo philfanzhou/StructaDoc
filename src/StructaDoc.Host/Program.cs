@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using StructaDoc.Application.Documents;
+using StructaDoc.Application.ProviderResults;
 using StructaDoc.Contracts.System;
 using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
@@ -12,6 +13,7 @@ using StructaDoc.Host.Workers;
 using StructaDoc.Infrastructure.Authentication;
 using StructaDoc.Infrastructure.Documents;
 using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Infrastructure.ProviderResults;
 using StructaDoc.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,8 +31,12 @@ var ingestionOptions = builder.Configuration
 var storageOptions = builder.Configuration
     .GetSection(FileStorageOptions.SectionName)
     .Get<FileStorageOptions>() ?? new FileStorageOptions();
+var providerResultOptions = builder.Configuration
+    .GetSection(ProviderResultIntakeOptions.SectionName)
+    .Get<ProviderResultIntakeOptions>() ?? new ProviderResultIntakeOptions();
 ingestionOptions.Validate();
 storageOptions.Validate();
+providerResultOptions.Validate();
 var authenticationOptions = builder.Configuration
     .GetSection(StructaDocAuthenticationOptions.SectionName)
     .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
@@ -41,6 +47,7 @@ builder.Services
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
 builder.Services.AddStructaDocPersistence(databaseOptions);
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions);
+builder.Services.AddStructaDocProviderResults(providerResultOptions);
 builder.Services.AddStructaDocHostAuthentication(authenticationOptions);
 builder.Services.AddSingleton(workerOptions);
 builder.Services.AddSingleton(TimeProvider.System);

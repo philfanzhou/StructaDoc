@@ -43,7 +43,7 @@ Asset 与 Artifact 的 `storageRef` 只属于内部模型。Artifact 使用 `(pa
 
 ## 当前限制
 
-- Provider ZIP 解包、路径穿越/解压炸弹防护和 MinerU 结果归一化尚未实现；
+- Provider ZIP 的固定逻辑键落盘、路径和解压资源安全检查已经实现；按 MinerU 版本选择并提取条目、保存独立 Assets/Artifacts 和生成 Parse Bundle 尚未实现；
 - Raw Artifact 是否包含 Provider 返回的敏感正文必须在下载与清理阶段额外检查，不能只靠元数据验证；
 - 结果表目前只有内部持久化模型，尚未提供 Blocks、Assets 和 Artifacts 公共读取端点；
 - SQLite 已执行真实事务测试；PostgreSQL、MySQL 和 MariaDB 的同一契约已编译进容器测试，但需要可用容器运行时后才能标记真实验证通过。

@@ -37,6 +37,20 @@ public sealed class ProviderExecutionAbstractionTests
         Assert.Equal("provider-test-credential", credential.Reveal());
     }
 
+    [Theory]
+    [InlineData("../result.zip")]
+    [InlineData("result\\archive.zip")]
+    [InlineData(" result.zip")]
+    [InlineData("result\narchive.zip")]
+    public void Provider_result_rejects_unsafe_display_file_names(string fileName)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new ProviderResultContent(
+                new MemoryStream("result"u8.ToArray()),
+                "application/zip",
+                fileName));
+    }
+
     [Fact]
     public void Resolver_rejects_duplicate_types_and_returns_the_matching_provider()
     {

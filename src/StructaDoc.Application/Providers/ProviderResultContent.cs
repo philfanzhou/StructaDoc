@@ -35,6 +35,10 @@ public sealed class ProviderResultContent(
         }
 
         if (string.IsNullOrWhiteSpace(fileName)
+            || fileName.Length > 512
+            || fileName is "." or ".."
+            || !string.Equals(fileName, fileName.Trim(), StringComparison.Ordinal)
+            || fileName.Any(char.IsControl)
             || fileName.Contains('/', StringComparison.Ordinal)
             || fileName.Contains('\\', StringComparison.Ordinal))
         {

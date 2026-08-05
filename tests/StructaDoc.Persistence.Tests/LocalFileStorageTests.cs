@@ -43,6 +43,38 @@ public sealed class LocalFileStorageTests
         Assert.Empty(Directory.GetFiles(directory.Path, "*", SearchOption.AllDirectories));
     }
 
+    [Fact]
+    public async Task Same_logical_object_is_idempotent_but_different_content_conflicts()
+    {
+        using var directory = new TemporaryStorageDirectory();
+        var storage = directory.CreateStorage();
+        const string storageRef = "parse-runs/abc/provider/result.zip";
+        var originalBytes = "same-result"u8.ToArray();
+
+        await using (var original = new MemoryStream(originalBytes))
+        {
+            await storage.WriteAsync(storageRef, original, maxBytes: 1024);
+        }
+
+        await using (var replay = new MemoryStream(originalBytes))
+        {
+            var storedReplay = await storage.WriteAsync(storageRef, replay, maxBytes: 1024);
+            Assert.Equal(originalBytes.Length, storedReplay.SizeBytes);
+        }
+
+        await using (var conflict = new MemoryStream("different-result"u8.ToArray()))
+        {
+            var exception = await Assert.ThrowsAsync<StorageObjectConflictException>(
+                () => storage.WriteAsync(storageRef, conflict, maxBytes: 1024));
+            Assert.Equal(storageRef, exception.StorageRef);
+        }
+
+        await using var persisted = await storage.OpenReadAsync(storageRef);
+        using var copy = new MemoryStream();
+        await persisted.CopyToAsync(copy);
+        Assert.Equal(originalBytes, copy.ToArray());
+    }
+
     [Theory]
     [InlineData("../outside")]
     [InlineData("documents/../../outside")]

@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、运行中任务接管、串行化心跳会话，以及 Canonical Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现；Provider 网络适配、实际任务执行器、统一结果读取 API、管理员账户管理、文档删除和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试，不会调用 MinerU；心跳会话将在实际执行器接入后使用。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、运行中任务接管、串行化心跳会话、Provider ZIP 结果受限接收，以及 Canonical Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现；Provider 网络适配、ZIP 内容归一化、实际任务执行器、统一结果读取 API、管理员账户管理、文档删除和管理网页尚未实现。Host 当前运行的 Worker 只负责恢复未启动抢占及到期重试，不会调用 MinerU；心跳和结果接收边界将在实际执行器接入后使用。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -62,6 +62,13 @@ dotnet run --project src/StructaDoc.Host
 - `Worker__RecoveryBatchSize`：每轮每类任务的最大恢复数量。
 - `Worker__LeaseDuration`：执行租约每次授予或续租后的有效时间；
 - `Worker__HeartbeatInterval`：执行期间的续租间隔，必须短于租约有效时间。
+- `ProviderResults__MaxArchiveBytes`：Provider ZIP 压缩包大小上限；
+- `ProviderResults__MaxEntryCount`：ZIP 最大条目数；
+- `ProviderResults__MaxEntryBytes`、`ProviderResults__MaxExpandedBytes`：单条目和总展开字节上限；
+- `ProviderResults__MaxCompressionRatio`：单条目最大压缩比；
+- `ProviderResults__MaxEntryPathBytes`：ZIP 内部路径 UTF-8 字节上限；
+- `ProviderResults__MaxCentralDirectoryBytes`：ZIP 中央目录元数据总大小上限；
+- `ProviderResults__TemporaryPath`：存储回读流不可 seek 时使用的受限临时目录。
 - `Documents__UploadApiEnabled`：是否映射上传端点，默认 `true`；
 - `Documents__MaxUploadBytes`：单个原始文档的最大字节数；
 - `Storage__Provider`：当前只实现 `Local`；
@@ -71,7 +78,7 @@ dotnet run --project src/StructaDoc.Host
 - `Authentication__LoginPermitLimit`、`Authentication__LoginRateLimitWindow`：每个来源 IP 的管理员登录尝试限额和固定时间窗口；
 - `Authentication__BootstrapAdministratorEmail`、`Authentication__BootstrapAdministratorPassword`：仅通过环境变量或 Secret 注入的首个管理员凭据。
 
-连接字符串、bootstrap 密码和其他凭据必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)，文件落盘和上传限制见 [`docs/development/file-storage.md`](./docs/development/file-storage.md)，读取和下载语义见 [`docs/development/document-reading.md`](./docs/development/document-reading.md)，Provider 配置与 Parse Run 创建语义见 [`docs/development/provider-config-and-parse-runs.md`](./docs/development/provider-config-and-parse-runs.md)，Provider 执行边界见 [`docs/development/provider-execution.md`](./docs/development/provider-execution.md)，Canonical 结果提交见 [`docs/development/canonical-result-persistence.md`](./docs/development/canonical-result-persistence.md)，认证细节见 [`docs/development/authentication.md`](./docs/development/authentication.md)。
+连接字符串、bootstrap 密码和其他凭据必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)，文件落盘和上传限制见 [`docs/development/file-storage.md`](./docs/development/file-storage.md)，读取和下载语义见 [`docs/development/document-reading.md`](./docs/development/document-reading.md)，Provider 配置与 Parse Run 创建语义见 [`docs/development/provider-config-and-parse-runs.md`](./docs/development/provider-config-and-parse-runs.md)，Provider 执行边界见 [`docs/development/provider-execution.md`](./docs/development/provider-execution.md)，Provider ZIP 接收见 [`docs/development/provider-result-intake.md`](./docs/development/provider-result-intake.md)，Canonical 结果提交见 [`docs/development/canonical-result-persistence.md`](./docs/development/canonical-result-persistence.md)，认证细节见 [`docs/development/authentication.md`](./docs/development/authentication.md)。
 
 ## 核心目标
 
