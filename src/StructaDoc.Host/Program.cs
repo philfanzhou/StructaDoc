@@ -34,9 +34,13 @@ var storageOptions = builder.Configuration
 var providerResultOptions = builder.Configuration
     .GetSection(ProviderResultIntakeOptions.SectionName)
     .Get<ProviderResultIntakeOptions>() ?? new ProviderResultIntakeOptions();
+var providerResultNormalizationOptions = builder.Configuration
+    .GetSection(ProviderResultNormalizationOptions.SectionName)
+    .Get<ProviderResultNormalizationOptions>() ?? new ProviderResultNormalizationOptions();
 ingestionOptions.Validate();
 storageOptions.Validate();
 providerResultOptions.Validate();
+providerResultNormalizationOptions.Validate();
 var authenticationOptions = builder.Configuration
     .GetSection(StructaDocAuthenticationOptions.SectionName)
     .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
@@ -47,7 +51,9 @@ builder.Services
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
 builder.Services.AddStructaDocPersistence(databaseOptions);
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions);
-builder.Services.AddStructaDocProviderResults(providerResultOptions);
+builder.Services.AddStructaDocProviderResults(
+    providerResultOptions,
+    providerResultNormalizationOptions);
 builder.Services.AddStructaDocHostAuthentication(authenticationOptions);
 builder.Services.AddSingleton(workerOptions);
 builder.Services.AddSingleton(TimeProvider.System);

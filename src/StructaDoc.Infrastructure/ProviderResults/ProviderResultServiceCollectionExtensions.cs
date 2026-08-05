@@ -7,14 +7,19 @@ public static class ProviderResultServiceCollectionExtensions
 {
     public static IServiceCollection AddStructaDocProviderResults(
         this IServiceCollection services,
-        ProviderResultIntakeOptions options)
+        ProviderResultIntakeOptions intakeOptions,
+        ProviderResultNormalizationOptions? normalizationOptions = null)
     {
         ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(options);
-        options.Validate();
+        ArgumentNullException.ThrowIfNull(intakeOptions);
+        intakeOptions.Validate();
+        normalizationOptions ??= new ProviderResultNormalizationOptions();
+        normalizationOptions.Validate();
 
-        services.AddSingleton(options);
+        services.AddSingleton(intakeOptions);
+        services.AddSingleton(normalizationOptions);
         services.AddSingleton<IProviderResultIntake, StoredProviderResultIntake>();
+        services.AddSingleton<IProviderResultNormalizer, MinerUResultNormalizer>();
         return services;
     }
 }

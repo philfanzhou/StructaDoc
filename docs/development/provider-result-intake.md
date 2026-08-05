@@ -12,7 +12,7 @@
 4. 从存储重新读取对象，验证 ZIP 签名并实际流过每个文件条目；
 5. 返回只包含规范化相对路径、压缩/展开大小和目录标记的内存清单。
 
-这一层保留原 ZIP，但不会把 ZIP 条目直接解压到正式存储。后续 Provider 归一化器只能从已验证清单选择已知条目，并为提取出的 Asset 和 Artifact 使用独立逻辑键。
+这一层保留原 ZIP，但不会把 ZIP 条目直接解压到正式存储。已实现的 MinerU 归一化器只从已验证清单选择已知条目，并为提取出的 Asset 和 Artifact 使用独立逻辑键；详见 [`provider-result-normalization.md`](./provider-result-normalization.md)。
 
 恢复 Worker 可以先调用 `TryLoadArchiveAsync`，从固定逻辑键重新计算大小和 SHA-256 并重复全部 ZIP 校验；对象存在且合法时不需要再次依赖 Provider 下载。Raw Archive 的内部展示名固定为 `provider-result.zip`，不使用上游文件名参与 Bundle 身份。
 
@@ -46,7 +46,5 @@
 
 ## 当前未实现
 
-- MinerU Cloud / Local 具体 ZIP 目录和 JSON 版本识别；
-- 将 Markdown、content list、layout、model output 和图片提取为独立 Artifact / Asset；
-- Provider 原始字段的敏感信息清理和 Canonical Block 映射；
+- 用更多生产样本扩展 MinerU Cloud / Local ZIP 目录和 JSON 版本识别；
 - 实际 Worker 对下载、验包、归一化和成功提交的阶段编排。

@@ -8,7 +8,7 @@
 
 本规格定义 StructaDoc Parse Run 的持久化状态、执行阶段、原子抢占、租约、重试、取消和崩溃恢复语义。它描述完整目标行为；具体已实现范围以本节及代码、测试为准。
 
-当前基础实现已覆盖 Parse Run 创建与幂等返回、状态查询、Provider 配置版本快照、原子抢占、续租、未启动抢占过期恢复、`claimed → running`、失败进入 `retry-wait` 或 `failed`，以及 Host 维护 Worker 将到期重试恢复为 `queued`。Provider 执行契约、只允许当前租约持有者读取执行上下文、Stage 与外部任务 ID 条件写入、已有外部任务的过期运行接管、串行化心跳会话、Provider ZIP 结果的幂等受限接收，以及 Canonical 结果存储复核和 `running → succeeded` 幂等事务也已实现。Provider HTTP 适配、实际执行器、ZIP 条目提取与 MinerU 归一化、取消和尝试明细记录仍未实现，因此当前 Worker 不会抢占并执行解析任务。
+当前基础实现已覆盖 Parse Run 创建与幂等返回、状态查询、Provider 配置版本快照、原子抢占、续租、未启动抢占过期恢复、`claimed → running`、失败进入 `retry-wait` 或 `failed`，以及 Host 维护 Worker 将到期重试恢复为 `queued`。Provider 执行契约、只允许当前租约持有者读取执行上下文、Stage 与外部任务 ID 条件写入、已有外部任务的过期运行接管、串行化心跳会话、Provider ZIP 结果的幂等受限接收、首个 MinerU ZIP 到 Parse Bundle 的确定性归一化，以及 Canonical 结果存储复核和 `running → succeeded` 幂等事务也已实现。Provider HTTP 适配、实际执行器、更多 MinerU 输出版本、取消和尝试明细记录仍未实现，因此当前 Worker 不会抢占并执行解析任务。
 
 ## 2. Authority
 
