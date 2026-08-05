@@ -60,7 +60,9 @@ SQLite 数据库文件使用本地持久卷；不支持多个容器共享该文�
 - 永久错误直接进入 `failed`；
 - Host 内置维护 Worker 分批把已到时间的 `retry-wait` 转回 `queued`。
 
-当前维护 Worker 不抢占或执行 `queued` 任务。Provider 执行器、处理期间续租和成功结果事务完成前，不得把它描述为完整解析 Worker。
+`IParseRunExecutionContextStore` 只为仍持有未过期租约且并发版本匹配的 Worker 返回执行快照。快照从 Parse Run 固定的 Provider Config Version 读取 Base URL、model、backend 和加密凭据，而不是读取逻辑配置的当前版本；因此管理员更新或停用配置不会改变已经创建任务的执行意图。凭据只在该内部边界解密，不进入公共 DTO。
+
+当前维护 Worker 不抢占或执行 `queued` 任务。Provider HTTP 适配器、处理期间续租和成功结果事务完成前，不得把它描述为完整解析 Worker。
 
 该实现不依赖某个数据库的专有 SQL。后续真实数据库竞争测试若证明有必要，可以在同一接口后为服务端数据库增加 `SKIP LOCKED` 等方言优化，而不改变 Worker 和公共 API。
 

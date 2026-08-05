@@ -37,6 +37,7 @@
 | [Authentication](./development/authentication.md) | 管理员会话、API Key、scope、bootstrap 和 antiforgery 实现状态 |
 | [Document Reading](./development/document-reading.md) | Document 键集分页、详情、下载、缓存和 Range 语义 |
 | [Provider Config and Parse Runs](./development/provider-config-and-parse-runs.md) | Provider 配置版本、凭据保护、Parse Run 创建与状态查询 |
+| [Provider Execution](./development/provider-execution.md) | Provider 能力、异步任务、流式结果和租约约束的执行快照边界 |
 
 ## 文档原则
 
