@@ -56,4 +56,4 @@ Host 从 `LibreOffice` 配置段读取：
 
 自动化测试覆盖格式选择、独立 Profile 参数、输入限制、无效 PDF、目录清理、租约约束的转换快照、执行器 PDF 提交、Canonical Artifact 提交和恢复复用。服务端数据库契约包含同一转换快照条件更新和最终 Artifact 提交，但当前机器没有容器运行时，因此 PostgreSQL、MySQL 和 MariaDB 的真实执行仍待验证。
 
-当前仓库尚未提供安装 LibreOffice 与字体的最终运行时镜像，也未用真实 DOC/XLS/PPT 样本对目标镜像中的 LibreOffice 版本执行集成测试。进程适配器已实现不等于单镜像交付已经完成。
+当前仓库已提供安装 LibreOffice no-GUI 组件与常用字体的运行时 Dockerfile 和 SQLite Compose 入口，见 [`single-container.md`](../deployment/single-container.md)。本机没有容器引擎，因此尚未用真实 DOC/XLS/PPT 样本对目标镜像中的 LibreOffice 版本执行集成测试；Dockerfile 和静态契约存在不等于镜像构建已经验证通过。

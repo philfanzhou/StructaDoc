@@ -11,7 +11,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、Cloud 两阶段上传加密 checkpoint、运行中任务接管、串行化心跳会话、可恢复执行器、受限 LibreOffice Office-to-PDF 回退、MinerU Cloud 签名上传与 Local multipart HTTP 适配、签名传输连接级公共地址策略、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现；包含 LibreOffice 和字体的最终运行时镜像、管理员配置 Base URL 的部署级出站策略、统一结果读取 API、管理员账户管理、文档删除和管理网页尚未实现。实际解析执行默认关闭，只有显式设置 `Worker__ExecutionEnabled=true` 后，执行 Worker 才会抢占队列并产生 Provider 出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、Cloud 两阶段上传加密 checkpoint、运行中任务接管、串行化心跳会话、可恢复执行器、受限 LibreOffice Office-to-PDF 回退、MinerU Cloud 签名上传与 Local multipart HTTP 适配、签名传输连接级公共地址策略、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现。当前 Host、LibreOffice 和字体的单一运行时 Dockerfile 与 SQLite Compose 入口已提供，但本机没有容器引擎，尚未完成真实镜像构建和样本转换验证；管理员配置 Base URL 的部署级出站策略、统一结果读取 API、管理员账户管理、文档删除和管理网页仍未实现。实际解析执行默认关闭，只有显式设置 `Worker__ExecutionEnabled=true` 后，执行 Worker 才会抢占队列并产生 Provider 出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -50,6 +50,18 @@ dotnet run --project src/StructaDoc.Host
 - `GET /api/v1/documents/{id}/content`：受控下载原文件，支持 ETag、条件请求和字节 Range。
 - `POST /api/v1/documents/{id}/parse-runs`：创建持久化 Parse Run；要求管理员会话或 `parses:write`，可使用 `Idempotency-Key`；
 - `GET /api/v1/parse-runs/{id}`：读取 Parse Run 状态；要求管理员会话或 `parses:read`。
+
+## 单容器启动
+
+当前仓库根目录提供包含 ASP.NET Core Host、LibreOffice no-GUI 组件和常用字体的 `Dockerfile`，以及只启动一个应用容器、使用 SQLite 命名卷的 `compose.yaml`。先设置 bootstrap 管理员 Secret，再启动：
+
+```bash
+export STRUCTADOC_ADMIN_EMAIL='admin@example.com'
+export STRUCTADOC_ADMIN_PASSWORD='use-a-secret-manager-or-a-long-random-value'
+docker compose up --build --detach
+```
+
+默认监听 `http://localhost:8080`。国内或受限网络可先运行 `bash ./scripts/build-container.sh auto`；Windows PowerShell 使用 `powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-container.ps1 -MirrorMode Auto`，然后执行 `docker compose up --detach --no-build`。构建脚本只探测官方源连通性，不查询 IP 地理位置。真实 Parse Run 执行仍默认关闭；完整的下载源参数、镜像内容、非 root 权限、持久卷、备份和验证状态见 [`single-container.md`](./docs/deployment/single-container.md)。
 
 默认配置使用 `./data/structadoc.db` SQLite 文件并在启动时应用迁移。可以通过环境变量切换数据库：
 
@@ -212,7 +224,7 @@ StructaDoc 始终保存用户上传的原始文件。当前执行器采用以下
 
 这种方式可以让本地 MinerU 直接处理其支持的 DOCX、PPTX、XLSX，同时为不支持 Excel 的在线接口提供 PDF 回退方案。
 
-转换由 .NET 直接启动受限的 LibreOffice 子进程，不运行 Python、FastAPI 或内部转换 HTTP 服务。每次转换使用独立临时目录和 LibreOffice User Profile，并受到并发数、超时、输入大小、输出大小和临时磁盘限制。当前适配器和恢复语义见 [`office-conversion.md`](./docs/development/office-conversion.md)，具体部署决策见 [`ADR-0003`](./docs/adr/0003-technology-and-single-image-deployment.md)。最终运行时镜像和字体层仍待实现。
+转换由 .NET 直接启动受限的 LibreOffice 子进程，不运行 Python、FastAPI 或内部转换 HTTP 服务。每次转换使用独立临时目录和 LibreOffice User Profile，并受到并发数、超时、输入大小、输出大小和临时磁盘限制。当前适配器和恢复语义见 [`office-conversion.md`](./docs/development/office-conversion.md)，具体部署决策见 [`ADR-0003`](./docs/adr/0003-technology-and-single-image-deployment.md)。Dockerfile 已包含 LibreOffice no-GUI 组件和常用字体，但真实镜像样本验证仍待有容器引擎的环境完成。
 
 ## 数据模型
 

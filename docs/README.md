@@ -44,6 +44,12 @@
 | [Provider Result Normalization](./development/provider-result-normalization.md) | 已验证 MinerU ZIP 的条目识别、派生存储、确定性 ID 和 Canonical 映射 |
 | [Canonical Result Persistence](./development/canonical-result-persistence.md) | Parse Bundle 验证、存储复核、幂等成功事务和当前限制 |
 
+## 部署
+
+| 文档 | 说明 |
+|---|---|
+| [Single Container](./deployment/single-container.md) | 当前 Host、LibreOffice、字体与 SQLite 持久卷的单容器构建和运行边界 |
+
 ## 文档原则
 
 - README 负责介绍和导航，不承载完整字段级契约。

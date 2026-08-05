@@ -8,7 +8,7 @@
 
 本规格定义 StructaDoc Parse Run 的持久化状态、执行阶段、原子抢占、租约、重试、取消和崩溃恢复语义。它描述完整目标行为；具体已实现范围以本节及代码、测试为准。
 
-当前基础实现已覆盖 Parse Run 创建与幂等返回、状态查询、Provider 配置版本快照、原子抢占、续租、未启动抢占过期恢复、`claimed → running`、失败进入 `retry-wait` 或 `failed`，以及 Host 维护 Worker 将到期重试恢复为 `queued`。Provider 执行契约、Cloud/Local HTTP 适配、只允许当前租约持有者读取执行上下文、Stage 与外部任务 ID 条件写入、Cloud 两阶段上传加密 checkpoint、已有外部任务的过期运行接管、串行化心跳会话、Provider 能力驱动的受限 LibreOffice PDF 回退及转换快照恢复、签名传输连接级公共地址策略、Provider ZIP 结果的幂等受限接收、Cloud/Local MinerU ZIP 到 Parse Bundle 的确定性归一化、Canonical 结果存储复核和 `running → succeeded` 幂等事务，以及把这些边界串联起来的可恢复执行器均已实现。真实执行默认由 `Worker:ExecutionEnabled=false` 关闭；更多 MinerU 输出版本、取消和尝试明细记录仍未实现，包含 LibreOffice 与字体的最终运行时镜像也尚未提供。
+当前基础实现已覆盖 Parse Run 创建与幂等返回、状态查询、Provider 配置版本快照、原子抢占、续租、未启动抢占过期恢复、`claimed → running`、失败进入 `retry-wait` 或 `failed`，以及 Host 维护 Worker 将到期重试恢复为 `queued`。Provider 执行契约、Cloud/Local HTTP 适配、只允许当前租约持有者读取执行上下文、Stage 与外部任务 ID 条件写入、Cloud 两阶段上传加密 checkpoint、已有外部任务的过期运行接管、串行化心跳会话、Provider 能力驱动的受限 LibreOffice PDF 回退及转换快照恢复、签名传输连接级公共地址策略、Provider ZIP 结果的幂等受限接收、Cloud/Local MinerU ZIP 到 Parse Bundle 的确定性归一化、Canonical 结果存储复核和 `running → succeeded` 幂等事务，以及把这些边界串联起来的可恢复执行器均已实现。真实执行默认由 `Worker:ExecutionEnabled=false` 关闭；更多 MinerU 输出版本、取消和尝试明细记录仍未实现。包含 LibreOffice 与字体的运行时 Dockerfile 已提供，但真实镜像构建和样本转换仍待容器环境验证。
 
 ## 2. Authority
 

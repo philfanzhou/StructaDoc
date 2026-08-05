@@ -52,7 +52,7 @@ Host 的 `ParseRunLeaseHeartbeat` 把心跳续租与阶段、外部任务 ID/che
 
 恢复时如果转换快照已存在，执行器复用已保存 PDF；如果 Archive 已存在，执行器不再依赖 Provider 长期保存结果，而是从本地 Archive 继续归一化或提交。瞬时轮询、下载、归一化和存储错误进入 `retry-wait`；转换快照、已有外部 ID/checkpoint 和 Stage 会保留。Local 等没有 checkpoint 的原子提交如果响应结果未知，不会自动重发，而是以 `provider-submission-outcome-unknown` 失败；Cloud 分配请求在 checkpoint 落库前结果未知时也采用同一保守规则。LibreOffice 子进程和配置边界见 [`office-conversion.md`](./office-conversion.md)。
 
-真实执行由 `Worker:ExecutionEnabled` 显式开启且默认 `false`。启用意味着文档会发送到管理员选择的 Cloud 或 Local Provider。当前每个 Host 串行执行一个任务；服务端数据库可通过多个 Host 实例并行，SQLite 仍只支持单实例。尚未完成的执行能力包括取消传播、独立尝试明细、部署目标真实 MinerU 与 LibreOffice 集成样本、包含 LibreOffice 和字体的最终镜像，以及管理员配置 Base URL 的部署级受信网络策略。
+真实执行由 `Worker:ExecutionEnabled` 显式开启且默认 `false`。启用意味着文档会发送到管理员选择的 Cloud 或 Local Provider。当前每个 Host 串行执行一个任务；服务端数据库可通过多个 Host 实例并行，SQLite 仍只支持单实例。尚未完成的执行能力包括取消传播、独立尝试明细、部署目标真实 MinerU 与 LibreOffice 镜像集成样本，以及管理员配置 Base URL 的部署级受信网络策略。包含 LibreOffice 和字体的 Dockerfile 已提供，但本机没有容器引擎，真实镜像构建尚未验证。
 
 ## 已验证行为
 

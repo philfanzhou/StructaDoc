@@ -16,6 +16,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\..\Dockerfile" Link="Dockerfile" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\compose.yaml" Link="compose.yaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\scripts\build-container.ps1" Link="scripts\build-container.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\scripts\build-container.sh" Link="scripts\build-container.sh" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\StructaDoc.Contracts\StructaDoc.Contracts.csproj" />
     <ProjectReference Include="..\..\src\StructaDoc.Domain\StructaDoc.Domain.csproj" />
     <ProjectReference Include="..\..\src\StructaDoc.Application\StructaDoc.Application.csproj" />
