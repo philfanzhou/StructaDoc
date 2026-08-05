@@ -15,6 +15,11 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
 
     public DbSet<ParseRunEntity> ParseRuns => Set<ParseRunEntity>();
 
+    public DbSet<ProviderConfigEntity> ProviderConfigs => Set<ProviderConfigEntity>();
+
+    public DbSet<ProviderConfigVersionEntity> ProviderConfigVersions =>
+        Set<ProviderConfigVersionEntity>();
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         IncrementConcurrencyVersions();
@@ -46,6 +51,14 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
         }
 
         foreach (var entry in ChangeTracker.Entries<ParseRunEntity>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.ConcurrencyVersion++;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<ProviderConfigEntity>())
         {
             if (entry.State == EntityState.Modified)
             {

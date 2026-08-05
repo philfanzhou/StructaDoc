@@ -250,6 +250,7 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
 
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(256)
+                        .IsUnicode(false)
                         .HasColumnType("character varying(256)")
                         .HasColumnName("idempotency_key");
 
@@ -325,7 +326,117 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                     b.HasIndex("Status", "NextAttemptAtUtc")
                         .HasDatabaseName("ix_parse_runs_due");
 
+                    b.HasIndex("CreatedBy", "DocumentId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_parse_runs_idempotency");
+
                     b.ToTable("parse_runs", (string)null);
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("ConcurrencyVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("concurrency_version");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("CurrentVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("current_version_id");
+
+                    b.Property<string>("DefaultMarker")
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("default_marker");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("ProviderType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("provider_type");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurrentVersionId")
+                        .HasDatabaseName("ix_provider_configs_current_version");
+
+                    b.HasIndex("DefaultMarker")
+                        .IsUnique()
+                        .HasDatabaseName("ux_provider_configs_default_marker");
+
+                    b.ToTable("provider_configs", (string)null);
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigVersionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Backend")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("backend");
+
+                    b.Property<string>("BaseUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("base_url");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("model");
+
+                    b.Property<string>("ProtectedCredential")
+                        .HasMaxLength(8192)
+                        .HasColumnType("character varying(8192)")
+                        .HasColumnName("protected_credential");
+
+                    b.Property<Guid>("ProviderConfigId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("provider_config_id");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("version_number");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderConfigId", "VersionNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_provider_config_versions_number");
+
+                    b.ToTable("provider_config_versions", (string)null);
                 });
 
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
@@ -339,9 +450,25 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                     b.Navigation("Document");
                 });
 
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigVersionEntity", b =>
+                {
+                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", "ProviderConfig")
+                        .WithMany("Versions")
+                        .HasForeignKey("ProviderConfigId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ProviderConfig");
+                });
+
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Navigation("ParseRuns");
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", b =>
+                {
+                    b.Navigation("Versions");
                 });
 #pragma warning restore 612, 618
         }

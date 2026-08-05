@@ -64,7 +64,8 @@ internal sealed class ParseRunEntityConfiguration : IEntityTypeConfiguration<Par
             .HasMaxLength(255);
         builder.Property(parseRun => parseRun.IdempotencyKey)
             .HasColumnName("idempotency_key")
-            .HasMaxLength(256);
+            .HasMaxLength(256)
+            .IsUnicode(false);
         builder.Property(parseRun => parseRun.ClaimedBy)
             .HasColumnName("claimed_by")
             .HasMaxLength(255);
@@ -91,5 +92,13 @@ internal sealed class ParseRunEntityConfiguration : IEntityTypeConfiguration<Par
             .HasDatabaseName("ix_parse_runs_due");
         builder.HasIndex(parseRun => parseRun.LeaseExpiresAtUtc)
             .HasDatabaseName("ix_parse_runs_lease_expiry");
+        builder.HasIndex(parseRun => new
+        {
+            parseRun.CreatedBy,
+            parseRun.DocumentId,
+            parseRun.IdempotencyKey,
+        })
+            .IsUnique()
+            .HasDatabaseName("ux_parse_runs_idempotency");
     }
 }

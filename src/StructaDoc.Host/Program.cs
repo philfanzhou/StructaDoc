@@ -6,6 +6,8 @@ using StructaDoc.Application.Documents;
 using StructaDoc.Contracts.System;
 using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
+using StructaDoc.Host.ParseRuns;
+using StructaDoc.Host.Providers;
 using StructaDoc.Host.Workers;
 using StructaDoc.Infrastructure.Authentication;
 using StructaDoc.Infrastructure.Documents;
@@ -78,6 +80,8 @@ app.MapDocumentReadEndpoints();
 app.MapAdministratorSessionEndpoints(
     authenticationOptions.AdministratorSessionLifetime);
 app.MapApiClientAdministrationEndpoints();
+app.MapProviderConfigAdministrationEndpoints();
+app.MapParseRunEndpoints();
 
 app.MapHealthChecks(
     "/health/live",

@@ -8,7 +8,7 @@
 
 本规格定义 StructaDoc Parse Run 的持久化状态、执行阶段、原子抢占、租约、重试、取消和崩溃恢复语义。它描述完整目标行为；具体已实现范围以本节及代码、测试为准。
 
-当前基础实现已覆盖原子抢占、续租、未启动抢占过期恢复、`claimed → running`、失败进入 `retry-wait` 或 `failed`，以及 Host 维护 Worker 将到期重试恢复为 `queued`。Provider 执行、心跳编排、外部任务恢复、取消、尝试明细记录和统一结果成功提交仍未实现，因此当前 Worker 不会抢占并执行解析任务。
+当前基础实现已覆盖 Parse Run 创建与幂等返回、状态查询、Provider 配置版本快照、原子抢占、续租、未启动抢占过期恢复、`claimed → running`、失败进入 `retry-wait` 或 `failed`，以及 Host 维护 Worker 将到期重试恢复为 `queued`。Provider 执行、心跳编排、外部任务恢复、取消、尝试明细记录和统一结果成功提交仍未实现，因此当前 Worker 不会抢占并执行解析任务。
 
 ## 2. Authority
 

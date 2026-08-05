@@ -51,7 +51,7 @@ Credential 格式包含版本、公开 Client UUID 和 256-bit 随机 Secret。�
 - `parses:read`
 - `parses:write`
 
-当前 Document 上传要求 `documents:write`；列表、详情和原文件下载要求 `documents:read`。两个 scope 相互独立。管理员主体由独立策略授权，不需要伪造 API Client scope。
+当前 Document 上传要求 `documents:write`；列表、详情和原文件下载要求 `documents:read`。Parse Run 创建要求 `parses:write`，状态读取要求 `parses:read`。四个 scope 相互独立。管理员主体由独立策略授权，不需要伪造 API Client scope。Provider 配置管理只允许管理员 Cookie 会话访问，不向 API Client 开放。
 
 ## API Client Administration
 
@@ -69,7 +69,7 @@ Credential 格式包含版本、公开 Client UUID 和 256-bit 随机 Secret。�
 
 ## Data Protection
 
-`Authentication:DataProtectionKeysPath` 默认是 `./data/keys`。该目录保存 Cookie 和 antiforgery 使用的 ASP.NET Core Data Protection key ring，必须放入持久卷并限制文件权限。删除或更换 key ring 会使现有管理员会话与 antiforgery token 失效。
+`Authentication:DataProtectionKeysPath` 默认是 `./data/keys`。该目录保存 Cookie、antiforgery 和 Provider 凭据加密使用的 ASP.NET Core Data Protection key ring，必须放入持久卷并限制文件权限。删除或更换 key ring 会使现有管理员会话与 antiforgery token 失效，并使已保存的 Provider 凭据无法解密。
 
 多实例 Host 必须共享同一 key ring。当前只实现文件系统持久化；在无法安全共享文件卷的环境中，管理员会话暂不具备多实例发布支持，API Key 不受该限制。
 

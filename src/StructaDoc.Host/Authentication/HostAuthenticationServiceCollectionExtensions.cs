@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using StructaDoc.Application.Authentication;
+using StructaDoc.Application.Providers;
 using StructaDoc.Infrastructure.Authentication;
 
 namespace StructaDoc.Host.Authentication;
@@ -24,6 +25,7 @@ public static class HostAuthenticationServiceCollectionExtensions
         services.AddDataProtection()
             .SetApplicationName("StructaDoc")
             .PersistKeysToFileSystem(new DirectoryInfo(keyPath));
+        services.AddSingleton<IProviderSecretProtector, DataProtectionProviderSecretProtector>();
         services.AddAntiforgery(antiforgery =>
         {
             antiforgery.HeaderName = "X-CSRF-TOKEN";
@@ -107,7 +109,29 @@ public static class HostAuthenticationServiceCollectionExtensions
                             SubjectTypes.Administrator)
                         || context.User.HasClaim(
                             StructaDocClaimTypes.Scope,
-                            AuthenticationScopes.DocumentsWrite)));
+                            AuthenticationScopes.DocumentsWrite)))
+            .AddPolicy(
+                AuthorizationPolicies.ParsesRead,
+                policy => policy
+                    .RequireAuthenticatedUser()
+                    .RequireAssertion(context =>
+                        context.User.HasClaim(
+                            StructaDocClaimTypes.SubjectType,
+                            SubjectTypes.Administrator)
+                        || context.User.HasClaim(
+                            StructaDocClaimTypes.Scope,
+                            AuthenticationScopes.ParsesRead)))
+            .AddPolicy(
+                AuthorizationPolicies.ParsesWrite,
+                policy => policy
+                    .RequireAuthenticatedUser()
+                    .RequireAssertion(context =>
+                        context.User.HasClaim(
+                            StructaDocClaimTypes.SubjectType,
+                            SubjectTypes.Administrator)
+                        || context.User.HasClaim(
+                            StructaDocClaimTypes.Scope,
+                            AuthenticationScopes.ParsesWrite)));
 
         return services;
     }
