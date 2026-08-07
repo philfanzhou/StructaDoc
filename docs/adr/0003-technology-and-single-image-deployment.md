@@ -1,117 +1,95 @@
-# ADR-0003：采用 .NET 10 和包含 LibreOffice 的单一应用镜像
+# ADR-0003: Use .NET 10 and One Application Image with LibreOffice
 
 - Status: Accepted
 - Date: 2026-08-05
 
 ## Context
 
-StructaDoc 是一个低频写入、以读取结构化结果为主的自托管服务。文档上传和 Office 转换的吞吐量预计远低于结果读取量，第一阶段更重视部署简单、升级一致和较低的日常维护成本，而不是分别扩缩 API、Worker 和转换器。
+StructaDoc is a self-hosted service with relatively infrequent writes and substantially more structured-result reads. The initial product favors simple deployment, coordinated upgrades, and low operational overhead over independently scaling the API, Workers, and converter.
 
-项目仍然需要清晰隔离 HTTP、任务执行、Provider、存储和转换职责，但这种代码边界不要求第一阶段把每项职责部署为独立容器。尤其是 Office 转 PDF 只需要受控调用 LibreOffice headless；为此额外维护 Python、FastAPI、内部 HTTP 协议和第二个常驻进程没有足够收益。
+Clear code boundaries do not require a separate container for every responsibility. Office-to-PDF conversion only needs a constrained LibreOffice headless process; adding Python, FastAPI, an internal HTTP protocol, and another resident service would not provide enough benefit.
 
-StructaDoc 同时需要长期维护的公共 DTO、关系数据库事务、持久化任务恢复、流式文件处理、认证和管理网页托管。.NET 10 已经是正式发布的 LTS 版本，适合作为新项目基线。.NET 8 的支持周期接近结束，不再作为首个实现的目标框架。
+The service also needs long-lived DTOs, relational transactions, durable job recovery, streaming file processing, authentication, and web hosting. .NET 10 is the LTS baseline.
 
 ## Decision
 
-### 1. 技术基线
+### 1. Technology baseline
 
-- API、后台任务、Provider 和基础设施代码使用 .NET 10 与 ASP.NET Core 10。
-- 所配置的受支持关系数据库是业务数据和持久化任务的权威数据库；数据库可移植性见 [ADR-0004](./0004-relational-database-portability.md)。
-- 管理网页使用 Vue 3、TypeScript 和 Vite，并在镜像构建阶段生成静态文件。
-- 前端静态文件由 ASP.NET Core Host 提供，不部署独立 Web Server 或前端容器。
-- 默认 JSON、HTTP、日志、健康检查和可观测性优先使用 .NET 平台内置能力；新增第三方依赖前需要证明现有能力不足。
+- Use .NET 10 and ASP.NET Core 10 for APIs, background jobs, Providers, and infrastructure.
+- Use the configured supported relational database as the authority for business data and persistent jobs. See [ADR-0004](./0004-relational-database-portability.md).
+- Use Vue 3, TypeScript, and Vite for the user workspace and administration area.
+- Build the web application into static files served by ASP.NET Core; do not deploy a separate web server or frontend container.
+- Prefer built-in .NET facilities for JSON, HTTP, logging, health checks, and observability before adding dependencies.
 
-### 2. 单一应用镜像和单一主进程
+### 2. One image and one main process
 
-第一阶段只发布一个 StructaDoc 应用镜像。最终运行时镜像包含：
+The runtime image contains:
 
-- ASP.NET Core Runtime；
-- StructaDoc Host 及其依赖程序集；
-- 已构建的管理网页静态文件；
-- LibreOffice headless 和受支持文档所需字体。
+- ASP.NET Core Runtime;
+- the StructaDoc Host and dependencies;
+- compiled web assets;
+- LibreOffice no-GUI components and fonts for supported documents.
 
-容器中只有 StructaDoc Host 是常驻主进程。Host 同时承载：
+The StructaDoc Host is the only resident main process. It hosts the web application and API, persistent Parse and Cleanup Workers, Provider adapters, and the local LibreOffice adapter.
 
-- 管理网页和 HTTP API；
-- 持久化 Parse Run 的后台执行器；
-- Provider 适配器；
-- 本地 LibreOffice 转换适配器。
+Workers remain logical components implemented as `BackgroundService` instances. They use database claims, leases, and heartbeats rather than an in-process queue. A future deployment may run the same image in combined, API-only, or Worker-only mode without changing the domain model or public API.
 
-Worker 是独立的逻辑组件，但第一阶段作为 `BackgroundService` 运行在 Host 内，而不是单独发布可执行程序或镜像。任务仍必须通过数据库原子抢占、租约和心跳执行，不能依赖进程内队列；因此未来可以让同一镜像按全部功能、仅 API 或仅 Worker 的模式启动，而无需改变领域模型或公共 API。
+### 3. Built-in Office conversion
 
-### 3. 内置 Office 转换
+Submit a source document directly when the Provider supports it. Otherwise, the .NET adapter starts LibreOffice directly and creates a PDF fallback. The adapter must:
 
-Provider 原生支持源格式时仍优先提交原文件。只有 Provider 不支持源格式时，Worker 才通过本地 LibreOffice 转换适配器生成 PDF。
+- create an isolated work directory and LibreOffice user profile for each conversion;
+- pass arguments without composing a shell command from user input;
+- bound concurrency, execution time, input, output, and temporary disk;
+- terminate the process tree on timeout or cancellation;
+- validate the exit code, output presence, and PDF signature;
+- clean temporary data after success, failure, or cancellation;
+- keep document content, internal paths, and sensitive names out of logs.
 
-转换适配器由 .NET 直接启动 LibreOffice 子进程，不在默认镜像中运行 Python、FastAPI、Uvicorn、进程监督器或内部转换 HTTP 服务。实现必须：
+The converted file is a `normalized-pdf` Artifact and never overwrites the original. The Artifact and Parse Run record converter version, source and submitted formats, size, and hash.
 
-- 为每次转换创建独立工作目录和 LibreOffice User Profile；
-- 使用参数列表启动进程，不把用户输入拼接为 Shell 命令；
-- 限制转换并发、执行时间、输入大小、输出大小和临时磁盘占用；
-- 超时或取消时终止对应进程树；
-- 检查退出码、输出文件存在性和 PDF 内容类型；
-- 在成功、失败和取消后清理临时目录；
-- 不在日志中记录文档正文、内部路径或敏感文件名信息。
+### 4. Build and runtime boundary
 
-转换后的 PDF 作为 `normalized-pdf` Artifact 保存，不覆盖原始文件。Artifact 和 Parse Run 记录源格式、实际提交格式、LibreOffice 版本、大小和哈希，保证结果可追溯。
+The image uses multi-stage builds:
 
-### 4. 构建和运行时边界
+1. Node.js builds the web workspace;
+2. the .NET SDK publishes the Host;
+3. the final ASP.NET Core runtime stage installs LibreOffice and fonts and copies both outputs.
 
-应用镜像采用多阶段构建：
+Node.js, the .NET SDK, and Python are absent from the runtime image.
 
-1. Node.js 构建管理网页；
-2. .NET SDK 构建并发布 Host；
-3. 最终运行时阶段安装 ASP.NET Core Runtime、LibreOffice 和字体，并复制前两阶段产物。
+### 5. External state
 
-Node.js、.NET SDK 和 Python 不进入最终运行时镜像。
+One application image does not mean that a database server runs inside it:
 
-### 5. 外部状态依赖
+- SQLite uses a persistent local volume;
+- PostgreSQL, MySQL, and MariaDB run as external services or official database containers;
+- local file storage uses a mounted volume;
+- S3-compatible object storage is an optional external dependency;
+- StructaDoc never starts or manages a database server inside its image.
 
-“单一应用镜像”不表示在应用容器中运行数据库服务器：
-
-- SQLite 作为进程内数据库使用，数据库文件必须位于持久卷，不打包进镜像层；
-- PostgreSQL、MySQL 或 MariaDB 使用独立实例或官方数据库容器；
-- 默认文件存储可以使用挂载卷；
-- S3 兼容对象存储是可选部署能力；
-- 不在 StructaDoc 镜像中启动或管理数据库服务器。
-
-最小自托管拓扑是一个使用 SQLite 持久卷的 StructaDoc 应用容器。需要多实例或使用既有数据库基础设施时，部署一个或多个 StructaDoc 容器并连接外部 PostgreSQL、MySQL 或 MariaDB。
+The minimum topology is one StructaDoc container with a SQLite volume. Multi-instance deployments connect one or more StructaDoc containers to a supported server database.
 
 ## Consequences
 
 ### Positive
 
-- 前端、API、Worker 和转换能力通过一个版本化镜像交付和升级。
-- 不需要维护 Python 运行时、内部转换 HTTP 协议或额外常驻进程。
-- 低频转换不会为默认部署引入独立服务发现、健康检查和网络故障面。
-- 代码仍保留模块边界，未来可以使用同一镜像拆分 API 与 Worker 运行模式。
-- 数据库任务租约使单 Host 和受支持的多实例部署遵守同一套可靠性语义。
+- The UI, API, Workers, and conversion capability ship and upgrade as one versioned image.
+- No Python runtime, conversion HTTP protocol, or extra resident process is required.
+- Logical component boundaries still permit future role-based scaling with the same image.
+- Database leases give single- and multi-instance deployments the same reliability semantics.
 
 ### Trade-offs
 
-- LibreOffice 和字体会显著增大最终镜像。
-- API、Worker 和转换器默认共享同一容器的 CPU、内存和故障域。
-- 不能单独升级或扩容 LibreOffice；如果未来转换量显著增长，需要用新 ADR 重新评估部署边界。
-- 构建 LibreOffice 层可能较慢，需要通过稳定基础层和构建缓存控制构建时间。
+- LibreOffice and fonts significantly increase image size.
+- The API, Workers, and converter share CPU, memory, and a failure domain by default.
+- LibreOffice cannot be upgraded or scaled independently without revisiting this decision.
+- The LibreOffice layer can make image builds slower and should use stable layers and caching.
 
 ## Rejected Alternatives
 
-### 独立 Python doc-converter 容器
-
-拒绝作为默认部署。Python 服务只是在 HTTP 层封装 LibreOffice 子进程，会增加运行时、进程、协议和运维成本，而当前预期转换频率不足以证明这些成本合理。
-
-### 在同一容器中同时运行 .NET Host 和 Python Web 服务
-
-拒绝。它表面上只有一个镜像，实际仍需要管理多个常驻进程、内部端口、退出顺序和健康状态，没有实现单一运行时和单一主进程的维护目标。
-
-### 第一阶段分别发布 API、Worker 和转换器镜像
-
-拒绝作为默认形态。逻辑边界会保留，但当前负载没有证明独立部署和扩缩的复杂度是必要的。
-
-### 把数据库服务器打包进应用容器
-
-拒绝。数据库备份、恢复、升级、持久卷和生命周期必须独立于应用镜像管理。
-
-### 使用 Go 作为核心实现语言
-
-Go 在镜像体积、启动速度和单二进制交付方面有优势，但 StructaDoc 的主要复杂度是长期演进的数据契约、认证、关系数据库事务和持久化任务，而不是 CPU 密集计算。结合现有 .NET 领域经验和 .NET 10 LTS 的平台能力，Go 的运行时优势不足以抵消重建工程惯例和降低开发效率的成本。
+- **Separate Python converter container:** adds runtime, protocol, discovery, and operational cost for a thin LibreOffice wrapper.
+- **.NET and Python web services in one container:** still requires supervising multiple resident processes and internal ports.
+- **Separate API, Worker, and converter images initially:** current load does not justify independent deployment complexity.
+- **Database server inside the application image:** database backup, recovery, upgrades, and lifecycle must remain separate.
+- **Go as the core language:** its image and startup advantages do not outweigh .NET's fit for evolving contracts, authentication, relational transactions, and durable jobs in this project.

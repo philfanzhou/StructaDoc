@@ -1,110 +1,88 @@
 # Database Support
 
 - Status: Implementation note
-- Last updated: 2026-08-05
+- Last updated: 2026-08-07
 
 ## Purpose
 
-本文记录 [ADR-0004](../adr/0004-relational-database-portability.md) 的当前实现状态。它区分“代码可以配置或生成迁移”与“已经在真实数据库上通过完整契约测试”，避免把计划能力描述为已验证能力。
+This document records the implementation of [ADR-0004](../adr/0004-relational-database-portability.md). “Supported” includes real migrations, transactions, concurrency, lease recovery, and canonical commits—not merely configuration or compilation.
 
 ## Current Matrix
 
-| Database | EF Core Provider | Migration assembly | Current verification |
+| Database | EF Core Provider | Migration assembly | Verification |
 |---|---|---|---|
-| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | 已使用临时文件数据库验证迁移、Document 查询与键集分页、Parse Run/认证数据 CRUD、乐观并发、外部任务恢复与租约状态机，以及 Canonical Bundle 幂等成功事务 |
-| PostgreSQL | `Npgsql.EntityFrameworkCore.PostgreSQL` | `StructaDoc.Migrations.PostgreSql` | Provider、Canonical 结果迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
-| MySQL | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MySql` | MySQL 8.4 方言、Canonical 结果迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
-| MariaDB | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | MariaDB 11.4 方言、Canonical 结果迁移和容器契约测试已编译；本机缺少容器运行时，真实执行待验证 |
+| SQLite | `Microsoft.EntityFrameworkCore.Sqlite` | `StructaDoc.Migrations.Sqlite` | File-database contracts cover migration, document queries, authentication, concurrency, Parse Run lifecycle, and canonical transactions |
+| PostgreSQL 17 | `Npgsql.EntityFrameworkCore.PostgreSQL` | `StructaDoc.Migrations.PostgreSql` | Real Testcontainers contract passes in GitHub Actions |
+| MySQL 8.4 | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MySql` | Real Testcontainers contract passes in GitHub Actions |
+| MariaDB 11.4 | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | Independent real Testcontainers contract passes in GitHub Actions |
 
-在真实数据库迁移、CRUD、并发抢占、租约恢复和升级测试全部通过前，PostgreSQL、MySQL 和 MariaDB 不标记为发布支持。MySQL 与 MariaDB 即使使用同一 Provider，也保留独立迁移和测试目标。
+MySQL and MariaDB retain separate migrations and tests even though they use one EF Core Provider package.
 
 ## Provider Choice
 
-共享模型使用 EF Core 10。SQLite 使用 Microsoft Provider，PostgreSQL 使用 Npgsql。
+The shared model uses EF Core 10. SQLite uses Microsoft's Provider and PostgreSQL uses Npgsql.
 
-上游 [`Pomelo.EntityFrameworkCore.MySql`](https://github.com/PomeloFoundation/Pomelo.EntityFrameworkCore.MySql) 当前稳定版仍面向 EF Core 9；StructaDoc 的 .NET 10 基线不能为此退回已结束支持的 EF Core 主版本。当前 MySQL / MariaDB 适配使用 MIT 许可的 [`Microting.EntityFrameworkCore.MySql`](https://github.com/microting/Pomelo.EntityFrameworkCore.MySql)，它是面向 EF Core 10 的 Pomelo 分支，并提供不同的 `MySqlServerVersion` 与 `MariaDbServerVersion` 方言配置。
+The stable upstream `Pomelo.EntityFrameworkCore.MySql` release still targets EF Core 9. StructaDoc does not move its .NET 10 baseline back to an out-of-support EF Core major version. MySQL and MariaDB therefore use the MIT-licensed [`Microting.EntityFrameworkCore.MySql`](https://github.com/microting/Pomelo.EntityFrameworkCore.MySql), an EF Core 10 branch with explicit `MySqlServerVersion` and `MariaDbServerVersion` dialects.
 
-该依赖只存在于 Infrastructure 和迁移边界，不进入 Domain、Application 或公共 DTO。如果上游 Pomelo 发布稳定 EF Core 10 版本，或者当前分支不能通过 StructaDoc 的真实数据库契约测试，可以在不改变公共 API 和领域模型的情况下替换。
-
-SQLite 的 `SQLitePCLRaw` 原生依赖被集中固定到无当前已知 NuGet 漏洞的 3.x 版本。不得通过关闭 NuGet 审计或忽略高危告警恢复到存在已知漏洞的传递版本。
+That dependency is confined to Infrastructure and migrations. It can be replaced with a stable upstream EF Core 10 Provider without changing Domain or public APIs. `SQLitePCLRaw` is centrally pinned to a 3.x release without the previously known NuGet vulnerability; do not restore a vulnerable transitive version by disabling audit.
 
 ## Configuration
 
-Host 从 `Database` 配置段读取：
-
 | Key | Required | Meaning |
 |---|---:|---|
-| `Provider` | Yes | `Sqlite`、`PostgreSql`、`MySql` 或 `MariaDb` |
-| `ConnectionString` | Yes | 所选数据库的连接字符串 |
-| `ServerVersion` | MySQL / MariaDB | 显式数据库版本；不通过启动时连接自动猜测 |
-| `ApplyMigrationsOnStartup` | Yes | 是否在 Host 接受请求前应用当前 Provider 的迁移 |
+| `Database:Provider` | Yes | `Sqlite`, `PostgreSql`, `MySql`, or `MariaDb` |
+| `Database:ConnectionString` | Yes | Connection string for the selected database |
+| `Database:ServerVersion` | MySQL / MariaDB | Explicit server version; the Host does not infer it by connecting |
+| `Database:ApplyMigrationsOnStartup` | Yes | Whether the Host applies the selected migration set before serving requests |
 
-生产凭据必须通过环境变量或部署 Secret 注入。配置文件只提供不含凭据的 SQLite 开发默认值。
+Inject production credentials through environment variables or deployment secrets. Repository settings contain only a credential-free SQLite development default.
 
-SQLite 数据库文件使用本地持久卷；不支持多个容器共享该文件，也不支持放在网络文件系统。服务端数据库连接失败或迁移失败时，Host 不得进入就绪状态。
+Keep SQLite on a local persistent volume. Multiple containers must not share the file, and it must not live on a network filesystem. A server-database connection or migration failure prevents readiness.
 
-## Parse Run Lease Store
+## Durable Job Stores
 
-`IParseRunLeaseStore` 是 Application 层定义的持久化任务边界，Infrastructure 当前提供基于 EF Core 条件更新的可移植实现：
+`IParseRunLeaseStore` is the Application-layer job boundary. Its portable EF Core implementation:
 
-- 按 `nextAttemptAt`、创建时间和 ID 选择到期的 `queued` 候选任务；
-- 使用状态、到期时间和并发版本作为 compare-and-set 条件，只有更新一行的 Worker 获得租约；
-- 抢占时写入 Worker、租约到期时间、尝试次数和新并发版本；
-- 续租要求 Worker 和并发版本仍匹配、旧租约尚未过期；
-- `claimed`、没有外部任务 ID 且租约过期的任务可以原子恢复为 `queued`；
-- `running`、已有外部任务 ID 且租约过期的任务可以由一个新 Worker 原子接管；接管保留 Stage、外部任务 ID 和当前 attempt，不重新提交或增加尝试次数。
+- orders due `queued` candidates by next attempt, creation time, and ID;
+- uses status, due time, and concurrency version as compare-and-set conditions;
+- records claimant, lease expiry, attempt, and a new concurrency version;
+- renews only a matching, unexpired lease;
+- returns expired unstarted claims to `queued`;
+- lets one new Worker adopt an expired `running` job that has an external task ID without resubmission or attempt inflation.
 
-`IParseRunStateStore` 进一步限制租约持有者能够执行的状态转换：
+`IParseRunStateStore` restricts transitions to the current lease. It persists stages, one-time external IDs, Cloud encrypted submission continuations, retry waits, and terminal failures with conditional updates.
 
-- 当前租约可以把 `claimed` 原子转换为 `running` 并写入初始 Stage；
-- 只有当前运行租约能够更新 Stage；原子提交可在写入外部任务 ID 时直接进入 `waiting-provider`；Cloud 两阶段提交先写入外部 ID 和加密 continuation 并保持 `submitting`，上传确认后清除 continuation 再进入等待；
-- 外部任务 ID 只能写入一次，且已有外部任务的运行不能回到提交前 Stage；
-- 可重试错误在尝试次数未耗尽时进入 `retry-wait`，否则进入最终状态 `failed`；
-- 永久错误直接进入 `failed`；
-- Host 内置维护 Worker 分批把已到时间的 `retry-wait` 转回 `queued`。
+`IParseRunExecutionContextStore` returns a snapshot only for a matching live lease. It reads the immutable Provider configuration version captured at Parse Run creation, not the administrator's current version. Credentials and continuations are decrypted only inside this boundary and never enter public DTOs.
 
-`IParseRunExecutionContextStore` 只为仍持有未过期租约且并发版本匹配的 Worker 返回执行快照。快照从 Parse Run 固定的 Provider Config Version 读取 Base URL、model、backend 和加密凭据，而不是读取逻辑配置的当前版本；因此管理员更新或停用配置不会改变已经创建任务的执行意图。Provider 凭据和提交 continuation 只在该内部边界解密，不进入公共 DTO。
+`IParseRunConversionStore` writes an immutable conversion snapshot only during the `converting` stage. `ParseRunLeaseHeartbeat` serializes renewal with state and result writes so each operation receives the newest concurrency token.
 
-`IParseRunConversionStore` 只允许当前 `converting` Stage 的运行租约首次写入转换快照。转换 JSON、实际提交媒体类型、`preparing-source` Stage 和并发版本在同一个条件更新中改变；已有快照不能被覆盖。该边界复用既有列，不引入本轮数据库结构或迁移变化。
+`IParseBundleCommitStore` verifies object size and SHA-256 before a single transaction writes Pages, Blocks, Assets, Artifacts, bundle fingerprint, and `succeeded`. Same-fingerprint replay is idempotent; a stale lease, cancellation race, partial rows, or different fingerprint cannot overwrite state.
 
-Host 注册的 `ParseRunLeaseHeartbeat` 为一个运行任务创建串行化租约会话。阶段写入、外部任务 ID/提交 checkpoint 写入、执行快照读取、失败转换、最终 Canonical 提交和后台续租共享最新并发令牌，避免彼此用旧 token 竞争；续租条件失败或已知租约到期会取消该会话的执行 token。`ParseRunExecutor` 为每个抢占或接管的任务创建并释放该会话。
-
-`IParseBundleCommitStore` 在事务前流式复核所有 Asset 和 Artifact 的大小及 SHA-256，然后使用当前运行租约和并发版本作为成功提交条件。Pages、Blocks、Assets、Artifacts、Bundle 指纹和 `succeeded` 状态在同一事务写入；相同指纹可幂等重放，不同指纹、取消竞争、失效租约或既有部分结果不能覆盖任务状态。
-
-维护 Worker 负责到期状态恢复和重试排队；独立执行 Worker 优先接管已有外部任务，再抢占新的 `queued` 任务。真实执行由 `Worker:ExecutionEnabled` 显式启用且默认关闭，因此默认部署不会产生 Provider 出站请求。当前每个 Host 串行执行一个任务，多实例通过数据库租约并行；后续可以在不改变任务语义的前提下增加受控并发。
-
-该实现不依赖某个数据库的专有 SQL。后续真实数据库竞争测试若证明有必要，可以在同一接口后为服务端数据库增加 `SKIP LOCKED` 等方言优化，而不改变 Worker 和公共 API。
+Maintenance requeues due retries and recovers expired claims. The execution Worker adopts resumable external jobs before claiming new work. `Worker:ExecutionEnabled` is `false` by default, so an unconfigured deployment makes no Provider requests.
 
 ## Migration Workflow
 
-仓库使用本地 `dotnet-ef` 工具清单，先执行：
+Restore the repository tool manifest:
 
 ```bash
 dotnet tool restore
 ```
 
-每次共享模型变化都必须为四个迁移项目分别生成和审查迁移。设计时 Factory 只用于生成迁移，其中的占位连接字符串不得用于运行应用，也不包含有效凭据。
-
-生产环境可以关闭 `ApplyMigrationsOnStartup`，改用同一应用镜像提供的迁移命令；在该命令入口实现前，部署文档不得声称已支持这种模式。
+Every shared model change requires a generated and reviewed migration in all four migration projects. Design-time factories exist only for generation; their placeholder connection strings are not runtime credentials.
 
 ## Contract Tests
 
-普通测试命令始终运行 SQLite 文件数据库契约测试。PostgreSQL、MySQL 和 MariaDB 测试使用 Testcontainers，默认跳过，避免没有容器运行时的开发机和 CI 被误判为数据库验证通过。
-
-安装并启动 Docker 兼容运行时后，显式运行：
+Ordinary test runs always exercise SQLite file-database contracts. Server-database tests use Testcontainers and run only when explicitly enabled:
 
 ```powershell
 $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
-dotnet test tests/StructaDoc.DatabaseContractTests
+dotnet test tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj
 ```
 
-当前服务端数据库套件从空库应用迁移，并验证无待处理迁移、Document 复合游标分页与详情查询、管理员持久化、API Client scope 更新、Key 轮换、并发版本和撤销，以及 Parse Run 并发抢占、续租令牌失效、未启动任务的租约过期恢复、Stage/外部任务 ID 条件写入、转换快照条件写入、运行中任务无重复接管、失败、重试等待、到期回队列转换和包含转换 Artifact 的 Canonical Bundle 幂等成功提交。测试成功前不得更新上面的发布支持状态。
+The suite migrates an empty database and checks for pending migrations. It covers document pagination, local administrators, API-client scope changes and rotation, concurrency and revocation, competing Parse Run claims, lease renewal and expiry, stage and external-ID writes, conversion snapshots, resumable adoption, failure and retry transitions, cleanup lifecycle, and canonical commits.
 
 ## Remaining Verification
 
-下一步需要在有容器运行时的开发机或 CI 中实际执行现有套件，并继续补齐：
-
-- Document / Parse Run CRUD 与外键约束；
-- 并发版本冲突；
-- UTC 时间、排序、分页及字符串大小写行为；
-- 从上一发布迁移升级。
+- upgrade migrations from each released database schema, once releases exist;
+- broader stress coverage for concurrent claims and cleanup;
+- documented import/export tooling for moving from SQLite to a server database.

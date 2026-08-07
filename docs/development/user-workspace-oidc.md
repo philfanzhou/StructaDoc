@@ -1,17 +1,34 @@
-# 用户工作台与 OIDC
+# User Workspace and OIDC
 
-StructaDoc 的 Web 界面是面向用户的产品，而不只是管理员后台。登录用户可以上传和筛选自己的文档、创建解析任务、查看规范化结果、下载原文和导出结果，也可以把文档权限授予另一个 OIDC 主体。管理员在同一个应用中额外看到 Provider Config 和 API Client 管理区。
+StructaDoc's web interface is a user-facing product, not only an administrator console. Signed-in users can upload and filter their own documents, create Parse Runs, inspect normalized results, download originals, export results, and share document permissions. Administrators see additional Provider configuration and API-client management areas in the same application.
 
-## 身份边界
+## Identity Boundary
 
-- 外部交互用户使用标准 OIDC Authorization Code + PKCE 登录。
-- 用户的稳定身份键是 `(issuer, subject)`，不使用邮箱、用户名或某个 Identity Provider 的私有用户 ID。
-- `issuer` 必须是无 query/fragment 的 ASCII HTTP(S) OIDC Issuer，最长 512 字符；`subject` 遵循 OIDC 的 255 ASCII 字符上限。两部分都按大小写敏感语义比较；MySQL/MariaDB 使用 `ascii_bin`，避免默认排序规则把不同主体合并。
-- `Authority`、Client、Scope、Claim/Role 映射全部通过 `Oidc` 配置节注入。SignaCore 可作为兼容 OIDC Provider 接入，但 StructaDoc 不引用或绑定 SignaCore 代码。
-- 本地管理员 Cookie 继续保留，职责是首次引导和 Identity Provider 故障时的 break-glass 管理。
-- API Client 继续使用独立 API Key 和 scope，不复用浏览器 Cookie。
+- External interactive users sign in with standard OIDC Authorization Code flow and PKCE.
+- The stable identity key is `(issuer, subject)`, not email, username, or a Provider-private user ID.
+- `issuer` is an ASCII HTTP(S) OIDC issuer without query or fragment, up to 512 characters. `subject` follows the 255-character ASCII bound used by the implementation.
+- Both identity parts compare case-sensitively. MySQL and MariaDB use `ascii_bin` so a default collation cannot merge distinct subjects.
+- Authority, client, scopes, and claim/role mapping come from the generic `Oidc` configuration section.
+- SignaCore can act as a compatible OIDC Provider, but StructaDoc does not reference or bind to SignaCore code or private contracts.
+- The local administrator Cookie remains for initial bootstrap and break-glass access during identity-Provider outages.
+- API clients retain independent keys and scopes and never reuse browser cookies.
 
-文档创建时会记录 OIDC owner。Owner 拥有完整文档权限；共享授权以目标 `(issuer, subject)` 和 `read/write/parse/export/delete/share` 权限集合保存。管理员和有对应 scope 的服务客户端维持全局服务访问能力。
+The Host handles OIDC tokens and creates an encrypted HttpOnly application session after callback. Browser JavaScript does not receive the tokens.
+
+## Ownership and Sharing
+
+An OIDC-created document records its owner. Owners have full document permission. Explicit grants target another `(issuer, subject)` and contain a subset of:
+
+- `read`
+- `write`
+- `parse`
+- `export`
+- `delete`
+- `share`
+
+Every document, Parse Run, Page, Block, Asset, Artifact, Markdown view, export, share operation, and deletion performs resource-level authorization. Administrators and scoped service clients retain their separate global service policies.
+
+## Configuration
 
 ```json
 {
@@ -28,4 +45,4 @@ StructaDoc 的 Web 界面是面向用户的产品，而不只是管理员后台�
 }
 ```
 
-生产环境的 Client Secret 必须由环境变量或 Secret 管理设施注入。
+Inject the production client secret through environment variables or a deployment secret. Do not commit it. HTTPS metadata should remain required outside explicitly isolated development environments.

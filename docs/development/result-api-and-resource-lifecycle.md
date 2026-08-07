@@ -1,6 +1,6 @@
-# 结果 API、导出与资源生命周期
+# Result API, Exports, and Resource Lifecycle
 
-公共 API 只返回 StructaDoc 的规范化 DTO：Parse Run、Page、Block、Asset 和 Artifact 元数据。Provider 原始 JSON、内部 `StorageRef`、checkpoint 和凭据不会出现在公共响应中。二进制内容只能通过鉴权下载端点读取。
+The public API returns StructaDoc canonical DTOs only: Parse Runs, Pages, Blocks, Assets, and Artifact metadata. Provider raw JSON, internal `storageRef` values, checkpoints, external task IDs, and credentials never appear in normal responses. Binary content is available only through authorized download routes.
 
 ```text
 GET    /api/v1/documents/{documentId}/parse-runs
@@ -15,8 +15,20 @@ GET    /api/v1/parse-runs/{parseRunId}/markdown
 GET    /api/v1/parse-runs/{parseRunId}/exports/{markdown|html|zip|pdf}
 ```
 
-Block 使用 `afterSequence` 做稳定游标分页；公共 Block DTO 不包含 `ProviderDataJson` 或原始 source locator。HTML 导出由规范化 Markdown 生成，ZIP 包含 Markdown 和受控 Assets，PDF 导出使用规范化 PDF Artifact。
+Blocks use `afterSequence` for stable cursor pagination. Their public DTO excludes `ProviderDataJson` and raw source locators. HTML export is rendered from normalized Markdown; ZIP contains Markdown plus authorized Assets; PDF uses the normalized PDF Artifact.
 
-删除不是一次跨数据库和对象存储的脆弱同步操作：API 先在事务中把目标标为 `deletion-pending`，并把完整对象引用快照写入唯一 Cleanup Job；后台 Worker 幂等删除原文、转换 PDF、Provider Archive、分段 PDF、分段 Archive、Assets 和 Artifacts；全部对象成功后才删除关系数据并把 Job 标为 `completed`。失败进入带退避的 `retry-wait`，崩溃遗留的 `running` Job 也会恢复。
+Every route performs resource-level authorization. OIDC users access owned or explicitly shared documents. Administrators use administrative policy. API clients require the corresponding scope. A resource outside the caller's authorization boundary is not distinguishable through storage metadata.
 
-非最终状态的 Parse Run 不能删除；包含活动 Parse Run 的 Document 也不能删除。这避免清理和执行 Worker 竞争同一资源。
+## Durable Deletion
+
+Deletion is not a fragile synchronous transaction across a database and object store:
+
+1. the API transaction marks the target `deletion-pending` and writes a unique persistent Cleanup Job containing a complete object-reference snapshot;
+2. reads stop exposing the pending resource;
+3. the cleanup Worker idempotently deletes originals, converted PDFs, Provider archives, PDF segments, segment archives, Assets, and Artifacts;
+4. only after all object deletions succeed does a database transaction remove relational rows and mark the job `completed`;
+5. transient failures enter exponential `retry-wait`, and stale `running` jobs are recovered.
+
+A non-final Parse Run cannot be deleted, and a Document with active Parse Runs cannot be deleted. This prevents cleanup and execution Workers from racing for the same resources.
+
+Persistent Cleanup Jobs make failed deletion observable and retryable; they do not hide object-storage failures behind prematurely removed database rows.

@@ -1,79 +1,92 @@
 # StructaDoc
 
-## 当前已实现能力（2026-08）
-
-StructaDoc 现在同时提供面向终端用户的 Vue 工作台和受控管理员区域。外部用户通过泛化 OIDC 登录，以 `(issuer, subject)` 作为稳定身份；SignaCore 可以作为 OIDC Provider，但项目不绑定其私有模型。用户可管理自己的文档、解析记录、规范化页面/块/资源、Markdown 预览、共享权限和 Markdown/HTML/ZIP/PDF 导出。
-
-后端已实现 Local/S3-compatible 存储、持久化 Parse Run、可恢复的大 PDF 分段、稳定结果 DTO、受控内容下载，以及基于持久化 Cleanup Job 的完整删除。Provider 原始 JSON 不作为公共契约。全文检索、OpenSearch、Embedding、RAG 和元数据/LLM 扩展明确不在本次实现范围。
-
-本地开发除 .NET 10 SDK 外需要 Node.js 24：
-
-```bash
-cd web
-npm ci
-npm run build
-cd ..
-dotnet run --project src/StructaDoc.Host
-```
-
-详细说明见 [用户工作台与 OIDC](./docs/development/user-workspace-oidc.md)、[结果 API 与资源生命周期](./docs/development/result-api-and-resource-lifecycle.md)、[S3 与大 PDF](./docs/development/s3-and-large-pdf.md)。
-
 > A self-hosted document ingestion and structured parsing service.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
-[![Status](https://img.shields.io/badge/status-early_development-yellow.svg)](#项目状态)
+[![Status](https://img.shields.io/badge/status-early_development-yellow.svg)](#project-status)
 
-StructaDoc 是一个独立、可自托管的文档摄取与结构化解析服务。管理员可以在管理网页中上传 PDF、Word、Excel、PowerPoint 等文档，并选择由在线 MinerU 服务或本地部署的 MinerU 服务完成解析。解析结果会被归一化为稳定的文档、内容块、图片和原始产物数据，供其他应用通过 HTTP API 调用。
+StructaDoc turns uploaded documents into stable, structured data. It combines a user-facing Vue workspace, a controlled administration area, a versioned HTTP API, durable background processing, and local or S3-compatible storage in one self-hostable application.
 
-StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转换。它不要求调用方了解 MinerU 的任务协议、输出目录或不同版本的 JSON 格式。
+Users can upload and manage PDF, Word, Excel, and PowerPoint files; start parsing; inspect normalized pages, blocks, assets, and Markdown; share documents; and export Markdown, HTML, ZIP, or PDF. Administrators additionally manage parsing Providers and API clients.
 
-## 项目状态
+MinerU Cloud and self-hosted MinerU are adapters behind a Provider-neutral boundary. Consumers never need to understand Provider task protocols, output layouts, or version-specific raw JSON.
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、Cloud 两阶段上传加密 checkpoint、运行中任务接管、串行化心跳会话、可恢复执行器、受限 LibreOffice Office-to-PDF 回退、MinerU Cloud 签名上传与 Local multipart HTTP 适配、签名传输连接级公共地址策略、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现。当前还包括用户工作台、泛化 OIDC、资源级授权、统一结果读取与导出、文档删除清理、S3-compatible 存储和大 PDF 分段。Host、LibreOffice 和字体的单一运行时 Dockerfile 与 SQLite Compose 入口已经提供；由于本机没有容器引擎，真实镜像、三种服务端数据库契约和 Chromium 工作流由 GitHub Actions 承担，但在工作流首次远端成功运行前仍视为待验证。实际解析执行默认关闭，只有显式设置 `Worker__ExecutionEnabled=true` 后，执行 Worker 才会抢占队列并产生 Provider 出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+## Project Status
 
-设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
+StructaDoc is in early development, but the main end-to-end platform is implemented:
 
-## 本地开发
+- Vue 3 user workspace and administration area;
+- generic OpenID Connect authentication using `(issuer, subject)` as the stable external identity;
+- optional local break-glass administrator and separate scoped API-client credentials;
+- document ownership, explicit sharing, and resource-level authorization;
+- Local and S3-compatible storage;
+- SQLite, PostgreSQL, MySQL, and MariaDB persistence;
+- immutable Provider configuration versions and durable Parse Runs;
+- atomic claims, leases, heartbeats, retries, and crash recovery;
+- MinerU Cloud signed upload and MinerU Local multipart adapters;
+- constrained LibreOffice Office-to-PDF fallback;
+- resumable large-PDF segmentation and deterministic result merging;
+- bounded Provider ZIP intake and deterministic canonical normalization;
+- stable result DTOs, authorized downloads, Markdown preview, and exports;
+- persistent cleanup jobs that complete object deletion before removing relational data.
 
-需要安装 .NET 10 SDK。当前工程基线可以通过以下命令验证和启动：
+The production Docker image, PostgreSQL/MySQL/MariaDB contract suites, and Chromium workspace smoke test are exercised by GitHub Actions. Real parsing is disabled by default: a Worker sends documents to a configured Provider only when `Worker__ExecutionEnabled=true` is set explicitly.
+
+See the [documentation index](./docs/README.md) for architecture decisions, specifications, implementation notes, and deployment guidance.
+
+## Product Boundary
+
+StructaDoc owns the reliable conversion from files to normalized document data:
+
+1. ingest and retain original documents;
+2. create and execute durable asynchronous Parse Runs;
+3. integrate external or local parsing Providers;
+4. normalize Provider output into Documents, Pages, Blocks, Assets, and Artifacts;
+5. retain parsing history and raw results for traceability;
+6. expose versioned APIs and a user-facing workspace.
+
+StructaDoc intentionally does not include:
+
+- full-text search or OpenSearch;
+- vector search, embeddings, or RAG pipelines;
+- LLM-generated metadata or domain entities such as questions, vocabulary, invoice records, or contract records;
+- online editing for Office documents;
+- direct consumer access to its database or object storage;
+- raw Provider JSON as a stable public contract.
+
+Consumers may build search, vectorization, knowledge bases, or domain extraction on top of StructaDoc's versioned output.
+
+## Local Development
+
+Install the .NET 10 SDK and Node.js 24, then run:
 
 ```bash
 dotnet restore StructaDoc.slnx
 dotnet tool restore
+
+cd web
+npm ci
+npm run build
+cd ..
+
 dotnet build StructaDoc.slnx --no-restore
 dotnet test StructaDoc.slnx --no-build --no-restore
 dotnet run --project src/StructaDoc.Host
 ```
 
-GitHub Actions 会在 push、pull request 和手动触发时执行常规构建/测试、PostgreSQL/MySQL/MariaDB Testcontainers 契约，以及生产镜像中的 Chromium 工作台流程。CI 的边界、产物和本地复现方式见 [持续集成](./docs/development/continuous-integration.md)。
+The Host serves the compiled web application and API. Useful unauthenticated endpoints are:
 
-启动后可访问：
+- `GET /api/v1/system/info` — service identity and version;
+- `GET /health/live` — process liveness;
+- `GET /health/ready` — database and storage readiness.
 
-- `GET /api/v1/system/info`：服务身份和版本；
-- `GET /health/live`：进程存活检查；
-- `GET /health/ready`：服务就绪检查，当前包含数据库连通性和本地文件存储可写性；S3 接入后也必须纳入该检查。
-- `GET /api/v1/admin/antiforgery`：获取管理员登录或写操作使用的 antiforgery token；
-- `POST /api/v1/admin/session`：管理员登录；
-- `GET /api/v1/admin/session`：读取当前管理员会话；
-- `DELETE /api/v1/admin/session`：退出管理员会话；
-- `GET /api/v1/admin/api-clients`：管理员列出 API Client；
-- `POST /api/v1/admin/api-clients`：创建 API Client，并且只在该响应中返回完整 Key；
-- `PUT /api/v1/admin/api-clients/{id}`：修改名称与 scope；
-- `POST /api/v1/admin/api-clients/{id}/rotate`：轮换 Key，并且只在该响应中返回新 Key；
-- `DELETE /api/v1/admin/api-clients/{id}`：不可逆撤销 API Client；
-- `GET /api/v1/admin/provider-configs`：管理员列出当前 Provider 配置版本，不返回凭据；
-- `POST /api/v1/admin/provider-configs`：创建 Provider 配置及首个不可变版本；
-- `PUT /api/v1/admin/provider-configs/{id}`：创建新的不可变配置版本；
-- `POST /api/v1/documents`：单文件 `multipart/form-data` 上传，字段名为 `file`；要求管理员会话或具有 `documents:write` 的 API Key。
-- `GET /api/v1/documents`：使用 `limit` 和不透明 `cursor` 的稳定键集分页；要求管理员会话或 `documents:read`；
-- `GET /api/v1/documents/{id}`：读取 Document 详情；
-- `GET /api/v1/documents/{id}/content`：受控下载原文件，支持 ETag、条件请求和字节 Range。
-- `POST /api/v1/documents/{id}/parse-runs`：创建持久化 Parse Run；要求管理员会话或 `parses:write`，可使用 `Idempotency-Key`；
-- `GET /api/v1/parse-runs/{id}`：读取 Parse Run 状态；要求管理员会话或 `parses:read`。
+For CI coverage and local reproduction, see [Continuous Integration](./docs/development/continuous-integration.md).
 
-## 单容器启动
+## Single-Container Start
 
-当前仓库根目录提供包含 ASP.NET Core Host、LibreOffice no-GUI 组件和常用字体的 `Dockerfile`，以及只启动一个应用容器、使用 SQLite 命名卷的 `compose.yaml`。先设置 bootstrap 管理员 Secret，再启动：
+The root `Dockerfile` builds the Vue application and .NET Host, then creates one non-root runtime image containing ASP.NET Core, LibreOffice no-GUI components, and common fonts. `compose.yaml` starts one application container backed by a named SQLite volume.
+
+Set the bootstrap administrator secret and start the service:
 
 ```bash
 export STRUCTADOC_ADMIN_EMAIL='admin@example.com'
@@ -81,207 +94,98 @@ export STRUCTADOC_ADMIN_PASSWORD='use-a-secret-manager-or-a-long-random-value'
 docker compose up --build --detach
 ```
 
-默认监听 `http://localhost:8080`。国内或受限网络可先运行 `bash ./scripts/build-container.sh auto`；Windows PowerShell 使用 `powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-container.ps1 -MirrorMode Auto`，然后执行 `docker compose up --detach --no-build`。构建脚本只探测官方源连通性，不查询 IP 地理位置。真实 Parse Run 执行仍默认关闭；完整的下载源参数、镜像内容、非 root 权限、持久卷、备份和验证状态见 [`single-container.md`](./docs/deployment/single-container.md)。
+PowerShell:
 
-默认配置使用 `./data/structadoc.db` SQLite 文件并在启动时应用迁移。可以通过环境变量切换数据库：
+```powershell
+$env:STRUCTADOC_ADMIN_EMAIL = 'admin@example.com'
+$env:STRUCTADOC_ADMIN_PASSWORD = 'use-a-secret-manager-or-a-long-random-value'
+docker compose up --build --detach
+```
 
-- `Database__Provider`：`Sqlite`、`PostgreSql`、`MySql` 或 `MariaDb`；
-- `Database__ConnectionString`：对应数据库连接字符串；
-- `Database__ServerVersion`：MySQL / MariaDB 必填，例如 `8.4.0` 或 `11.4.0`；
-- `Database__ApplyMigrationsOnStartup`：是否由 Host 在启动时应用迁移。
-- `Worker__Enabled`：是否启用 Parse Run 维护循环；
-- `Worker__ExecutionEnabled`：是否启用真实 Parse Run 执行，默认 `false`；启用后会向所选 Provider 发送文档；
-- `Worker__MaintenanceInterval`：检查到期抢占和重试的时间间隔；
-- `Worker__RecoveryBatchSize`：每轮每类任务的最大恢复数量。
-- `Worker__LeaseDuration`：执行租约每次授予或续租后的有效时间；
-- `Worker__HeartbeatInterval`：执行期间的续租间隔，必须短于租约有效时间。
-- `Worker__RetryDelay`：瞬时执行错误进入 `retry-wait` 后的固定等待时间；
-- `Worker__MinimumPollDelay`、`Worker__MaximumPollDelay`：约束 Provider 建议轮询间隔的下限和上限；
-- `ProviderResults__MaxArchiveBytes`：Provider ZIP 压缩包大小上限；
-- `ProviderResults__MaxEntryCount`：ZIP 最大条目数；
-- `ProviderResults__MaxEntryBytes`、`ProviderResults__MaxExpandedBytes`：单条目和总展开字节上限；
-- `ProviderResults__MaxCompressionRatio`：单条目最大压缩比；
-- `ProviderResults__MaxEntryPathBytes`：ZIP 内部路径 UTF-8 字节上限；
-- `ProviderResults__MaxCentralDirectoryBytes`：ZIP 中央目录元数据总大小上限；
-- `ProviderResults__TemporaryPath`：存储回读流不可 seek 时使用的受限临时目录。
-- `ProviderResultNormalization__MaxMarkdownBytes`、`ProviderResultNormalization__MaxJsonBytes`：单个 Markdown / JSON 派生产物上限；
-- `ProviderResultNormalization__MaxAssetBytes`：单个图片 Asset 的流式存储上限；
-- `ProviderResultNormalization__TemporaryPath`：归一化读取不可 seek Archive 时的受限临时目录；
-- `LibreOffice__Enabled`：是否允许 Office-to-PDF 回退；
-- `LibreOffice__ExecutablePath`、`LibreOffice__TemporaryPath`：LibreOffice 可执行文件和隔离工作目录父路径；
-- `LibreOffice__MaxConcurrency`、`LibreOffice__Timeout`：转换并发与单次进程时间限制；
-- `LibreOffice__MaxInputBytes`、`LibreOffice__MaxOutputBytes`、`LibreOffice__MaxTemporaryBytes`：转换输入、输出和临时磁盘限制；
-- `Documents__UploadApiEnabled`：是否映射上传端点，默认 `true`；
-- `Documents__MaxUploadBytes`：单个原始文档的最大字节数；
-- `Storage__Provider`：当前只实现 `Local`；
-- `Storage__RootPath`：原文件存储卷在容器内的根目录。
-- `Authentication__DataProtectionKeysPath`：管理员 Cookie 和 antiforgery key ring 的持久化目录；
-- `Authentication__AdministratorSessionLifetime`：管理员会话寿命；
-- `Authentication__LoginPermitLimit`、`Authentication__LoginRateLimitWindow`：每个来源 IP 的管理员登录尝试限额和固定时间窗口；
-- `Authentication__BootstrapAdministratorEmail`、`Authentication__BootstrapAdministratorPassword`：仅通过环境变量或 Secret 注入的首个管理员凭据。
+The default address is `http://localhost:8080`. The example values show the required shape and are not default credentials. Inject production secrets through the deployment platform and remove bootstrap credentials after the first administrator exists.
 
-连接字符串、bootstrap 密码和其他凭据必须通过部署 Secret 注入，不得提交到配置文件。当前数据库实现和验证范围见 [`docs/development/database-support.md`](./docs/development/database-support.md)，文件落盘和上传限制见 [`docs/development/file-storage.md`](./docs/development/file-storage.md)，读取和下载语义见 [`docs/development/document-reading.md`](./docs/development/document-reading.md)，Provider 配置与 Parse Run 创建语义见 [`docs/development/provider-config-and-parse-runs.md`](./docs/development/provider-config-and-parse-runs.md)，Provider 执行边界见 [`docs/development/provider-execution.md`](./docs/development/provider-execution.md)，Office 转 PDF 见 [`docs/development/office-conversion.md`](./docs/development/office-conversion.md)，MinerU HTTP 协议与安全边界见 [`docs/development/mineru-http-providers.md`](./docs/development/mineru-http-providers.md)，Provider ZIP 接收见 [`docs/development/provider-result-intake.md`](./docs/development/provider-result-intake.md)，MinerU 结果归一化见 [`docs/development/provider-result-normalization.md`](./docs/development/provider-result-normalization.md)，Canonical 结果提交见 [`docs/development/canonical-result-persistence.md`](./docs/development/canonical-result-persistence.md)，认证细节见 [`docs/development/authentication.md`](./docs/development/authentication.md)。
+For restricted networks, the repository includes explicit `official`, `china`, and connectivity-based `auto` build modes:
 
-## 核心目标
+```bash
+bash ./scripts/build-container.sh auto
+docker compose up --detach --no-build
+```
 
-- 提供面向管理员的文档上传、管理、解析和结果查看页面。
-- 计划支持 PDF、DOC/DOCX、XLS/XLSX、PPT/PPTX。
-- 通过异步任务处理耗时较长的文档解析流程。
-- 同时适配在线 MinerU API 和自托管 `mineru-api`。
-- 解析服务类型、地址、凭据和默认模型只能由管理员配置。
-- 保留原始文件、标准化文件、MinerU 原始产物及解析历史。
-- 将不同 MinerU 接口的结果归一化为稳定的内部结构。
-- 通过版本化 HTTP API 向其他应用提供文档、解析任务、内容块、图片和产物。
-- 支持本地文件系统和 S3 兼容对象存储。
-- 通过包含管理网页、API、Worker 和 LibreOffice 的单一应用镜像保持部署简单，同时保留以后用同一镜像拆分 API 与 Worker 运行模式的边界。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-container.ps1 -MirrorMode Auto
+docker compose up --detach --no-build
+```
 
-## 项目边界
+Review [Single-Container Deployment](./docs/deployment/single-container.md) for image contents, mirror trust, non-root permissions, persistent data, backup requirements, and runtime limits.
 
-第一阶段明确不承担以下职责：
-
-- 不内置全文检索、向量检索、Embedding 或 RAG 管线。
-- 不根据文档自动生成题目、词汇、知识点等特定领域数据。
-- 不成为 Word、Excel 或 PowerPoint 在线编辑器。
-- 不要求其他应用直接读取 StructaDoc 的数据库或对象存储。
-- 不把某个 MinerU 版本的原始响应直接作为公共 API 契约。
-
-调用方可以根据自己的业务需要，对 StructaDoc 返回的内容块进行检索、向量化、知识库构建或领域数据提取。
-
-## 工作流程
+## Architecture
 
 ```mermaid
 flowchart LR
-    Admin["管理员"] --> Host
-    Client["其他应用"] --> Host
+    User["Interactive user"] --> Host
+    Admin["Administrator"] --> Host
+    Client["API client"] --> Host
 
-    subgraph Image["StructaDoc 单一应用镜像"]
-        Host["ASP.NET Core Host\n管理网页 + API"]
-        Queue["内置 Parse Worker"]
-        Converter["内置 LibreOffice 转换"]
-        Normalizer["结果归一化"]
+    subgraph Image["StructaDoc application image"]
+        Host["ASP.NET Core Host\nVue workspace + API"]
+        Worker["Durable Parse Worker"]
+        Converter["LibreOffice conversion"]
+        Normalizer["Result normalization"]
+        Cleanup["Durable cleanup Worker"]
 
-        Host --> Queue
-        Queue -. "格式不受 Provider 支持时" .-> Converter
-        Queue --> Normalizer
+        Host --> Worker
+        Worker -. "when the Provider needs PDF" .-> Converter
+        Worker --> Normalizer
+        Host --> Cleanup
     end
 
-    Host --> Database["SQLite / PostgreSQL / MySQL / MariaDB\n元数据、结构化内容与持久化任务"]
-    Host --> Storage["本地文件或 S3\n原文件与解析产物"]
-    Queue --> Cloud["MinerU 在线服务"]
-    Queue --> Local["本地 mineru-api"]
-    Cloud --> Normalizer
-    Local --> Normalizer
+    Host --> Database["SQLite / PostgreSQL / MySQL / MariaDB\nmetadata, structured content, durable jobs"]
+    Host --> Storage["Local or S3-compatible storage\noriginals and generated resources"]
+    Worker --> Cloud["MinerU Cloud"]
+    Worker --> Local["Self-hosted MinerU"]
     Normalizer --> Database
     Normalizer --> Storage
+    Cleanup --> Storage
 ```
 
-第一阶段的 API、管理网页、Worker 和 LibreOffice 转换能力由同一个 Host 和应用镜像交付。Worker 以所配置关系数据库中的 Parse Run 为权威任务来源，不使用进程内队列，因此服务重启后仍能按租约恢复执行。SQLite 面向单应用实例的轻量部署；PostgreSQL、MySQL 和 MariaDB 还必须支持多实例 Worker 竞争任务。
+The Worker uses the configured relational database as the authoritative queue. It does not rely on an in-process queue, so work can resume from stored leases and checkpoints after a restart. SQLite supports one StructaDoc instance; server databases support multiple competing Worker instances.
 
-## 解析 Provider
+## Identity and Authorization
 
-StructaDoc 将文档解析能力建模为可替换的 Provider，而不是在业务代码中直接绑定某一种 MinerU 接口。
+Interactive users authenticate through configurable OIDC Authorization Code flow with PKCE. StructaDoc depends on standard discovery, token validation, and claim mapping, not on a Provider-specific SDK. SignaCore, Keycloak, Authentik, Entra ID, and other standards-compliant Providers can be used without changing business code.
 
-### MinerU Cloud
+The stable identity key is `(issuer, subject)`. Email and display name are presentation attributes, not authorization keys. OIDC tokens remain in the Host; browser JavaScript receives only an encrypted HttpOnly application session.
 
-在线模式用于调用 MinerU 托管服务：
+The local administrator remains available for bootstrap and break-glass recovery. Machine clients use separate API keys with explicit scopes:
 
-- 管理员配置 API Base URL、Token、默认模型和解析选项。
-- 文档会被发送到管理员配置的外部服务。
-- 应使用短时有效的预签名地址或 Provider 提供的上传地址传递文件。
-- 管理页面必须明确提示在线解析会产生外部数据传输。
+- `documents:read`
+- `documents:write`
+- `parses:read`
+- `parses:write`
 
-### MinerU Local
+See [User Workspace and OIDC](./docs/development/user-workspace-oidc.md) and [Authentication](./docs/development/authentication.md).
 
-本地模式用于连接自托管的 `mineru-api` 或兼容服务：
+## Provider and Result Model
 
-- 管理员配置服务地址、可选凭据、backend 和解析选项。
-- StructaDoc 提交异步任务、轮询状态并及时保存最终产物。
-- MinerU 服务自身的临时任务状态不作为 StructaDoc 的权威状态。
-- MinerU 服务重启后，StructaDoc 已保存的文档和解析结果不受影响。
+Provider configuration is administrator-controlled and immutable by version. Each Parse Run snapshots its Provider type, configuration version, model/backend, and non-sensitive options. Changing the default Provider never changes existing work.
 
-### 稳定的内部契约
+When a Provider supports the source format, StructaDoc submits the original. Otherwise, if the source is a supported Office format and the Provider accepts PDF, the constrained LibreOffice adapter creates a separate `normalized-pdf` Artifact. The original is never overwritten.
 
-每个 Provider 最终都要生成统一的 `ParseBundle` 概念：
+Every successful Provider result becomes a canonical Parse Bundle containing:
 
-| 内容 | 说明 |
+| Content | Purpose |
 |---|---|
-| Markdown | 适合阅读和导出的完整文档内容 |
-| Blocks | 按页码和阅读顺序组织的标题、正文、表格、公式、图片等内容块 |
-| Assets | 从文档中提取的图片及其他二进制资源 |
-| Layout | 页面、位置和边界框等版面信息 |
-| Raw artifacts | Provider 返回的 ZIP、JSON 等原始产物 |
-| Provider metadata | 实际 Provider、模型、参数和外部任务标识 |
+| Pages | Provider-neutral page identity and dimensions |
+| Blocks | Ordered text, headings, tables, formulas, images, and other content |
+| Assets | Extracted images and binary resources |
+| Artifacts | Markdown, normalized PDF, Provider archive, layout, and model output |
+| Provider metadata | Sanitized Provider, model, and option facts |
 
-公共 API 以 StructaDoc 的结构为准。Provider 的原始字段可以保留用于追溯，但不会成为调用方必须依赖的字段。
+Raw ZIP and JSON may be retained as authorized Artifacts, but raw fields never become the public Block contract. See the [Canonical Document Model](./docs/specifications/canonical-document-model.md).
 
-## 管理员配置
+## Public API Overview
 
-解析 Provider 由管理员统一配置，普通上传者和 API Client 不能修改：
-
-- Provider 类型：MinerU Cloud 或 MinerU Local。
-- Base URL 和健康检查地址。
-- API Token 或其他凭据。
-- 默认模型或 backend。
-- OCR、公式、表格、语言等默认选项。
-- 超时、并发数和重试策略。
-- 启用、停用和默认 Provider。
-- 测试连接及能力检查。
-
-敏感凭据不得返回给浏览器，也不得以明文写入日志。数据库只保存加密后的凭据，解密主密钥应由环境变量或部署平台的 Secret 管理能力提供。
-
-解析任务会保存 Provider 和配置版本快照。管理员修改默认 Provider 后，已经进入队列或正在运行的任务仍按创建时的配置执行。
-
-Provider 配置采用不可变版本。修改配置会创建新版本，旧版本在仍被非最终 Parse Run 引用时必须保留；被停用的版本不能用于创建新任务，但已有任务仍可读取其加密配置完成或恢复执行。
-
-## Office 文档处理
-
-StructaDoc 始终保存用户上传的原始文件。当前执行器采用以下策略：
-
-1. Provider 原生支持该格式时，优先直接提交原文件。
-2. Provider 不支持该格式时，由镜像内置的 LibreOffice headless 转换适配器生成 PDF。
-3. 转换后的 PDF 作为独立产物保存，不覆盖原文件。
-4. 解析记录保存源格式、实际提交格式、LibreOffice 版本、大小、哈希和转换参数，保证结果可追溯与恢复。
-
-这种方式可以让本地 MinerU 直接处理其支持的 DOCX、PPTX、XLSX，同时为不支持 Excel 的在线接口提供 PDF 回退方案。
-
-转换由 .NET 直接启动受限的 LibreOffice 子进程，不运行 Python、FastAPI 或内部转换 HTTP 服务。每次转换使用独立临时目录和 LibreOffice User Profile，并受到并发数、超时、输入大小、输出大小和临时磁盘限制。当前适配器和恢复语义见 [`office-conversion.md`](./docs/development/office-conversion.md)，具体部署决策见 [`ADR-0003`](./docs/adr/0003-technology-and-single-image-deployment.md)。Dockerfile 已包含 LibreOffice no-GUI 组件和常用字体，但真实镜像样本验证仍待有容器引擎的环境完成。
-
-## 数据模型
-
-计划中的主要实体如下：
-
-| 实体 | 职责 |
-|---|---|
-| Document | 原文件名称、类型、大小、哈希、存储位置和上传信息 |
-| Parse Run | 一次解析执行的状态、Provider、参数快照、重试和时间信息 |
-| Block | 页码、阅读顺序、类型、正文、边界框、置信度和原始块数据 |
-| Asset | 解析图片及其与内容块的关联 |
-| Artifact | Markdown、标准化 PDF、ZIP、layout/model/content-list 等产物引用 |
-| Provider Config | 管理员维护的解析服务配置和加密凭据 |
-| API Client | 其他应用使用的访问凭据、权限范围和状态 |
-| Audit Log | 配置修改、删除、重试等管理操作记录 |
-
-SQLite、PostgreSQL、MySQL 或 MariaDB 保存业务元数据和需要查询的结构化内容块。原文件、图片、ZIP 和大型 JSON 等二进制或大体积产物保存到本地文件系统或 S3 兼容对象存储，数据库保存引用、哈希、大小和内容类型。数据库选择不改变公共 API 和领域语义。
-
-对象存储内部引用不会通过公共 API 暴露。调用方通过 StructaDoc 资源 ID 和受控下载端点获取文件或短时下载 URL。
-
-## 异步任务与可靠性
-
-文档解析必须使用持久化异步任务，而不是让上传请求一直等待：
-
-- API 创建 `queued` 状态的 Parse Run。
-- Host 内置的 Worker 使用数据库原子抢占任务，避免多实例重复执行。
-- 运行中的任务保存租约、心跳和尝试次数。
-- 短暂网络错误可以自动重试，永久错误保留明确的错误码和诊断信息。
-- Provider 外部任务 ID 与 StructaDoc Parse Run ID 分离。
-- 重试创建新的执行尝试，已经成功的历史结果保持可追溯。
-- Provider 结果必须在标记成功前完整持久化。
-
-## HTTP API 草案
-
-公共契约会使用版本化路径。以下路径用于说明计划边界，最终请求和响应格式将在实现前单独定义。
-
-### 文档与解析
+The versioned API includes:
 
 ```text
 POST   /api/v1/documents
@@ -291,126 +195,73 @@ GET    /api/v1/documents/{documentId}/content
 DELETE /api/v1/documents/{documentId}
 
 POST   /api/v1/documents/{documentId}/parse-runs
+GET    /api/v1/documents/{documentId}/parse-runs
 GET    /api/v1/parse-runs/{parseRunId}
+GET    /api/v1/parse-runs/{parseRunId}/pages
 GET    /api/v1/parse-runs/{parseRunId}/blocks
 GET    /api/v1/parse-runs/{parseRunId}/assets
 GET    /api/v1/parse-runs/{parseRunId}/artifacts
+GET    /api/v1/parse-runs/{parseRunId}/markdown
+GET    /api/v1/parse-runs/{parseRunId}/exports/{format}
 ```
 
-### 调用方认证
+Content is retrieved through authorized endpoints; internal `storageRef` values never appear in public DTOs. Parse Run creation supports `Idempotency-Key`. Block listing uses stable sequence pagination. Deletion returns an accepted lifecycle transition and is completed by a durable cleanup job.
 
-管理网页会话与应用调用凭据相互独立。当前管理员使用 Cookie 会话，其他应用使用 `Authorization: ApiKey <credential>` 调用，并使用最小权限范围，例如：
+Administrator endpoints manage local sessions, API clients, and Provider configurations under `/api/v1/admin`. Cookie-authenticated writes require an antiforgery token; API-key requests do not use browser cookies and are authorized by scope.
 
-- `documents:read`
-- `documents:write`
-- `parses:read`
-- `parses:write`
+## Key Configuration
 
-调用方不需要也不允许复用管理员浏览器 Cookie。管理员可以通过 `/api/v1/admin/api-clients` 创建、列出、修改 scope、轮换和撤销 API Client；创建或轮换返回的完整 Key 只显示一次，服务端无法恢复。
+Configuration uses standard ASP.NET Core keys; environment variables replace `:` with `__`.
 
-## 计划技术栈
-
-| 部分 | 计划技术 |
+| Area | Important keys |
 |---|---|
-| Host / API / Worker | .NET 10、ASP.NET Core 10 |
-| 管理网页 | Vue 3、TypeScript、Vite |
-| 业务数据库 | SQLite、PostgreSQL、MySQL / MariaDB；EF Core 通用模型与数据库方言适配层 |
-| 文件与产物 | 本地文件系统或 S3 兼容对象存储 |
-| Office 转换 | .NET 本地适配器调用镜像内置 LibreOffice headless |
-| 文档解析 | MinerU Cloud / MinerU Local Provider |
-| 部署 | 单一 StructaDoc 应用镜像；SQLite 使用持久卷，服务端数据库独立运行 |
+| Database | `Database__Provider`, `Database__ConnectionString`, `Database__ServerVersion`, `Database__ApplyMigrationsOnStartup` |
+| Worker | `Worker__Enabled`, `Worker__ExecutionEnabled`, lease, heartbeat, retry, and polling limits |
+| Storage | `Storage__Provider`, `Storage__RootPath`, S3 endpoint, bucket, prefix, region, and credential settings |
+| Documents | `Documents__UploadApiEnabled`, `Documents__MaxUploadBytes` |
+| OIDC | `Oidc__Enabled`, `Oidc__Authority`, `Oidc__ClientId`, `Oidc__ClientSecret`, scopes and role mapping |
+| Local administration | bootstrap credentials, session lifetime, login limits, and Data Protection key path under `Authentication__*` |
+| Conversion | executable, concurrency, timeout, and byte/disk limits under `LibreOffice__*` |
+| Provider results | archive, entry, expansion, compression-ratio, and normalization limits |
 
-StructaDoc 是独立项目，不依赖 Ruoyu.Study、QuantumZhou.Identity、Consul 或其共享代码。通用 OIDC、对象存储和配置实现将由本仓库自行定义。
+Connection strings, bootstrap passwords, OIDC secrets, Provider tokens, and storage credentials must come from deployment secrets, never committed configuration.
 
-最终运行时镜像不包含 Node.js、.NET SDK 或 Python。Node.js 和 .NET SDK 只用于多阶段构建；管理网页编译后由 ASP.NET Core Host 提供静态文件。
+## Technology
 
-## 计划目录结构
+| Component | Technology |
+|---|---|
+| Host, API, and Workers | .NET 10 and ASP.NET Core 10 |
+| Web workspace | Vue 3, TypeScript, and Vite |
+| Persistence | EF Core with SQLite, PostgreSQL, MySQL, and MariaDB migrations |
+| File storage | Local filesystem or S3-compatible object storage |
+| Office conversion | Constrained LibreOffice headless subprocess |
+| Parsing | MinerU Cloud and MinerU Local Provider adapters |
+| Deployment | One StructaDoc image; SQLite volume or external server database |
 
-```text
-StructaDoc/
-├── src/
-│   ├── StructaDoc.Host/
-│   ├── StructaDoc.Contracts/
-│   ├── StructaDoc.Application/
-│   ├── StructaDoc.Domain/
-│   ├── StructaDoc.Infrastructure/
-│   ├── StructaDoc.Providers.Abstractions/
-│   ├── StructaDoc.Providers.MinerUCloud/
-│   ├── StructaDoc.Providers.MinerULocal/
-│   ├── StructaDoc.Worker/
-│   └── StructaDoc.Conversion.LibreOffice/
-├── web/
-├── deploy/
-├── docs/
-└── tests/
-```
+The runtime image does not contain Node.js, the .NET SDK, or Python. Build tools exist only in multi-stage build stages.
 
-`StructaDoc.Host` 是第一阶段唯一的可执行项目；`StructaDoc.Worker` 和转换项目是由 Host 加载的逻辑组件，不单独发布镜像。目录会随首个可运行版本调整；在对应代码出现前不会创建空的占位项目。
+StructaDoc is independent of Ruoyu.Study, SignaCore, Consul, and their internal models. It defines its own generic OIDC, storage, parsing, and public API boundaries.
 
-## 路线图
+## Security Principles
 
-### Phase 0：契约与验证样本
+- Detect file type from content and structure; do not trust client MIME types.
+- Bound file size, pages, processing time, memory, temporary disk, archive expansion, and conversion concurrency.
+- Keep Provider, OIDC, storage, and API credentials out of logs and responses.
+- Apply SSRF controls to Provider URLs and signed transfer URLs.
+- Make external data transfer through online Providers visible to administrators and users.
+- Authorize every document, result, Asset, Artifact, export, share, and deletion operation at resource level.
+- Back up the database, object storage, and Data Protection key ring as one recoverable set.
 
-- 确定统一的 Document、Parse Run、Block、Asset 和 Artifact 契约。
-- 收集覆盖 PDF、Word、Excel、PowerPoint 的可公开测试样本。
-- 对比在线与本地 MinerU 的输出差异。
-- 确定文件大小、页数、超时和保留策略。
+## MinerU Notice
 
-### Phase 1：最小可运行版本
+StructaDoc is not an official MinerU project and does not copy or maintain MinerU source code. MinerU is used only as a configurable external parsing Provider.
 
-- 管理员登录和 Provider 配置。
-- 文档上传、列表、详情和删除。
-- MinerU Cloud / Local Provider。
-- Host 内置的持久化异步 Worker。
-- SQLite、PostgreSQL、MySQL / MariaDB 持久化实现与本地文件存储。
-- 各数据库的迁移、任务抢占和生命周期契约测试。
-- Markdown、Block、图片和原始产物查看。
+When using MinerU, follow its current [open-source license](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md) and service terms. If MinerU is used to provide an online service to third parties, follow its attribution requirements in the product UI or public documentation.
 
-### Phase 2：应用集成与部署
+## Contributing
 
-- API Client 与权限范围。
-- S3 兼容对象存储。
-- 包含管理网页、API、Worker 和 LibreOffice 的单一应用镜像。
-- 内置 Office 转换适配器。
-- Docker Compose 部署示例：SQLite 单容器模式，以及 PostgreSQL、MySQL、MariaDB 外部数据库模式。
-- API 文档、健康检查、审计和备份说明。
-
-### Phase 3：可靠性与扩展
-
-- 多 Worker、任务租约和并发控制。
-- 同一镜像按全部功能、仅 API 或仅 Worker 模式启动。
-- Webhook 通知。
-- Provider 能力发现与配置版本管理。
-- 更完善的可观测性、数据保留和灾难恢复。
-
-## 安全原则
-
-- 不信任上传请求声明的 MIME 类型，应结合扩展名和文件内容检测。
-- 限制文件大小、页数、处理时间、CPU、内存和临时磁盘使用。
-- 文档转换器和本地 MinerU 默认只在内部网络暴露。
-- 对外部 URL、回调地址和预签名地址实施 SSRF 防护与有效期限制。
-- API Token、Provider Token 和存储凭据不得写入日志。
-- 删除文档时需要清理数据库记录和关联存储产物，并保留审计记录。
-- 在线 Provider 的数据传输行为必须对管理员清晰可见。
-
-## MinerU 说明
-
-StructaDoc 不是 MinerU 官方项目，也不会复制或维护 MinerU 源码。MinerU 仅作为可配置的外部解析 Provider 使用。
-
-使用 MinerU 时，请遵守其当前的 [MinerU Open Source License](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md) 和在线服务条款。根据其许可证要求，基于 MinerU 向第三方提供在线服务时，应在产品界面或公开文档中清晰标明使用了 MinerU。
-
-## 参与贡献
-
-项目仍处于早期阶段。在提交实现前，建议先通过 Issue 讨论以下类型的变更：
-
-- 公共 API 或数据结构变更。
-- 新的文档解析 Provider。
-- 认证和权限模型。
-- 存储、任务执行和部署架构。
-- 会显著增加默认部署复杂度的依赖。
-
-缺陷修复、测试、文档改进和小范围重构可以直接提交 Pull Request。
+Discuss changes to public APIs, the canonical model, parsing Providers, authentication, storage, job execution, or deployment architecture before implementation. Bug fixes, tests, documentation improvements, and small behavior-preserving refactors are welcome as pull requests.
 
 ## License
 
-StructaDoc 使用 [Apache License 2.0](./LICENSE) 许可证。
+StructaDoc is licensed under the [Apache License 2.0](./LICENSE).

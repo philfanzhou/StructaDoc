@@ -1,44 +1,49 @@
-# Provider Config 与 Parse Run 创建
+# Provider Configuration and Parse Run Creation
 
-本文记录当前实现；目标状态机和 Provider 抽象仍分别以 [`parse-job-lifecycle.md`](../specifications/parse-job-lifecycle.md) 和 [ADR-0002](../adr/0002-parser-provider-abstraction.md) 为准。
+This note describes the current implementation. State semantics follow the [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md); Provider boundaries follow [ADR-0002](../adr/0002-parser-provider-abstraction.md).
 
-## Provider Config 持久化
+## Provider Configuration Persistence
 
-Provider 配置分成逻辑配置和不可变版本：
+Configuration is split into a logical configuration and immutable versions:
 
-- `provider_configs` 保存名称、Provider 类型、启用状态、默认标记和当前版本 ID；
-- `provider_config_versions` 保存版本号、Base URL、model、backend 和加密凭据；
-- 创建配置生成版本 1，任意更新都生成新版本，旧版本不被覆盖；
-- Provider 类型创建后不可修改；需要切换类型时应创建新的逻辑配置；
-- 全局最多一个启用的默认配置；停用配置时不能继续标记为默认；
-- 当前不提供删除接口，从而保证已存在 Parse Run 引用的版本仍可读取。
+- `provider_configs` stores name, Provider type, enabled/default state, and current version ID;
+- `provider_config_versions` stores version, base URL, model, backend, and encrypted credential;
+- creation produces version 1 and every update creates a new version;
+- Provider type cannot change; create another logical configuration to switch types;
+- at most one enabled configuration is the global default;
+- referenced old versions remain available to existing non-final Parse Runs.
 
-支持的类型标识为 `mineru-cloud` 和 `mineru-local`。Base URL 必须是无 user-info 和 fragment 的绝对 HTTP(S) URL。这里的格式校验不替代执行 Provider 请求前的 DNS、地址范围和重定向 SSRF 防护。
+Supported type tokens are `mineru-cloud` and `mineru-local`. A base URL must be an absolute HTTP(S) URL without user-info or fragment. This syntax check does not replace outbound DNS, address-range, redirect, and SSRF policy.
 
-凭据通过用途隔离的 ASP.NET Core Data Protection protector 加密后写入数据库。HTTP 列表、创建和更新响应只返回 `hasCredential`，不返回明文或密文。更新请求中省略 `credential` 会沿用上一版本的密文；`clearCredential: true` 显式清除；两者同时提供会返回 `400`。`Authentication:DataProtectionKeysPath` 必须使用受限权限的持久部署卷或平台 Secret，且备份必须与数据库备份配套。
+Credentials are encrypted with a purpose-isolated ASP.NET Core Data Protection protector. HTTP responses expose only `hasCredential`, never plaintext or ciphertext. Omitting `credential` on update retains the preceding encrypted value; `clearCredential: true` removes it; supplying both returns `400`.
 
-管理端点只允许管理员 Cookie 会话访问，写操作要求 antiforgery token：
+Administrator Cookie endpoints require antiforgery validation for writes:
 
-| Method | Path | 行为 |
+| Method | Path | Behavior |
 |---|---|---|
-| `GET` | `/api/v1/admin/provider-configs` | 列出每个逻辑配置的当前版本 |
-| `POST` | `/api/v1/admin/provider-configs` | 创建逻辑配置和版本 1 |
-| `PUT` | `/api/v1/admin/provider-configs/{id}` | 创建并切换到新版本 |
+| `GET` | `/api/v1/admin/provider-configs` | Lists each logical configuration's current version without credentials |
+| `POST` | `/api/v1/admin/provider-configs` | Creates a logical configuration and version 1 |
+| `PUT` | `/api/v1/admin/provider-configs/{id}` | Creates and selects a new immutable version |
 
-## Parse Run 创建
+## Parse Run Creation
 
-`POST /api/v1/documents/{documentId}/parse-runs` 要求管理员会话或 `parses:write`。管理员请求还要求 antiforgery token。请求可指定 `providerConfigId`；省略时使用当前启用的默认配置。没有可用配置时返回 `503`，显式 ID 不存在时返回 `404`。
+`POST /api/v1/documents/{documentId}/parse-runs` requires an administrator, an OIDC owner/grantee with parse permission, or an API client with `parses:write`. Cookie writes require antiforgery validation.
 
-成功创建会持久化 `queued` 状态、Document ID、Provider 类型、逻辑配置 ID、不可变版本 ID、非敏感 options JSON、源/计划提交媒体类型、最大尝试次数、调用主体和时间。默认最大尝试次数为 3，可请求 1–10；options 必须是最多 16 KiB 的 JSON object，并拒绝任何层级中名为 credential、password、secret、token、API key 或 authorization 的字段。`submittedMediaType` 初始等于源媒体类型；执行器会在出站前用固定 Provider 版本做能力和大小校验。Provider 不支持 Office 源格式但支持 PDF 时，执行器保存独立转换快照和 `normalized-pdf` Artifact，再把实际提交类型切换为 PDF；具体见 [`office-conversion.md`](./office-conversion.md)。
+The request may name `providerConfigId`; otherwise it uses the enabled default. No usable default returns `503`, while an explicit unknown ID returns `404`.
 
-调用方可发送单个、最多 256 个可见 ASCII 字符的 `Idempotency-Key`。幂等范围是认证主体、Document 和 Parse Run 创建操作：首次创建返回 `201`；重复请求返回原记录、`200` 和 `Idempotency-Replayed: true`，不会因默认 Provider 后续改变而创建新任务。不提供该 Header 时，每次请求都会创建独立 Parse Run。
+Creation persists the `queued` state, Document ID, Provider type, logical configuration and immutable version IDs, non-sensitive options JSON, source/planned submitted media types, maximum attempts, caller facts, and timestamps. Maximum attempts defaults to 3 and accepts 1–10. Options must be a JSON object no larger than 16 KiB and reject credential/password/secret/token/API-key/authorization fields at any depth.
 
-`GET /api/v1/parse-runs/{id}` 要求管理员会话或 `parses:read`，返回稳定状态、阶段、配置版本快照、非敏感 options、媒体类型、尝试次数、脱敏错误和时间字段。响应不暴露 Worker lease、内部并发版本、调用主体或 Provider 外部任务 ID。
+`submittedMediaType` initially equals the source. Before outbound work, the executor validates the immutable Provider capabilities and size limits. If an Office source requires PDF fallback, it saves an independent conversion snapshot and `normalized-pdf` Artifact.
 
-## 尚未实现
+Callers may send one visible-ASCII `Idempotency-Key` up to 256 characters. Scope includes subject, Document, and operation. The first request returns `201`; a replay returns the original record with `200` and `Idempotency-Replayed: true`, even if the default Provider changed. Without the header, each request creates a distinct Parse Run.
 
-- MinerU Cloud / Local HTTP 适配器已经实现并接入默认关闭的实际 Worker；管理员连接测试仍未实现，协议与安全边界见 [`mineru-http-providers.md`](./mineru-http-providers.md)；
-- 目标镜像中的真实 MinerU / LibreOffice 样本集成验证；
-- Provider 配置与 Parse Run 的管理网页和审计日志；
-- 解析取消，以及结果 Blocks/Assets/Artifacts 的公共读取 API；内部 Canonical 成功提交已经实现；
-- 管理员配置 Cloud/Local Base URL 的部署级受信网络策略与多实例凭据 key-ring 部署验证；Cloud 返回的跨主机签名 URL 已使用独立的公网地址连接策略。
+`GET /api/v1/parse-runs/{id}` requires corresponding resource access or `parses:read`. It returns stable status/stage, configuration snapshot facts, sanitized options, media types, attempt count, sanitized errors, and timestamps. It excludes leases, concurrency tokens, internal callers, credentials, checkpoints, and external task IDs.
+
+## Current Gaps
+
+- administrator Provider connectivity testing;
+- richer execution-attempt history and cancellation propagation;
+- deployment-specific trust policy for configurable Cloud/Local base URLs;
+- broader production MinerU and LibreOffice sample coverage.
+
+The workspace and administration area already expose document, result, Provider, and API-client management; they are not future placeholders.

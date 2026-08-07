@@ -1,69 +1,68 @@
-# MinerU HTTP Provider 适配
+# MinerU HTTP Provider Adapters
 
-本文记录 MinerU Cloud 与 MinerU Local HTTP 适配器的当前实现。抽象职责见 [ADR-0002](../adr/0002-parser-provider-abstraction.md)，任务恢复约束见 [`parse-job-lifecycle.md`](../specifications/parse-job-lifecycle.md)。协议依据为 2026-08-05 查阅的 [MinerU Cloud API 文档](https://mineru.net/doc/docs/) 和 [MinerU Local 官方 API/CLI 文档](https://github.com/opendatalab/MinerU/blob/master/docs/en/usage/quick_usage.md)。上游协议变化必须由独立适配器和契约测试吸收，不能进入公共 API。
+This note describes the current MinerU Cloud and MinerU Local HTTP adapters. See [ADR-0002](../adr/0002-parser-provider-abstraction.md) for the abstraction and the [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) for recovery rules. Upstream protocol changes must remain in adapters and contract tests rather than entering the public API.
 
 ## MinerU Cloud
 
-`MinerUCloudParseProvider` 使用 Cloud 的签名批量上传协议处理单个 StructaDoc Parse Run：
+`MinerUCloudParseProvider` uses the signed batch-upload protocol for one StructaDoc Parse Run:
 
-1. `POST /api/v4/file-urls/batch`，为一个文件申请 batch ID 和签名上传 URL；
-2. 在当前 Parse Run 租约下原子保存 batch ID 和加密后的签名 URL continuation，仍保持 `submitting`；
-3. 查询同一 batch；仅在 `waiting-file` 时使用不带 Provider Token 和 Content-Type 的 `PUT` 流式上传原文件，已进入后续状态时不重复上传；
-4. 上传确认后清除 continuation 并进入 `waiting-provider`；
-5. `GET /api/v4/extract-results/batch/{batchId}` 查询唯一文件的状态；
-6. `done` 后从 `full_zip_url` 流式打开结果 ZIP。
+1. `POST /api/v4/file-urls/batch` requests a batch ID and signed upload URL.
+2. Under the current lease, atomically store the batch ID and encrypted signed-URL continuation while remaining in `submitting`.
+3. Query the batch. Only a `waiting-file` state performs a streaming `PUT` of the original without Provider token or Content-Type; later states do not upload again.
+4. Clear the continuation after upload confirmation and enter `waiting-provider`.
+5. `GET /api/v4/extract-results/batch/{batchId}` polls the single file.
+6. On `done`, stream the ZIP from `full_zip_url`.
 
-Cloud Token 是必需配置，只加入发往管理员配置 Base URL 的 API 请求。Token 不会加入签名上传或结果 CDN 请求。签名 URL 不写入异常、日志或 Canonical 元数据；为跨进程恢复上传，它只作为 Data Protection 加密的内部 continuation 暂存于 Parse Run，提交确认或最终失败时清除。Cloud Base URL 必须使用 HTTPS，且不能包含 query；签名上传和结果 URL 必须是无 user-info、无 fragment 的 HTTPS/443 地址。签名传输使用独立客户端、禁用代理和自动重定向，在每次建连时解析 DNS，拒绝任一非公网 IPv4/IPv6 结果，并直接连接已验证 IP，以避免 DNS 校验与实际连接分离。Provider API 客户端与签名传输客户端不会共享认证头或连接池。
+The Cloud token is required and is attached only to requests sent to the administrator-configured API base URL. Signed uploads and result-CDN requests never receive it. Signed URLs never enter logs, exceptions, or canonical metadata. They are stored only as encrypted internal continuations and cleared after confirmation or terminal failure.
 
-如果进程在上传响应未知时崩溃，新 Worker 会加载同一 batch 与加密 continuation：远端仍为 `waiting-file` 时可重复 PUT 同一份源文件；远端已进入 `pending / converting / running / done` 时直接完成本地提交阶段；远端明确 `failed` 时永久失败。签名地址过期或被拒绝不会自动申请新 batch，避免把未知上传结果变成重复解析；管理员可通过创建新 Parse Run 显式重试。
+Cloud API base URLs require HTTPS and no query. Signed upload/result URLs require HTTPS on port 443 with no user-info or fragment. A dedicated transfer client disables proxies and redirects, resolves DNS on each connection, rejects any non-public IPv4/IPv6 answer, and connects to the validated address. Provider API and signed-transfer clients do not share authentication headers or connection pools.
 
-当前能力快照为单文件最多 200 MiB、600 页，支持 PDF、DOC/DOCX、PPT/PPTX、HTML 和文档列出的图片类型；不声明 XLS/XLSX Cloud 原生支持。Cloud 当前没有接入可用的取消端点，因此取消能力为 `false`。
+After a crash with an unknown upload response, a new Worker reloads the same batch and continuation. It repeats the PUT only while the remote state is still `waiting-file`; `pending`, `converting`, `running`, or `done` advance local state without resubmission. An explicit remote failure is permanent. Expired or rejected signed URLs do not automatically allocate another batch because that could duplicate an unknown submission; an administrator can create a new Parse Run.
+
+The capability snapshot currently limits a single file to 200 MiB and 600 pages and includes PDF, DOC/DOCX, PPT/PPTX, HTML, and documented image types. It does not claim native XLS/XLSX support. No usable Cloud cancellation endpoint is currently exposed.
 
 ## MinerU Local
 
-`MinerULocalParseProvider` 面向当前官方 protocol version 2 的异步接口：
+`MinerULocalParseProvider` targets the current official asynchronous protocol version 2:
 
-1. `POST /tasks` 使用 `multipart/form-data` 流式上传一个文件，并要求 ZIP、Markdown、middle JSON、model output、content list 和 images；
-2. `GET /tasks/{taskId}` 把 `pending / processing / completed / failed` 映射为 Provider 内部状态；
-3. `GET /tasks/{taskId}/result` 以响应流返回 ZIP。
+1. `POST /tasks` streams one multipart file and requests ZIP, Markdown, middle JSON, model output, content list, and images.
+2. `GET /tasks/{taskId}` maps `pending`, `processing`, `completed`, and `failed` into internal Provider states.
+3. `GET /tasks/{taskId}/result` streams the result ZIP.
 
-Local Base URL 可以是 HTTP，以支持同一受信网络或同一主机上的自托管服务；可选 credential 作为 Bearer Token 加到 Local 请求，便于接入受保护的反向代理。Local 声明 PDF、常见图片、DOC/DOCX、PPT/PPTX 和 XLS/XLSX 支持；官方接口没有给出稳定的统一文件大小或页数上限，因此这两个能力值不在适配器中臆造。当前官方接口没有单任务取消端点。
+Local base URLs may use HTTP for a trusted host or network. An optional bearer credential supports protected reverse proxies. The adapter reports PDF, common images, DOC/DOCX, PPT/PPTX, and XLS/XLSX; it does not invent universal size or page limits absent from the protocol. The current protocol has no single-task cancellation route.
 
-Local 官方 ZIP 使用 `{document}/{method}/{document}.md`、`*_middle.json`、`*_content_list.json` 和嵌套 `images/`。归一化器同时支持这种目录和 Cloud 的根目录 `full.md`，并在唯一候选、路径清单复核和 Asset 相对路径消歧后才读取。
+The normalizer recognizes both Local layouts such as `{document}/{method}/{document}.md` plus nested `images/` and Cloud's root `full.md`. It resolves only unique, validated candidates from the archive manifest.
 
-## Parse Run options
+## Parse Run Options
 
-当前两个适配器只接受下列非敏感 JSON 属性；未知属性、重复属性、错误类型，以及 Cloud 请求中的 Local-only 属性会在出站请求前以 `mineru-options-invalid` 拒绝：
+Only these non-sensitive JSON properties are accepted. Unknown/duplicate properties, invalid types, and Local-only options in Cloud requests fail before any outbound request with `mineru-options-invalid`.
 
 | Property | Type | Meaning |
 |---|---|---|
-| `ocr` | boolean | Cloud `is_ocr`；Local 为 `true` 且未指定 `parseMethod` 时选择 `ocr` |
-| `formula` | boolean | 公式识别，默认 `true` |
-| `table` | boolean | 表格识别，默认 `true` |
-| `language` | string | OCR 语言，默认 `ch` |
-| `parseMethod` | `auto` / `txt` / `ocr` | Local 解析方式 |
-| `effort` | `medium` / `high` | Local hybrid effort |
-| `imageAnalysis` | boolean | Local 图片/图表分析 |
-| `startPage` | non-negative integer | 0-based 起始页 |
-| `endPage` | non-negative integer | 0-based 结束页且不得小于起始页 |
+| `ocr` | boolean | Cloud `is_ocr`; selects Local OCR when `parseMethod` is absent |
+| `formula` | boolean | Formula recognition, default `true` |
+| `table` | boolean | Table recognition, default `true` |
+| `language` | string | OCR language, default `ch` |
+| `parseMethod` | `auto`, `txt`, or `ocr` | Local parsing method |
+| `effort` | `medium` or `high` | Local hybrid effort |
+| `imageAnalysis` | boolean | Local image/chart analysis |
+| `startPage` | non-negative integer | Zero-based first page |
+| `endPage` | non-negative integer | Zero-based last page, not before `startPage` |
 
-Local backend 来自不可变 Provider 配置的 `backend`；Cloud model version 来自配置的 `model`，未配置时使用 `pipeline`。运行时 options 不能覆盖 endpoint、credential、backend 或 model。
+Local `backend` and Cloud `model` come from the immutable Provider configuration version. Runtime options cannot override endpoints, credentials, backend, or model.
 
-## HTTP 和错误边界
+## HTTP and Error Boundary
 
-- 所有响应 JSON 最多读取 1 MiB，不把响应正文放入日志或异常；
-- Provider API 的 `400/422` 分类为输入错误，`401/403` 分类为配置错误，`408/429/5xx` 和网络超时分类为瞬时错误；不携带 Token 的签名传输 `401/403` 不误报为凭据配置错误；
-- 签名传输目标命中私网、回环、链路本地、保留、组播地址或非 443 端口时分类为安全错误；DNS/连接临时失败仍分类为瞬时错误；
-- 外部任务失败只返回稳定错误码和通用脱敏消息；
-- 结果响应所有权随 `ProviderResultContent` 转移，调用方释放结果时同时释放网络流和 `HttpResponseMessage`；
-- 外部 task ID 只作为转义后的单个 URL path segment 使用；源文件名必须是安全的单段名称。
+- Response JSON is limited to 1 MiB and response bodies never enter logs or exceptions.
+- Provider API `400/422` is input failure, `401/403` is configuration failure, and `408/429/5xx` plus network timeout is transient.
+- A signed transfer `401/403` is not misreported as a Provider credential failure.
+- Private, loopback, link-local, reserved, multicast, or non-443 signed targets are security failures; temporary DNS/connection errors remain transient.
+- External failures expose stable codes and sanitized messages only.
+- `ProviderResultContent` owns and disposes the response stream and `HttpResponseMessage`.
+- External task IDs are escaped as one URL path segment; source filenames are safe single-segment values.
 
-## 执行启用和剩余风险
+## Execution and Remaining Risk
 
-适配器已接入可恢复执行器，但 `Worker:ExecutionEnabled` 默认 `false`。管理员显式开启后，执行 Worker 才会抢占 Parse Run 并发送文档。仍需完成：
+The adapters are wired into the recoverable executor, but `Worker:ExecutionEnabled` defaults to `false`. Enabling it permits document transfer to the selected Provider.
 
-- 使用部署目标的真实 MinerU 版本和样本执行集成测试；
-- 接入取消请求和执行尝试明细；
-- 根据部署网络明确管理员配置的 Cloud/Local Base URL 允许范围；Local 为支持同机和受信内网部署不会套用公网限定。
-
-当前执行器优先直接提交 Provider 原生支持的源格式。Provider 不支持已登记的 Office 源格式但支持 PDF 时，受限 LibreOffice 适配器会先生成、持久化并记录独立 PDF Artifact；其他不支持的媒体类型仍会在出站前失败。转换细节见 [`office-conversion.md`](./office-conversion.md)。
+Remaining work includes integration coverage with each deployed MinerU version, cancellation when upstream provides a contract, richer attempt history, and deployment-specific trust policy for administrator-configured base URLs. Local URLs intentionally permit trusted private networks; signed Cloud transfers do not.

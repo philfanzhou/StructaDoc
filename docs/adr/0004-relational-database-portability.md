@@ -1,102 +1,92 @@
-# ADR-0004：支持可替换的关系数据库
+# ADR-0004: Support Replaceable Relational Databases
 
 - Status: Accepted
 - Date: 2026-08-05
 
 ## Context
 
-StructaDoc 面向不同规模的自托管环境。小型单实例部署希望只运行一个应用容器并使用持久卷；已有基础设施的部署方可能已经使用 PostgreSQL、MySQL 或 MariaDB。把领域模型、迁移或 Worker 抢占逻辑绑定到 PostgreSQL，会提高采用和后续维护成本，也与单镜像、低频写入的部署目标不完全一致。
+Small self-hosted installations want one application container and a persistent volume. Other installations already operate PostgreSQL, MySQL, or MariaDB. Binding the domain, migrations, or Worker claims to one database would raise adoption and maintenance costs.
 
-数据库不仅保存普通业务数据，也是 Parse Run 的权威任务来源。因此，“支持某种数据库”不能只表示应用能够连接或创建表；它必须覆盖迁移、事务、并发抢占、租约、幂等提交、恢复和升级。
+The database stores ordinary business data and is also the authoritative Parse Run queue. Supporting a database therefore includes migrations, transactions, concurrent claims, leases, idempotent commits, recovery, and upgrades—not merely connectivity or table creation.
 
 ## Decision
 
-### 1. 支持范围
+### 1. Supported databases
 
-第一阶段必须支持：
+- **SQLite:** lightweight deployments with one StructaDoc application instance.
+- **PostgreSQL:** external database and multi-instance deployments.
+- **MySQL:** external database and multi-instance deployments.
+- **MariaDB:** an independent target, not an assumption based on MySQL compatibility.
 
-- SQLite：面向单个 StructaDoc 应用实例的轻量和最小部署；
-- PostgreSQL：面向外部数据库和多实例部署；
-- MySQL：面向外部数据库和多实例部署；
-- MariaDB：作为独立测试目标支持，不能只根据 MySQL 兼容性推定可用。
+Only database versions exercised by contract tests are declared supported.
 
-具体最低数据库版本和 EF Core Provider 版本由首个实现的兼容性验证确定，并在部署文档和支持矩阵中固定。未经契约测试的数据库或版本不声明为受支持。
+### 2. Code boundary
 
-### 2. 代码边界
+- Domain, Application, Contracts, and public APIs do not reference database Provider types or dialects.
+- Infrastructure uses EF Core for the shared model and ordinary CRUD.
+- Configuration selects the Provider explicitly; never infer it from a connection string.
+- Atomic claims and other operations that cannot be generalized reliably live behind internal dialect boundaries.
+- Database differences never appear as different public status values, DTO fields, or business behavior.
 
-- Domain、Application、Contracts 和公共 API 不引用数据库 Provider 类型或数据库方言。
-- Infrastructure 使用 EF Core 定义共享持久化模型和普通 CRUD。
-- 数据库连接通过显式配置选择，至少包含数据库类型和连接字符串；不得根据连接字符串内容猜测 Provider。
-- 原子任务抢占、必要的锁语义和其他无法可靠通用化的操作位于数据库方言适配层，通过内部接口暴露稳定语义。
-- 数据库差异不得泄漏为公共状态值、DTO 字段或不同的业务行为。
+### 3. Portable model
 
-### 3. 可移植数据模型
+Use types, indexes, and constraints that all four databases express reliably. Do not place unadapted PostgreSQL `jsonb`, arrays, sequences, partial indexes, or other single-database features in the core model. Store bounded Provider-native structures as JSON text or Artifacts and model queryable business fields explicitly.
 
-共享模型优先使用各数据库都能可靠表达的类型、索引和约束。不得在核心模型中无适配地依赖 PostgreSQL `jsonb`、数组、序列、部分索引或其他单数据库能力。需要保存的 Provider 原始结构默认作为受大小限制的 JSON 文本或 Artifact 保存；面向业务查询的字段必须显式建模。
+Store and compare time with UTC semantics. Identifiers, enums, concurrency versions, collations, index lengths, and delete behavior must map deterministically on every database. Dialect-specific optimizations may improve performance but cannot change observable behavior.
 
-时间统一以 UTC 语义存储和比较。标识符、枚举、并发版本、字符串排序规则、索引长度及删除行为必须在四种数据库上有确定映射。允许数据库适配层使用特有能力优化性能，但不得改变可观察语义。
+### 4. Migrations
 
-### 4. 迁移
+Maintain separate, reviewable, repeatable migration sets for every database. A release must:
 
-每种数据库维护独立、可审查和可重复执行的迁移集合。共享实体模型不意味着复用同一份生成 SQL。发布版本必须能够：
+- migrate an empty database to the current version;
+- upgrade from the previous supported release;
+- fail readiness when migration fails instead of patching with ad hoc startup DDL;
+- record the active Provider and migration history.
 
-- 从空数据库迁移到当前版本；
-- 从上一受支持版本升级；
-- 检测迁移失败并停止就绪状态，不以零散启动 DDL 修补；
-- 明确记录当前 Provider 和迁移历史。
+Production startup migration is an explicit deployment setting.
 
-运行迁移的命令入口可以由同一应用镜像提供，但生产环境是否在启动时自动迁移必须由部署配置显式决定。
+### 5. Concurrency and deployment
 
-### 5. 任务并发与部署能力
+Every database follows the [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md).
 
-所有数据库都必须遵守 [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) 的原子抢占、租约、心跳、恢复和幂等语义。
+- PostgreSQL, MySQL, and MariaDB support multiple StructaDoc Worker instances.
+- SQLite supports controlled Worker concurrency in one application instance only.
+- Multiple containers must not share one SQLite file, and SQLite must not run from NFS, SMB, or another network filesystem.
+- SQLite and local Artifacts belong on persistent volumes covered by a consistent backup plan.
 
-- PostgreSQL、MySQL 和 MariaDB 必须支持多个 StructaDoc 实例并发运行 Worker。
-- SQLite 仅支持单个 StructaDoc 应用实例；进程内可以有受控 Worker 并发。
-- 不支持多个容器共享同一个 SQLite 文件，也不支持把 SQLite 文件放在 NFS、SMB 等网络文件系统上。
-- SQLite 数据库文件和本地 Artifact 必须位于持久卷，并纳入一致的备份说明。
+Dialects may use different locks or compare-and-set implementations, but contention must not duplicate execution and expired-lease recovery must produce the same result.
 
-数据库方言可以采用不同的锁或 compare-and-set 实现，但竞争失败不得导致重复执行，租约过期后的恢复结果必须一致。
+### 6. Verification
 
-### 6. 验证要求
+A shared persistence contract suite runs against SQLite, PostgreSQL, MySQL, and MariaDB and covers:
 
-持久化测试采用共享契约测试套件，并针对 SQLite、PostgreSQL、MySQL 和 MariaDB 分别运行。至少覆盖：
+- clean migration and version upgrades;
+- business-resource constraints;
+- competing Worker claims without duplicate success;
+- renewal, lease loss, recovery, cancellation, and retries;
+- idempotency and unique-constraint races;
+- UTC time, ordering, pagination, and string behavior.
 
-- 空库迁移和版本升级；
-- Document、Parse Run、Page、Block、Asset、Artifact 和 Provider Config 的读写约束；
-- 多 Worker 同时抢占同一批任务时不重复成功；
-- 续租、租约丢失、崩溃恢复、取消和重试；
-- 幂等键、结果幂等提交和唯一约束竞争；
-- UTC 时间、排序、分页和字符串大小写行为。
-
-SQLite 使用临时文件数据库测试，不以 `:memory:` 替代文件锁和事务验证。服务端数据库测试使用真实对应数据库实例，不以 mock 或另一种兼容数据库代替。
+SQLite tests use temporary file databases rather than `:memory:` when file locking and transactions matter. Server databases use real corresponding instances, not mocks or compatibility substitutes.
 
 ## Consequences
 
 ### Positive
 
-- 小型部署可以只运行一个 StructaDoc 容器并挂载持久卷。
-- 部署方可以复用 PostgreSQL、MySQL 或 MariaDB 基础设施。
-- 领域和公共 API 不被单一数据库特性锁定。
-- 共享契约测试使“支持”包含可靠任务语义，而不只是基本 CRUD。
+- Small deployments need only one application container and volume.
+- Operators can reuse existing PostgreSQL, MySQL, or MariaDB infrastructure.
+- Domain and public contracts do not depend on one database.
+- “Supported” includes reliable job behavior, not only CRUD.
 
 ### Trade-offs
 
-- 需要维护多套迁移、Provider 依赖和集成测试环境。
-- 数据模型不能无条件使用某一数据库的专有类型和索引能力。
-- 原子抢占需要数据库方言适配，不能只依赖一条 PostgreSQL SQL。
-- SQLite 不提供多实例横向扩展承诺；从 SQLite 切换到服务端数据库需要受控数据迁移工具或导入导出流程。
+- Multiple migration sets, dependencies, and integration environments require maintenance.
+- The core model cannot rely unconditionally on one database's specialized types or indexes.
+- Atomic claims require a dialect boundary.
+- Moving from SQLite to a server database requires a controlled migration or import/export path.
 
 ## Rejected Alternatives
 
-### 只支持 PostgreSQL
-
-拒绝。它能简化初始实现，但会让最小部署额外依赖数据库服务，并排除已有 MySQL 或 MariaDB 基础设施的用户。
-
-### 只依赖 EF Core 抽象，不建立方言边界
-
-拒绝。普通 CRUD 可以共享，但可靠的任务抢占、锁和迁移 SQL 存在真实数据库差异；隐藏这些差异会把故障推迟到并发和恢复场景。
-
-### 对 SQLite 承诺多实例共享
-
-拒绝。SQLite 适合单实例嵌入式持久化，不应通过共享文件系统模拟服务端数据库的并发和故障边界。
+- **PostgreSQL only:** simplifies implementation but adds a service to the smallest deployment and excludes existing MySQL/MariaDB environments.
+- **EF Core abstraction only:** ordinary CRUD is portable, but reliable claims, locks, and generated migration SQL have real differences.
+- **Multi-instance shared SQLite:** SQLite is appropriate for embedded single-instance persistence, not for emulating a server database through a shared filesystem.

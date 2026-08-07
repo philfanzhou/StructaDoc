@@ -1,6 +1,6 @@
-# S3 兼容存储与大 PDF 分段
+# S3-Compatible Storage and Large-PDF Segmentation
 
-`Storage:Provider` 支持 `Local` 和 `S3`。S3 实现兼容 AWS S3、MinIO 等 S3-compatible 服务，使用条件写入避免静默覆盖已有不同内容，并以 SHA-256 metadata 验证幂等重放。
+`Storage:Provider` supports `Local` and `S3`. The S3 implementation works with AWS S3, MinIO, and compatible services. Conditional writes prevent silent overwrite, and SHA-256 metadata verifies idempotent replay.
 
 ```json
 {
@@ -15,10 +15,21 @@
 }
 ```
 
-Access Key 和 Secret Key 可以省略以使用 AWS SDK 默认凭据链；显式凭据必须成对从 Secret 注入。Readiness 检查会验证 Bucket 可访问性。
+Access and secret keys may be omitted to use the AWS SDK default credential chain. Explicit credentials must be supplied together through deployment secrets. Readiness verifies bucket access. Public responses never expose object keys.
 
-当 PDF（包括 Office 转换生成的 PDF）超过 Provider 声明的 `MaxFileBytes` 或 `MaxPages` 时，执行器按页创建受限分段。每段使用确定性 ID，并持久化页码范围、源对象、SHA-256、提交 checkpoint、外部任务 ID 和阶段状态。
+## Large PDFs
 
-进程重启后会复用已创建的分段、已提交的外部任务和已下载的 Provider Archive。所有分段规范化后，执行器把局部页码转换为原文全局页码，重建连续 Block sequence，合并 Assets 和 Markdown，并一次性提交父 Parse Run 的 Canonical Bundle。单页自身仍超过 Provider 限制时返回明确的永久输入错误。
+When a PDF—including one produced from Office—exceeds a Provider's `MaxFileBytes` or `MaxPages`, the executor creates bounded page segments. Each segment has a deterministic ID and persists its source page range, object, SHA-256, submission checkpoint, external task ID, and stage.
 
-全文检索、OpenSearch、Embedding、RAG、元数据/LLM 扩展不属于本次实现范围。
+Recovery reuses created segments, submitted external jobs, and downloaded Provider archives. Once all segments normalize successfully, the executor:
+
+1. translates local segment pages back to global source pages;
+2. rebuilds one contiguous Block sequence;
+3. merges Assets, Artifacts, and Markdown deterministically;
+4. commits one canonical parent Parse Bundle transaction.
+
+If a single page exceeds the Provider limit by itself, the run fails with a stable permanent input error instead of looping or silently truncating it.
+
+Segment objects and Provider results participate in the same durable Cleanup Job as other document resources.
+
+Full-text search, OpenSearch, embeddings, RAG, and metadata/LLM extensions remain outside StructaDoc's product boundary.

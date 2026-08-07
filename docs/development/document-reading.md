@@ -1,42 +1,54 @@
 # Document Reading
 
 - Status: Implementation note
-- Last updated: 2026-08-05
+- Last updated: 2026-08-07
 
 ## Authorization
 
-Document 读取端点允许管理员 Cookie 会话，或具有 `documents:read` scope 的 API Client。`documents:write` 不隐含读取权限。GET 请求不需要 antiforgery token。
+Document reads require one of:
+
+- an administrator session;
+- an OIDC user who owns the document or has a matching read grant;
+- an API client with `documents:read`.
+
+`documents:write` does not imply read permission. GET requests do not require antiforgery tokens. Every result, Asset, Artifact, Markdown, export, and original-content route repeats resource-level authorization; endpoint authentication alone is not sufficient.
 
 ## Endpoints
 
 | Method | Path | Behavior |
 |---|---|---|
-| `GET` | `/api/v1/documents?limit=50&cursor=...` | 按创建时间和 ID 倒序分页 |
-| `GET` | `/api/v1/documents/{id}` | 返回单个 Document 元数据 |
-| `GET` | `/api/v1/documents/{id}/content` | 下载不可变的原始文件 |
+| `GET` | `/api/v1/documents?limit=50&cursor=...` | Lists visible documents in descending creation/ID order |
+| `GET` | `/api/v1/documents/{id}` | Returns visible document metadata |
+| `GET` | `/api/v1/documents/{id}/content` | Downloads the immutable original |
+| `GET` | `/api/v1/documents/{id}/parse-runs` | Lists visible parsing history |
 
-列表默认返回 50 项，`limit` 范围是 1–200。响应的 `nextCursor` 是不透明值；调用方只能原样传入下一次请求，不应解析、构造或长期保存。没有下一页时为 `null`。
+List limits range from 1 to 200 and default to 50. `nextCursor` is opaque: callers pass it back unchanged and do not parse, construct, or persist it as a durable bookmark. It is `null` when no later page exists.
 
-分页使用 `(createdAt, id)` 键集而不是 offset，并由数据库复合索引支持。翻页期间新上传的文档不会造成已读取项重复；分页不是数据库快照，新文档应在调用方下一次从第一页读取时出现。
+Pagination uses `(createdAt, id)` keysets backed by a composite index instead of offsets. New uploads do not duplicate already-read items during traversal. Pagination is not a database snapshot; callers see newer documents when they restart from the first page.
 
-列表和详情只返回公共 Document ID、清理后的原文件名、检测后的媒体类型与扩展名、大小、SHA-256 和创建时间。内部 `storageRef`、上传主体和内部 metadata 不属于当前公共响应。
+Public summaries expose the StructaDoc ID, sanitized original filename, detected media type and extension, size, SHA-256, ownership/display facts allowed by the DTO, and timestamps. They never expose `storageRef`, internal metadata, or database keys. Resources in `deletion-pending` are unavailable.
 
 ## Content Download
 
-原文件响应具有以下语义：
+Original-content responses provide:
 
-- `Content-Disposition: attachment`，文件名由服务端安全编码；
-- 检测后的 `Content-Type` 和 `X-Content-Type-Options: nosniff`；
-- `Content-Security-Policy: sandbox`；
-- SHA-256 生成的强 ETag，支持 `If-None-Match` 返回 `304`；
-- 支持单个或框架允许的字节 Range 请求及 `206 Partial Content`；
-- `Cache-Control: private, max-age=0, must-revalidate`，允许调用方私有缓存，但每次复用前验证权限和内容版本。
+- `Content-Disposition: attachment` with a safely encoded server filename;
+- detected `Content-Type` and `X-Content-Type-Options: nosniff`;
+- `Content-Security-Policy: sandbox`;
+- a strong SHA-256 ETag and `If-None-Match` support returning `304`;
+- byte Range support and `206 Partial Content` where the framework/storage implementation permits it;
+- `Cache-Control: private, max-age=0, must-revalidate` so every reuse revalidates authorization and content.
 
-数据库中不存在 Document 时返回 `404`。Document 存在但存储对象缺失时返回不包含内部路径的通用 `503`，同时在服务端记录 Document ID。当前本地文件实现支持 Range；未来 S3 实现必须保持相同 HTTP 契约，不能先把整个对象缓冲到内存。
+An absent or unauthorized Document returns the resource-hiding response defined by the API. If metadata exists but its object is unavailable, the API returns a generic `503` without an internal path and logs only safe resource identifiers.
+
+Both Local and S3 storage stream reads. The S3 implementation does not buffer an entire object before serving a Range request.
+
+## Related Result Reads
+
+The result API exposes stable Page, Block, Asset, and Artifact DTOs plus controlled content, Markdown, and export routes. Blocks use sequence-based pagination. Raw Provider fields and internal object references are excluded. See [Result API and Resource Lifecycle](./result-api-and-resource-lifecycle.md).
 
 ## Remaining Work
 
-- Document 删除、审计及数据库/对象存储补偿；
-- 列表过滤、搜索条件和相应的游标版本化；
-- S3 兼容对象存储的流式 Range 读取；
-- 解析状态、产物和 Block/Asset 读取端点。
+- richer metadata filters and cursor versioning for new sort orders;
+- quota and retention views;
+- additional conditional-request and large-object performance coverage against production S3-compatible services.

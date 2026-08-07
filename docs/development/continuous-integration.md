@@ -1,20 +1,32 @@
-# 持续集成
+# Continuous Integration
 
-仓库的 [CI 工作流](../../.github/workflows/ci.yml) 在 push、pull request 和手动触发时运行。它用于补足开发机可能缺少 Docker、服务端数据库或浏览器运行环境的验证，不改变 StructaDoc 的产品边界，也不启用全文检索、LLM 等扩展能力。
+The repository [CI workflow](../../.github/workflows/ci.yml) runs on pushes, pull requests, and manual dispatch. It supplies Docker, real server databases, and Chromium when a development machine does not have them.
 
-## 验证范围
+## Jobs
 
-工作流包含三个相互独立的 Job：
+The workflow has three independent jobs:
 
-1. `build-and-test` 使用 .NET 10 与 Node.js 24，还原并构建前后端，执行 npm 安全审计和解决方案测试。需要 Docker 的数据库契约在该 Job 中保持跳过。
-2. `database-contracts` 设置 `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`，由 Testcontainers 分别启动 PostgreSQL 17、MySQL 8.4 和 MariaDB 11.4，执行相同的迁移和 Parse Run 租约契约。
-3. `container-and-browser` 构建真实生产 Dockerfile，以只读根文件系统、全部 capability 移除和临时测试管理员启动镜像，验证健康检查与系统信息端点，然后用 Chromium 完成管理员登录、PDF 上传、用户工作台和管理区访问。
+1. **Build and unit tests** installs .NET 10 and Node.js 24, restores and builds the backend and frontend, audits npm dependencies, and runs tests that do not require Docker.
+2. **PostgreSQL, MySQL, and MariaDB contracts** sets `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`; Testcontainers starts PostgreSQL 17, MySQL 8.4, and MariaDB 11.4 and runs the same migration, persistence, lease, recovery, and canonical-commit contracts.
+3. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, and uses Chromium to exercise administrator sign-in, PDF upload, the user workspace, and the administration area.
 
-数据库测试结果、浏览器 HTML 报告、成功页面截图、失败 trace/video，以及容器日志都会作为 Actions artifact 保留。测试管理员凭据仅存在于隔离 runner 的环境变量中，不是生产凭据，也不需要配置仓库 Secret。
+TRX results, Playwright HTML reports, screenshots, failure traces/videos, and container logs are uploaded as Actions artifacts. Temporary administrator credentials exist only in the isolated runner environment and are not repository secrets or production defaults.
 
-## 本地复现
+## Current Remote Status
 
-不依赖 Docker 的基线：
+The latest `main` run at the time of this update, workflow run `31185614899` for commit `5ef2523`, completed successfully across all three jobs.
+
+Two preceding runs remain visible as failures in Actions history. They are superseded rather than still-active failures:
+
+- run `31183755280` exposed real server-database contract and browser-workspace defects;
+- run `31185224410` confirmed the image and ordinary tests but still failed the database job and the post-login browser flow;
+- commit `5ef2523` fixed the remaining browser issue by refreshing the antiforgery token after the authenticated principal changed, and the next run passed.
+
+Historical red runs should not be mistaken for the current branch status. Always compare the run's head SHA with `origin/main` and inspect the newest run.
+
+## Local Reproduction
+
+Without Docker:
 
 ```bash
 cd web
@@ -25,15 +37,25 @@ cd ..
 dotnet test StructaDoc.slnx
 ```
 
-有 Docker 时运行三种数据库契约：
+With a Docker-compatible engine, run the real database contracts:
 
 ```bash
 STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1 \
 dotnet test tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj
 ```
 
-浏览器测试默认访问 `http://127.0.0.1:8080`，也可以通过 `STRUCTADOC_E2E_BASE_URL` 指向已经启动的测试实例。管理员邮箱和密码分别通过 `STRUCTADOC_E2E_ADMIN_EMAIL`、`STRUCTADOC_E2E_ADMIN_PASSWORD` 注入。
+PowerShell:
 
-## 验证状态
+```powershell
+$env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
+dotnet test tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj
+```
 
-工作流文件和 Playwright 测试可以在本地完成静态发现与构建验证；容器、服务端数据库和 Chromium 的最终结论只以 GitHub Actions 的实际运行结果为准。工作流尚未运行时，不应把这些项描述为已经通过。
+Browser tests default to `http://127.0.0.1:8080`. Override it with `STRUCTADOC_E2E_BASE_URL`; inject the test administrator through `STRUCTADOC_E2E_ADMIN_EMAIL` and `STRUCTADOC_E2E_ADMIN_PASSWORD`.
+
+## Interpretation Rules
+
+- Local build success does not substitute for the real database or production-container jobs.
+- A workflow definition is not proof that its jobs passed; use the run associated with the current commit.
+- Do not weaken tests or suppress package audits to make CI green.
+- Preserve failure artifacts long enough to diagnose database, browser, and container regressions.

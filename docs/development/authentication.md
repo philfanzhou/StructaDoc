@@ -1,22 +1,46 @@
 # Authentication
 
 - Status: Implementation note
-- Last updated: 2026-08-05
+- Last updated: 2026-08-07
 
 ## Current Boundary
 
-认证实现遵守 [ADR-0005](../adr/0005-authentication-and-api-clients.md)：管理员浏览器会话和应用 API Client 是两种独立主体。
+Authentication follows [ADR-0005](../adr/0005-authentication-and-api-clients.md) and [ADR-0006](../adr/0006-user-workspace-and-oidc.md). Interactive OIDC users, the local break-glass administrator, and machine API clients are distinct subject types.
 
-| Subject | Credential | Stored data | Revocation |
+| Subject | Credential | Stable identity / stored verifier | Revocation |
 |---|---|---|---|
-| Administrator | HttpOnly、SameSite Strict Cookie | 可升级密码哈希、security stamp、启用状态 | 停用账户或更换 stamp 后下一次请求失效 |
-| API Client | `Authorization: ApiKey <credential>` | Client UUID、Secret SHA-256、scope、启用/撤销状态 | 停用或写入撤销时间后下一次请求失效 |
+| OIDC user | Host-managed HttpOnly Cookie after OIDC callback | Case-sensitive `(issuer, subject)` | External identity lifecycle plus local resource grants |
+| Local administrator | HttpOnly, SameSite Strict Cookie | Upgradeable password hash, security stamp, enabled state | Disable account or change stamp |
+| API client | `Authorization: ApiKey <credential>` | Client UUID, secret SHA-256, scopes, enabled/revoked state | Disable or revoke client |
 
-Cookie/API Key 验证都会查询权威数据库。当前没有认证缓存，因此撤销不依赖缓存过期时间。
+The browser never receives OIDC access or identity tokens. Cookie and API-key validation consult authoritative local state; current revocation does not depend on cache expiry.
+
+## Generic OIDC
+
+OIDC uses Authorization Code flow with PKCE, standard discovery and token validation, and configurable scope and role-claim mapping. The stable authorization key is `(issuer, subject)`, not email, display name, username, or a Provider-private identifier.
+
+Configuration is under `Oidc`:
+
+```json
+{
+  "Oidc": {
+    "Enabled": true,
+    "Authority": "https://identity.example.com",
+    "ClientId": "structadoc",
+    "ClientSecret": "from-secret-store",
+    "RequireHttpsMetadata": true,
+    "Scopes": ["openid", "profile", "email"],
+    "RoleClaimType": "role",
+    "AdministratorRole": "structadoc-admin"
+  }
+}
+```
+
+SignaCore and other standards-compliant OIDC Providers can be configured without Provider-specific business code. Inject `ClientSecret` through a deployment secret.
 
 ## Bootstrap Administrator
 
-首次部署可以通过 Secret 注入：
+The first deployment can inject:
 
 ```text
 Authentication__BootstrapAdministratorEmail
@@ -24,62 +48,46 @@ Authentication__BootstrapAdministratorPassword
 Authentication__BootstrapAdministratorDisplayName
 ```
 
-Email 和密码必须同时配置，密码长度为 12–1024 个字符。启动迁移完成后，如果相同规范化 Email 不存在，Host 创建管理员；已有账户的密码、启用状态和 security stamp 不会被 bootstrap 配置覆盖。完成首次创建后应从部署配置删除 bootstrap 密码。
+Email and password must be configured together. Password length is 12–1024 characters. After migration, the Host creates the account only if its normalized email does not exist. Bootstrap settings never overwrite a stored password, enabled state, or security stamp. Remove the bootstrap password after first use.
 
-当前尚未实现管理员创建、密码修改和密码恢复 API。
+## Local Administrator Session Flow
 
-## Administrator Session Flow
+1. `GET /api/v1/admin/antiforgery` and retain its Cookie plus `requestToken`.
+2. `POST /api/v1/admin/session` with email/password JSON and `X-CSRF-TOKEN`.
+3. After successful sign-in, fetch a new antiforgery token because the principal changed from anonymous to administrator.
+4. Send that new token on subsequent Cookie-authenticated writes.
+5. `DELETE /api/v1/admin/session` signs out and also requires antiforgery validation.
 
-1. `GET /api/v1/admin/antiforgery`，保存响应 Cookie 和 `requestToken`。
-2. `POST /api/v1/admin/session`，发送 JSON Email/Password，并在 `X-CSRF-TOKEN` Header 中发送 token。
-3. 登录成功后重新获取 antiforgery token，因为主体已经从匿名用户变为管理员。
-4. 后续 Cookie 写操作发送新的 `X-CSRF-TOKEN`。
-5. `DELETE /api/v1/admin/session` 退出，也需要 antiforgery token。
+Authentication failure returns `401` without revealing whether an account is absent, disabled, or has the wrong password. API endpoints do not redirect to an HTML login page.
 
-认证失败统一返回 `401`，不区分账户不存在、停用或密码错误。API 端点不会重定向到 HTML 登录页。
+The login endpoint uses a fixed window per `RemoteIpAddress`, defaulting to ten attempts per minute. Configure `Authentication:LoginPermitLimit` and `Authentication:LoginRateLimitWindow`. A reverse proxy must restrict trusted forwarded headers; multi-instance limits are currently per instance.
 
-登录端点按 `RemoteIpAddress` 使用固定窗口限流，默认每个来源 IP 每分钟 10 次，超限返回 `429`。可通过 `Authentication:LoginPermitLimit` 和 `Authentication:LoginRateLimitWindow` 调整。反向代理部署必须先配置并限制可信代理转发头，否则来源地址只代表直接连接的代理；多实例部署中的限额当前按实例计算。
+## API-Client Credentials
 
-## API Client Credential
+Credentials contain a version, public client UUID, and 256-bit random secret. The database stores only SHA-256 of the secret. Creation and rotation responses use `Cache-Control: no-store` and are the only places that reveal a full credential.
 
-Credential 格式包含版本、公开 Client UUID 和 256-bit 随机 Secret。数据库只保存 Secret SHA-256；完整 Credential 不能恢复，也不得写入日志。创建和轮换响应使用 `Cache-Control: no-store`，并且是唯一返回完整 Credential 的位置。
-
-已登记 scope：
+Registered scopes are:
 
 - `documents:read`
 - `documents:write`
 - `parses:read`
 - `parses:write`
 
-当前 Document 上传要求 `documents:write`；列表、详情和原文件下载要求 `documents:read`。Parse Run 创建要求 `parses:write`，状态读取要求 `parses:read`。四个 scope 相互独立。管理员主体由独立策略授权，不需要伪造 API Client scope。Provider 配置管理只允许管理员 Cookie 会话访问，不向 API Client 开放。
+Scopes are independent. Provider configuration remains administrator-only.
 
-## API Client Administration
-
-以下端点只允许管理员 Cookie 会话访问；所有写操作都要求 antiforgery token：
-
-| Method | Path | Behavior |
-|---|---|---|
-| `GET` | `/api/v1/admin/api-clients` | 按创建时间倒序列出 Client，不返回 Credential 或 Secret 哈希 |
-| `POST` | `/api/v1/admin/api-clients` | 创建 Client，返回只显示一次的 Credential |
-| `PUT` | `/api/v1/admin/api-clients/{id}` | 修改显示名称和 scope，立即影响后续请求 |
-| `POST` | `/api/v1/admin/api-clients/{id}/rotate` | 生成新 Credential，旧 Credential 立即失效 |
-| `DELETE` | `/api/v1/admin/api-clients/{id}` | 不可逆撤销；重复撤销保持幂等 |
-
-名称会去除首尾空白，scope 会去重并按固定顺序保存。未知 scope 返回 `400`。轮换和修改使用并发版本比较；Client 被撤销或同时发生其他变更时返回 `409`。撤销是终态，不能通过轮换重新启用；需要恢复调用方时应创建新的 API Client。
+Administrator Cookie endpoints under `/api/v1/admin/api-clients` list, create, update scopes, rotate keys, and irrevocably revoke clients. All writes require antiforgery validation. Names are trimmed, scopes are de-duplicated in a stable order, unknown scopes return `400`, and concurrent or terminal-state conflicts return `409`.
 
 ## Data Protection
 
-`Authentication:DataProtectionKeysPath` 默认是 `./data/keys`。该目录保存 Cookie、antiforgery 和 Provider 凭据加密使用的 ASP.NET Core Data Protection key ring，必须放入持久卷并限制文件权限。删除或更换 key ring 会使现有管理员会话与 antiforgery token 失效，并使已保存的 Provider 凭据无法解密。
+`Authentication:DataProtectionKeysPath` defaults to `./data/keys`. The key ring protects Cookies, antiforgery tokens, Provider credentials, and submission checkpoints. It must be persistent, permission-restricted, and backed up with the database. Losing it invalidates sessions and can make encrypted Provider state unrecoverable.
 
-多实例 Host 必须共享同一 key ring。当前只实现文件系统持久化；在无法安全共享文件卷的环境中，管理员会话暂不具备多实例发布支持，API Key 不受该限制。
+Multiple Host instances must share the same key ring. The current implementation uses filesystem persistence; deployments that cannot share it safely do not yet support multi-instance browser sessions. API keys are not affected by this limitation.
 
-Provider Bearer Token 与管理员 Cookie、API Client Key 是独立凭据。MinerU HTTP 适配器只在运行时从固定配置版本解密 Token，并按请求显式加入发往配置 Base URL 的 API 请求；Cloud 签名上传和结果 CDN 请求不携带该 Token。Token、签名 URL、上游响应正文和内部存储引用不得进入异常、日志或公共响应；Cloud 签名 URL 仅作为 Data Protection 加密的短期提交 continuation 落库，并在提交确认或最终失败时清除。具体出站边界见 [`mineru-http-providers.md`](./mineru-http-providers.md)。
+Provider bearer tokens remain separate from every user credential. Adapters decrypt a token only from the immutable configuration version used by a leased Parse Run and attach it only to the configured Provider API origin. Signed upload and result-CDN requests never receive that token.
 
 ## Remaining Work
 
-- 管理员创建、停用、密码变更和安全审计；
-- API Client 管理网页和持久化安全审计；
-- 登录失败审计和可配置锁定策略；
-- 生产 HTTPS、反向代理和 Cookie Secure 部署验证；
-- 可选 OIDC 管理员登录；
-- 多实例外部 Data Protection key ring 方案。
+- richer administrator account operations and security audit views;
+- configurable failed-login lockout and persistent authentication audit;
+- production reverse-proxy, HTTPS, and Cookie Secure deployment recipes;
+- an external Data Protection key-ring option for multi-instance platforms.

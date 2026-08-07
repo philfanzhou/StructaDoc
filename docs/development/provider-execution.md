@@ -1,59 +1,67 @@
-# Provider 执行边界
+# Provider Execution Boundary
 
-本文记录当前 Provider 执行契约的实现范围。Provider 的架构职责以 [ADR-0002](../adr/0002-parser-provider-abstraction.md) 为准，任务状态和恢复规则以 [`parse-job-lifecycle.md`](../specifications/parse-job-lifecycle.md) 为准。
+This note describes the current execution contract. Provider responsibilities follow [ADR-0002](../adr/0002-parser-provider-abstraction.md); states and recovery follow the [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md).
 
-## 当前内部契约
+## Internal Contract
 
-`IParseProvider` 隔离具体 MinerU 协议，并定义以下异步能力：
+`IParseProvider` isolates MinerU protocols and can:
 
-- 返回原生支持的媒体类型、文件大小/页数限制和取消能力；
-- 以 Parse Run ID、不可变 Provider 配置、非敏感 options 和可重复打开的源文件流准备并提交任务；需要远端预分配的 Provider 会先返回必须持久化的提交 checkpoint；
-- 使用独立的外部任务 ID 查询 Provider 状态；
-- 以流的形式打开最终结果，避免把 ZIP 或大型 JSON 强制读入内存；
-- 在 Provider 支持时尝试取消外部任务。
+- report native media types, file/page limits, and cancellation capability;
+- prepare and submit a task using Parse Run ID, immutable configuration, sanitized options, and a reopenable source stream;
+- return a persistent submission checkpoint when remote allocation precedes upload;
+- poll by a separate external task ID;
+- open final results as streams rather than buffering ZIP or large JSON;
+- attempt cancellation when supported.
 
-任务状态使用 Provider 内部枚举表达，不直接成为公共 Parse Run 状态。适配器使用 `ProviderException` 返回稳定错误码、脱敏消息和瞬时/配置/输入/永久/安全分类；不得把上游响应正文、Token 或带签名查询参数的 URL写入异常或日志。
+Provider states remain internal. `ProviderException` exposes a stable code, sanitized message, and transient/configuration/input/permanent/security category. Upstream bodies, tokens, and signed URL queries never enter exceptions or logs.
 
-`ProviderCredential` 默认字符串表示固定为 `[redacted]`，只有适配器构造认证请求时才显式读取值。这减少意外结构化日志泄露的风险，但不替代日志审查和内存边界控制。
+`ProviderCredential.ToString()` is always `[redacted]`; only adapter request construction can read the value explicitly. This reduces accidental logging but does not replace log review or memory hygiene.
 
-## 执行快照
+## Execution Snapshot
 
-`IParseRunExecutionContextStore` 只接受当前 `ParseRunLease`。数据库查询同时验证：
+`IParseRunExecutionContextStore` accepts only a current `ParseRunLease` and verifies:
 
-- Parse Run 仍处于 `claimed` 或 `running`；
-- `claimedBy`、并发版本和未过期租约完全匹配；
-- Parse Run 固定的 Provider Config ID 与 Version ID 对应同一个不可变版本；
-- Document 和源存储引用仍存在。
+- the Parse Run remains `claimed` or `running`;
+- claimant, concurrency version, and unexpired lease match;
+- captured logical Provider configuration and version belong together;
+- the Document and source object still exist.
 
-返回值包含 Document 元数据、内部存储引用、非敏感 options、当前 Stage、已有外部任务 ID、解密后的内部提交 checkpoint，以及从固定版本加载的 Base URL、model、backend 和解密凭据。它不会改读管理员后来切换的当前版本，也不要求旧版本仍处于启用状态；checkpoint 的 continuation 不进入字符串表示或公共 DTO。
+It returns document metadata, internal object reference, sanitized options, stage, external ID, decrypted internal checkpoint, and base URL/model/backend/credential from the captured immutable version. It never switches to an administrator's later version. Sensitive values remain internal and are absent from string representations and public DTOs.
 
-## 执行状态与心跳
+## State, Checkpoints, and Heartbeats
 
-`IParseRunStateStore` 只允许当前运行租约更新 Stage。Local 等原子提交在获得任务 ID 后，从 `submitting` 使用同一个 compare-and-set 写入 ID 并进入 `waiting-provider`。Cloud 先由 `IParseRunSubmissionCheckpointStore` 原子写入外部 ID 与加密 continuation、保持 `submitting`，确认上传后再清除 continuation 并进入 `waiting-provider`；ID 不允许覆盖。租约过期的 `running` 任务只要已有外部任务 ID即可进入自动接管候选，新 Worker 保留原 Stage 和 attempt，复用已有 checkpoint 或继续查询既有任务。
+`IParseRunStateStore` permits only the live lease to update a stage. Atomic submissions persist the external ID and enter `waiting-provider` in one compare-and-set operation. Cloud first stores an encrypted continuation while remaining `submitting`, then clears it and advances after upload confirmation. External IDs are write-once.
 
-Host 的 `ParseRunLeaseHeartbeat` 把心跳续租与阶段、外部任务 ID/checkpoint 写入、失败转换和最终 Canonical 提交串行化在一个会话内，并始终传播最新并发版本。最终提交前先续满一次租约，再在同一互斥边界内复核存储并执行数据库事务。续租失败会取消会话执行 token，使后续 Provider 调用可以停止。它不会取消已经在远端完成的请求，因此所有数据库写入仍必须验证当前租约。
+An expired `running` job with an external ID becomes an adoption candidate. One new Worker preserves stage and attempt and resumes the existing task or checkpoint.
 
-`IProviderResultIntake` 已提供 Provider ZIP 结果的固定逻辑键落盘和只读安全校验。它限制压缩包大小、条目数、单条目/总展开大小、压缩比和路径，并拒绝路径穿越、跨平台重复路径、链接及特殊文件。具体行为见 [`provider-result-intake.md`](./provider-result-intake.md)。
+`ParseRunLeaseHeartbeat` serializes renewal with stage, external-ID/checkpoint, failure, and canonical result writes. Every operation receives the latest concurrency token. Before final commit it renews the lease, verifies storage, and performs the database transaction under the same session lock. A renewal failure cancels the session token, but all later writes still recheck the database lease because remote requests cannot always be cancelled.
 
-`IProviderResultNormalizer` 和首个 `MinerUResultNormalizer` 已把已观察的 Markdown、content list、layout、model output 与图片映射成 Canonical Parse Bundle。派生存储键和资源 UUID 可在崩溃重试时稳定复现，具体规则见 [`provider-result-normalization.md`](./provider-result-normalization.md)。
+## Recoverable Executor
 
-`MinerUCloudParseProvider` 和 `MinerULocalParseProvider` 已按两套独立协议实现能力报告、提交、状态查询、流式结果和当前上游取消能力。Cloud 使用可恢复的签名 batch 上传且不向上传/CDN 主机转发 Token；Local 使用 multipart `/tasks`。适配器、options 白名单、错误分类与出站边界见 [`mineru-http-providers.md`](./mineru-http-providers.md)。
+`ParseRunExecutionWorker` and `ParseRunExecutor` run this sequence:
 
-## 可恢复执行器
+1. adopt expired resumable external work before claiming new `queued` work;
+2. load the captured configuration and source and validate capabilities, media type, and size;
+3. when necessary, create or reuse a constrained LibreOffice PDF snapshot;
+4. perform an atomic Local submission or checkpointed Cloud submission;
+5. poll with bounded delays and stream a validated result ZIP into storage;
+6. rebuild a deterministic Parse Bundle from the saved archive;
+7. commit canonical results under the final lease and one database transaction.
 
-`ParseRunExecutionWorker` 和 `ParseRunExecutor` 已把现有边界串成一条执行链：
+If a conversion snapshot exists, recovery reuses its PDF. If an archive exists, recovery no longer depends on Provider retention. Transient poll, download, normalization, and storage failures enter `retry-wait` while preserving recoverable state.
 
-1. 优先接管租约过期且已有外部任务 ID 的 `running` 任务，再抢占新的 `queued` 任务；
-2. 在当前租约下加载固定配置版本和源文档，执行能力、媒体类型与大小校验；Provider 不支持源 Office 格式但支持 PDF 时，使用受限 LibreOffice 适配器生成并持久化独立 PDF Artifact；
-3. 执行 Local 原子提交或 Cloud checkpoint 两阶段提交；
-4. 按受限间隔轮询，流式接收并验证 Provider ZIP；
-5. 从已保存 Archive 确定性重建 Parse Bundle；
-6. 在最终租约和数据库事务下提交 Canonical 结果。
+For a protocol without a durable submission checkpoint, an unknown submission outcome is not automatically resent; it fails with `provider-submission-outcome-unknown`. This deliberately favors avoiding duplicate external jobs over speculative resubmission.
 
-恢复时如果转换快照已存在，执行器复用已保存 PDF；如果 Archive 已存在，执行器不再依赖 Provider 长期保存结果，而是从本地 Archive 继续归一化或提交。瞬时轮询、下载、归一化和存储错误进入 `retry-wait`；转换快照、已有外部 ID/checkpoint 和 Stage 会保留。Local 等没有 checkpoint 的原子提交如果响应结果未知，不会自动重发，而是以 `provider-submission-outcome-unknown` 失败；Cloud 分配请求在 checkpoint 落库前结果未知时也采用同一保守规则。LibreOffice 子进程和配置边界见 [`office-conversion.md`](./office-conversion.md)。
+`Worker:ExecutionEnabled` must be explicitly enabled and defaults to `false`. One Host currently executes one Parse Run at a time. Multiple Hosts can parallelize through a server database; SQLite remains single-instance.
 
-真实执行由 `Worker:ExecutionEnabled` 显式开启且默认 `false`。启用意味着文档会发送到管理员选择的 Cloud 或 Local Provider。当前每个 Host 串行执行一个任务；服务端数据库可通过多个 Host 实例并行，SQLite 仍只支持单实例。尚未完成的执行能力包括取消传播、独立尝试明细、部署目标真实 MinerU 与 LibreOffice 镜像集成样本，以及管理员配置 Base URL 的部署级受信网络策略。包含 LibreOffice 和字体的 Dockerfile 已提供，但本机没有容器引擎，真实镜像构建尚未验证。
+## Result Intake and Normalization
 
-## 已验证行为
+`IProviderResultIntake` stores Provider ZIP results at a fixed logical key and validates compressed size, entries, expanded size, ratio, paths, duplicates, and special files. `IProviderResultNormalizer` deterministically maps recognized MinerU Markdown, content lists, layouts, model output, and images into canonical resources. Stable logical keys and UUIDs make crash replay produce the same bundle fingerprint.
 
-SQLite 与本地存储测试覆盖：媒体类型能力匹配、凭据默认脱敏、重复 Provider 类型拒绝、Cloud checkpoint 加密保存/清除与恢复提交、签名上传不转发 Token、私网目标拒绝、Local multipart、Provider 状态/错误映射和结果流所有权、按类型解析适配器、执行上下文固定读取旧配置版本并拒绝过期并发令牌、阶段与外部 ID 条件写入、运行任务单次接管、无外部 ID 过期恢复、心跳与状态写入共享最新租约、ZIP 受限接收、Cloud/Local MinerU 条目识别、Canonical 映射和确定性重放，以及从抢占到 Canonical 成功的执行器端到端路径。服务端数据库契约也包含 checkpoint、状态写入、保守恢复与接管，但本机缺少容器运行时，仍待实际执行。
+See [Provider Result Intake](./provider-result-intake.md), [Provider Result Normalization](./provider-result-normalization.md), and [MinerU HTTP Provider Adapters](./mineru-http-providers.md).
+
+## Verified Behavior and Remaining Work
+
+Automated coverage includes capabilities, redaction, duplicate Provider registration, encrypted Cloud checkpoint recovery, token isolation, signed-target SSRF controls, Local multipart, state/error mapping, stream ownership, immutable execution contexts, conditional stages and IDs, adoption, heartbeat concurrency, ZIP limits, Cloud/Local layout recognition, deterministic canonical mapping, and executor-to-commit integration. Real PostgreSQL, MySQL, MariaDB, production-image, and Chromium contracts pass in GitHub Actions.
+
+Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, and deployment-specific base-URL trust policy.

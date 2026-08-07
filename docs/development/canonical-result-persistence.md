@@ -1,49 +1,48 @@
-# Canonical 结果持久化
+# Canonical Result Persistence
 
-本文记录当前 Parse Bundle 验证和成功提交实现。字段语义以 [`canonical-document-model.md`](../specifications/canonical-document-model.md) 为准，状态竞争以 [`parse-job-lifecycle.md`](../specifications/parse-job-lifecycle.md) 为准。
+This note describes Parse Bundle validation and idempotent success commits. Field semantics come from the [Canonical Document Model](../specifications/canonical-document-model.md); state contention follows the [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md).
 
-## 持久化结构
+## Persistent Structure
 
-当前关系模型增加：
+- `parse_pages` uses Parse Run ID plus positive page number as its composite key.
+- `parse_blocks` stores globally contiguous sequence, optional page, type, content, normalized bounding box, confidence, and Asset reference.
+- `parse_assets` stores internal object references, byte size, and SHA-256 for extracted binary resources.
+- `parse_artifacts` stores metadata for Markdown, Provider archives, content lists, layouts, normalized PDFs, and other outputs.
+- `parse_runs.result_schema_version`, `result_sha256`, and `provider_metadata_json` store the committed bundle version, idempotency fingerprint, and sanitized Provider metadata.
 
-- `parse_pages`：以 Parse Run ID 和正整数页码作为复合主键；
-- `parse_blocks`：保存全局连续 sequence、可选页码、类型、内容、归一化 bbox、置信度和 Asset 引用；
-- `parse_assets`：保存图片等二进制资源的内部存储引用、大小和 SHA-256；
-- `parse_artifacts`：保存 Markdown、Provider Archive、Content List、Layout 等产物元数据；
-- `parse_runs.result_schema_version`、`result_sha256` 和 `provider_metadata_json`：保存成功 Bundle 的版本、幂等指纹和脱敏 Provider 元数据。
+`storageRef` is internal. Artifacts use `(parseRunId, type, name)` so multiple items of one type remain distinguishable. Asset display names may repeat because UUID identifies the resource. Composite foreign keys ensure Pages and Assets belong to the same Parse Run as their Blocks.
 
-Asset 与 Artifact 的 `storageRef` 只属于内部模型。Artifact 使用 `(parseRunId, type, name)` 区分同类型分片；Asset 展示名允许重复，身份由 UUID 决定。Block 的复合外键保证 Page 和 Asset 必须属于同一个 Parse Run。
+## Bundle Validation
 
-## Bundle 验证
+Schema `1.0` validation includes:
 
-第一版只接受 schema `1.0`，并验证：
+- positive unique Page numbers and Block sequences that start at zero and remain contiguous;
+- Page and Asset references within the same bundle;
+- finite 0–1 bounding boxes with ordered edges and 0–1 confidence;
+- lowercase tokens for types, subtypes, content formats, and Artifact types;
+- valid UUIDs, media types, positive sizes, lowercase SHA-256, and relative POSIX storage references;
+- bounded JSON objects for Provider metadata, source locators, Artifact metadata, and Provider data;
+- rejection of credential fields, internal paths, and HTTP(S) URLs containing query strings in extensions.
 
-- Page 编号为正数且唯一；Block sequence 从零开始、连续并按列表顺序排列；
-- Block 页码和 Asset ID 引用同一 Bundle；
-- bbox 为有限的 0–1 坐标且满足边界顺序，confidence 位于 0–1；
-- 类型、subtype、content format 和 Artifact type 使用小写 token；
-- Asset / Artifact UUID、媒体类型、正数大小、小写 SHA-256 和相对 POSIX 存储引用合法；
-- Provider metadata、source locator、Artifact metadata 和 provider data 是受大小限制的 JSON object；
-- JSON 扩展拒绝凭据字段、内部路径字段和带查询参数的 HTTP(S) URL。
+Current aggregate safeguards allow at most 10,000 Pages, 100,000 Blocks, 10,000 Assets, and 10,000 Artifacts; 4 MiB of characters per Block; 64 MiB of Block content; and 64 MiB of extension JSON. These are internal safety bounds and may be tuned without changing public field semantics.
 
-单项和聚合限制当前包括 10,000 Pages、100,000 Blocks、10,000 Assets、10,000 Artifacts、单 Block 最多 4 MiB 字符、全部 Block 内容最多 64 MiB 字符，以及全部 JSON 扩展最多 64 MiB。限制属于内部防护边界；后续真实样本若证明不合适，可以在不改变公共字段语义的情况下调整。
+## Success Commit
 
-## 成功提交
+`IParseBundleCommitStore`:
 
-`IParseBundleCommitStore` 的顺序是：
+1. copies collections into an immutable commit snapshot and validates the bundle;
+2. streams every unique `storageRef` and verifies actual size and SHA-256;
+3. computes the bundle SHA-256 using deterministic streaming serialization;
+4. starts a database transaction and confirms that the Parse Run is still `running`, the lease owner and concurrency version match, and the lease has not expired;
+5. writes all canonical rows and marks the Parse Run `succeeded` in the same transaction;
+6. clears the lease and prior error and writes completion time, schema, fingerprint, and sanitized Provider metadata.
 
-1. 复制集合形成不可变的本次提交快照并验证 Bundle；
-2. 流式读取每个唯一 `storageRef`，复核实际大小和 SHA-256；
-3. 计算流式序列化的 Bundle SHA-256 指纹；
-4. 开启数据库事务并再次确认 Parse Run 仍为 `running`、租约持有者/并发版本匹配且租约未过期；
-5. 写入全部 Canonical 结果行，并在同一事务把 Parse Run 标记为 `succeeded`；
-6. 清除租约和旧错误，写入 `completedAt`、schema、指纹和 Provider metadata。
+Replaying the same fingerprint on an already successful run returns `AlreadyCommitted`; a different fingerprint conflicts. Unique-key races, partial pre-existing rows, expired leases, and concurrent cancellation cannot leave partial target rows or overwrite the winning state.
 
-相同指纹对已成功任务返回 `AlreadyCommitted`；不同指纹返回冲突。数据库唯一键冲突、已存在部分结果、过期租约或并发取消都不会留下目标 Parse Run 的部分结果行，也不会覆盖已有状态。
+## Public Reading
 
-## 当前限制
+The result API projects stable DTOs rather than serializing persistence entities. Pages, Blocks, Assets, Artifacts, Markdown, and exports are available through resource-authorized endpoints. Binary content is streamed through controlled endpoints; no public response exposes `storageRef`, external task IDs, checkpoints, or raw Provider block JSON.
 
-- Provider ZIP 的固定逻辑键落盘、路径与解压资源安全检查，以及首个已观察 MinerU 输出的条目提取、独立 Assets/Artifacts 和 Parse Bundle 生成已经实现；更多 Provider 版本仍需由真实样本扩展；
-- Raw Artifact 是否包含 Provider 返回的敏感正文必须在下载与清理阶段额外检查，不能只靠元数据验证；
-- 结果表目前只有内部持久化模型，尚未提供 Blocks、Assets 和 Artifacts 公共读取端点；
-- SQLite 已执行真实事务测试；PostgreSQL、MySQL 和 MariaDB 的同一契约已编译进容器测试，但需要可用容器运行时后才能标记真实验证通过。
+## Verification and Remaining Risk
+
+SQLite transaction tests and real PostgreSQL, MySQL, and MariaDB container contracts exercise idempotent canonical commits, including converted Artifacts. Additional production MinerU layouts still require fixture-driven normalization support. Raw Artifacts remain authorized downloads and must continue to receive content-disposition, content-type, size, and cleanup controls independent of metadata validation.
