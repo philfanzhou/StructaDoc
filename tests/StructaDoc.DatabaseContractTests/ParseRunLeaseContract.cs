@@ -82,7 +82,7 @@ internal static class ParseRunLeaseContract
             Assert.NotNull(failure);
             Assert.Equal(ParseRunStatuses.RetryWait, failure.Status);
             Assert.Equal(0, await store.QueueDueRetriesAsync(
-                retryAtUtc.AddTicks(-1),
+                retryAtUtc.AddMilliseconds(-1),
                 maxCount: ParseRunCount));
             Assert.Equal(1, await store.QueueDueRetriesAsync(
                 retryAtUtc,

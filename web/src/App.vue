@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { antiforgery, get, mutate, upload, type DocumentItem, type ParseBlock, type ParseRun, type Session } from './api'
+import { antiforgery, get, mutate, resetAntiforgery, upload, type DocumentItem, type ParseBlock, type ParseRun, type Session } from './api'
 
 const session = ref<Session>()
 const view = ref<'documents' | 'admin'>('documents')
@@ -41,7 +41,7 @@ async function initialize() {
 
 async function localLogin() {
   busy.value = true
-  try { await antiforgery(); await mutate('/api/v1/admin/session', 'POST', { email: email.value, password: password.value }); await initialize() }
+  try { await antiforgery(); await mutate('/api/v1/admin/session', 'POST', { email: email.value, password: password.value }); resetAntiforgery(); await initialize() }
   catch (e) { message((e as Error).message, true) } finally { busy.value = false }
 }
 

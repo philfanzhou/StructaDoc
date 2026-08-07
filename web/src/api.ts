@@ -16,6 +16,8 @@ export async function antiforgery() {
   return csrf!
 }
 
+export function resetAntiforgery() { csrf = undefined }
+
 export async function get<T = any>(url: string): Promise<T> {
   const response = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
   if (!response.ok) return problem(response)
