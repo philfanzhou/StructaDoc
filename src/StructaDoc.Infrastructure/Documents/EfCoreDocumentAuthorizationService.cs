@@ -70,7 +70,11 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
         DateTime nowUtc,
         CancellationToken cancellationToken = default)
     {
-        ValidateIdentity(issuer, subject);
+        ArgumentException.ThrowIfNullOrWhiteSpace(issuer);
+        ArgumentException.ThrowIfNullOrWhiteSpace(subject);
+        var normalizedIssuer = issuer.Trim();
+        var normalizedSubject = subject.Trim();
+        ValidateIdentity(normalizedIssuer, normalizedSubject);
         if (permissions is DocumentPermissions.None || (permissions & ~DocumentPermissions.All) != 0)
         {
             throw new ArgumentOutOfRangeException(nameof(permissions));
@@ -83,8 +87,8 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
 
         var entity = await dbContext.DocumentAccessGrants.SingleOrDefaultAsync(
             grant => grant.DocumentId == documentId
-                && grant.PrincipalIssuer == issuer
-                && grant.PrincipalSubject == subject,
+                && grant.PrincipalIssuer == normalizedIssuer
+                && grant.PrincipalSubject == normalizedSubject,
             cancellationToken);
         if (entity is null)
         {
@@ -92,8 +96,8 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
             {
                 Id = Guid.NewGuid(),
                 DocumentId = documentId,
-                PrincipalIssuer = issuer.Trim(),
-                PrincipalSubject = subject.Trim(),
+                PrincipalIssuer = normalizedIssuer,
+                PrincipalSubject = normalizedSubject,
                 Permissions = (int)permissions,
                 CreatedBy = actorId,
                 CreatedAtUtc = nowUtc,
@@ -139,9 +143,10 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issuer);
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
-        if (issuer.Trim().Length > 512 || subject.Trim().Length > 255)
+        if (!ExternalIdentityConstraints.IsValidIssuer(issuer.Trim())
+            || !ExternalIdentityConstraints.IsValidSubject(subject.Trim()))
         {
-            throw new ArgumentException("External identity exceeds its maximum length.");
+            throw new ArgumentException("External identity is not a valid OIDC issuer and subject pair.");
         }
     }
 }

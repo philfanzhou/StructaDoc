@@ -6,6 +6,7 @@ StructaDoc 的 Web 界面是面向用户的产品，而不只是管理员后台�
 
 - 外部交互用户使用标准 OIDC Authorization Code + PKCE 登录。
 - 用户的稳定身份键是 `(issuer, subject)`，不使用邮箱、用户名或某个 Identity Provider 的私有用户 ID。
+- `issuer` 必须是无 query/fragment 的 ASCII HTTP(S) OIDC Issuer，最长 512 字符；`subject` 遵循 OIDC 的 255 ASCII 字符上限。两部分都按大小写敏感语义比较；MySQL/MariaDB 使用 `ascii_bin`，避免默认排序规则把不同主体合并。
 - `Authority`、Client、Scope、Claim/Role 映射全部通过 `Oidc` 配置节注入。SignaCore 可作为兼容 OIDC Provider 接入，但 StructaDoc 不引用或绑定 SignaCore 代码。
 - 本地管理员 Cookie 继续保留，职责是首次引导和 Identity Provider 故障时的 break-glass 管理。
 - API Client 继续使用独立 API Key 和 scope，不复用浏览器 Cookie。

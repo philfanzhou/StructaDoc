@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.Storage;
 using StructaDoc.Infrastructure.Persistence;
@@ -53,14 +54,21 @@ public sealed class EfCoreDocumentIngestionService(
                 Sha256 = storedFile.Sha256,
                 StorageRef = storedFile.StorageRef,
                 CreatedBy = NormalizeCreatedBy(request.CreatedBy),
-                OwnerIssuer = NormalizeOwnerPart(request.OwnerIssuer, 512, nameof(request.OwnerIssuer)),
-                OwnerSubject = NormalizeOwnerPart(request.OwnerSubject, 255, nameof(request.OwnerSubject)),
+                OwnerIssuer = NormalizeOwnerPart(request.OwnerIssuer, ExternalIdentityConstraints.MaximumIssuerLength, nameof(request.OwnerIssuer)),
+                OwnerSubject = NormalizeOwnerPart(request.OwnerSubject, ExternalIdentityConstraints.MaximumSubjectLength, nameof(request.OwnerSubject)),
                 CreatedAtUtc = createdAtUtc,
             };
 
             if ((entity.OwnerIssuer is null) != (entity.OwnerSubject is null))
             {
                 throw new ArgumentException("Document owner issuer and subject must be provided together.");
+            }
+
+            if (entity.OwnerIssuer is not null
+                && (!ExternalIdentityConstraints.IsValidIssuer(entity.OwnerIssuer)
+                    || !ExternalIdentityConstraints.IsValidSubject(entity.OwnerSubject)))
+            {
+                throw new ArgumentException("Document owner is not a valid OIDC issuer and subject pair.");
             }
 
             dbContext.Documents.Add(entity);

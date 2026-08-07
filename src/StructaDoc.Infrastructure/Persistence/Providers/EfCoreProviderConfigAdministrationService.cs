@@ -25,48 +25,52 @@ public sealed class EfCoreProviderConfigAdministrationService(
         var configId = Guid.NewGuid();
         var versionId = Guid.NewGuid();
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        try
+        var executionStrategy = dbContext.Database.CreateExecutionStrategy();
+        return await executionStrategy.ExecuteAsync<ProviderConfigMutationResult>(async () =>
         {
-            if (definition.IsDefault)
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            try
             {
-                await ClearDefaultAsync(null, nowUtc, cancellationToken);
-            }
+                if (definition.IsDefault)
+                {
+                    await ClearDefaultAsync(null, nowUtc, cancellationToken);
+                }
 
-            dbContext.ProviderConfigs.Add(new ProviderConfigEntity
+                dbContext.ProviderConfigs.Add(new ProviderConfigEntity
+                {
+                    Id = configId,
+                    Name = definition.Name,
+                    ProviderType = definition.ProviderType,
+                    IsEnabled = definition.IsEnabled,
+                    DefaultMarker = definition.IsDefault ? DefaultMarker : null,
+                    CurrentVersionId = versionId,
+                    CreatedAtUtc = nowUtc,
+                    UpdatedAtUtc = nowUtc,
+                });
+                dbContext.ProviderConfigVersions.Add(new ProviderConfigVersionEntity
+                {
+                    Id = versionId,
+                    ProviderConfigId = configId,
+                    VersionNumber = 1,
+                    BaseUrl = definition.BaseUrl,
+                    Model = definition.Model,
+                    Backend = definition.Backend,
+                    ProtectedCredential = definition.Credential is null
+                        ? null
+                        : secretProtector.Protect(definition.Credential),
+                    CreatedAtUtc = nowUtc,
+                });
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return new(ProviderConfigMutationStatus.Succeeded, await GetCurrentAsync(configId, cancellationToken));
+            }
+            catch (DbUpdateException)
             {
-                Id = configId,
-                Name = definition.Name,
-                ProviderType = definition.ProviderType,
-                IsEnabled = definition.IsEnabled,
-                DefaultMarker = definition.IsDefault ? DefaultMarker : null,
-                CurrentVersionId = versionId,
-                CreatedAtUtc = nowUtc,
-                UpdatedAtUtc = nowUtc,
-            });
-            dbContext.ProviderConfigVersions.Add(new ProviderConfigVersionEntity
-            {
-                Id = versionId,
-                ProviderConfigId = configId,
-                VersionNumber = 1,
-                BaseUrl = definition.BaseUrl,
-                Model = definition.Model,
-                Backend = definition.Backend,
-                ProtectedCredential = definition.Credential is null
-                    ? null
-                    : secretProtector.Protect(definition.Credential),
-                CreatedAtUtc = nowUtc,
-            });
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return new(ProviderConfigMutationStatus.Succeeded, await GetCurrentAsync(configId, cancellationToken));
-        }
-        catch (DbUpdateException)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            dbContext.ChangeTracker.Clear();
-            return new(ProviderConfigMutationStatus.Conflict);
-        }
+                await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                return new(ProviderConfigMutationStatus.Conflict);
+            }
+        });
     }
 
     public async Task<ProviderConfigMutationResult> UpdateAsync(
@@ -92,50 +96,54 @@ public sealed class EfCoreProviderConfigAdministrationService(
             .SingleAsync(version => version.Id == config.CurrentVersionId, cancellationToken);
         var nextVersionId = Guid.NewGuid();
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        try
+        var executionStrategy = dbContext.Database.CreateExecutionStrategy();
+        return await executionStrategy.ExecuteAsync<ProviderConfigMutationResult>(async () =>
         {
-            if (definition.IsDefault)
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            try
             {
-                await ClearDefaultAsync(id, nowUtc, cancellationToken);
-            }
+                if (definition.IsDefault)
+                {
+                    await ClearDefaultAsync(id, nowUtc, cancellationToken);
+                }
 
-            config.Name = definition.Name;
-            config.IsEnabled = definition.IsEnabled;
-            config.DefaultMarker = definition.IsDefault ? DefaultMarker : null;
-            config.CurrentVersionId = nextVersionId;
-            config.UpdatedAtUtc = nowUtc;
-            dbContext.ProviderConfigVersions.Add(new ProviderConfigVersionEntity
+                config.Name = definition.Name;
+                config.IsEnabled = definition.IsEnabled;
+                config.DefaultMarker = definition.IsDefault ? DefaultMarker : null;
+                config.CurrentVersionId = nextVersionId;
+                config.UpdatedAtUtc = nowUtc;
+                dbContext.ProviderConfigVersions.Add(new ProviderConfigVersionEntity
+                {
+                    Id = nextVersionId,
+                    ProviderConfigId = id,
+                    VersionNumber = checked(currentVersion.VersionNumber + 1),
+                    BaseUrl = definition.BaseUrl,
+                    Model = definition.Model,
+                    Backend = definition.Backend,
+                    ProtectedCredential = definition.ClearCredential
+                        ? null
+                        : definition.Credential is null
+                            ? currentVersion.ProtectedCredential
+                            : secretProtector.Protect(definition.Credential),
+                    CreatedAtUtc = nowUtc,
+                });
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return new(ProviderConfigMutationStatus.Succeeded, await GetCurrentAsync(id, cancellationToken));
+            }
+            catch (DbUpdateConcurrencyException)
             {
-                Id = nextVersionId,
-                ProviderConfigId = id,
-                VersionNumber = checked(currentVersion.VersionNumber + 1),
-                BaseUrl = definition.BaseUrl,
-                Model = definition.Model,
-                Backend = definition.Backend,
-                ProtectedCredential = definition.ClearCredential
-                    ? null
-                    : definition.Credential is null
-                        ? currentVersion.ProtectedCredential
-                        : secretProtector.Protect(definition.Credential),
-                CreatedAtUtc = nowUtc,
-            });
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return new(ProviderConfigMutationStatus.Succeeded, await GetCurrentAsync(id, cancellationToken));
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            dbContext.ChangeTracker.Clear();
-            return new(ProviderConfigMutationStatus.Conflict);
-        }
-        catch (DbUpdateException)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            dbContext.ChangeTracker.Clear();
-            return new(ProviderConfigMutationStatus.Conflict);
-        }
+                await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                return new(ProviderConfigMutationStatus.Conflict);
+            }
+            catch (DbUpdateException)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                return new(ProviderConfigMutationStatus.Conflict);
+            }
+        });
     }
 
     private async Task ClearDefaultAsync(Guid? exceptId, DateTime nowUtc, CancellationToken cancellationToken)

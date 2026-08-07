@@ -221,13 +221,19 @@ namespace StructaDoc.Migrations.MySql.Migrations
                         .IsRequired()
                         .HasMaxLength(512)
                         .HasColumnType("varchar(512)")
-                        .HasColumnName("principal_issuer");
+                        .HasColumnName("principal_issuer")
+                        .UseCollation("ascii_bin");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<string>("PrincipalIssuer"), "ascii");
 
                     b.Property<string>("PrincipalSubject")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)")
-                        .HasColumnName("principal_subject");
+                        .HasColumnName("principal_subject")
+                        .UseCollation("ascii_bin");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<string>("PrincipalSubject"), "ascii");
 
                     b.HasKey("Id");
 
@@ -289,12 +295,18 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.Property<string>("OwnerIssuer")
                         .HasMaxLength(512)
                         .HasColumnType("varchar(512)")
-                        .HasColumnName("owner_issuer");
+                        .HasColumnName("owner_issuer")
+                        .UseCollation("ascii_bin");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<string>("OwnerIssuer"), "ascii");
 
                     b.Property<string>("OwnerSubject")
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)")
-                        .HasColumnName("owner_subject");
+                        .HasColumnName("owner_subject")
+                        .UseCollation("ascii_bin");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<string>("OwnerSubject"), "ascii");
 
                     b.Property<string>("Sha256")
                         .IsRequired()

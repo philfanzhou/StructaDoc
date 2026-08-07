@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using StructaDoc.Application.Authentication;
 using StructaDoc.Infrastructure.Persistence.Entities;
 
 namespace StructaDoc.Infrastructure.Persistence.Configurations;
@@ -38,10 +39,10 @@ internal sealed class DocumentEntityConfiguration : IEntityTypeConfiguration<Doc
             .HasMaxLength(255);
         builder.Property(document => document.OwnerIssuer)
             .HasColumnName("owner_issuer")
-            .HasMaxLength(512);
+            .HasMaxLength(ExternalIdentityConstraints.MaximumIssuerLength);
         builder.Property(document => document.OwnerSubject)
             .HasColumnName("owner_subject")
-            .HasMaxLength(255);
+            .HasMaxLength(ExternalIdentityConstraints.MaximumSubjectLength);
         builder.Property(document => document.LifecycleState)
             .HasColumnName("lifecycle_state")
             .HasMaxLength(32)
@@ -58,11 +59,11 @@ internal sealed class DocumentEntityConfiguration : IEntityTypeConfiguration<Doc
         builder.HasIndex(document => new { document.CreatedAtUtc, document.Id })
             .HasDatabaseName("ix_documents_created_at_id");
         builder.HasIndex(document => new
-            {
-                document.OwnerIssuer,
-                document.OwnerSubject,
-                document.CreatedAtUtc,
-            })
+        {
+            document.OwnerIssuer,
+            document.OwnerSubject,
+            document.CreatedAtUtc,
+        })
             .HasDatabaseName("ix_documents_owner_created_at");
     }
 }

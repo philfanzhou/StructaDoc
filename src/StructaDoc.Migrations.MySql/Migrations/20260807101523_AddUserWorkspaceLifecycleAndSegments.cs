@@ -48,16 +48,18 @@ namespace StructaDoc.Migrations.MySql.Migrations
                 table: "documents",
                 type: "varchar(512)",
                 maxLength: 512,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
+                nullable: true,
+                collation: "ascii_bin")
+                .Annotation("MySql:CharSet", "ascii");
 
             migrationBuilder.AddColumn<string>(
                 name: "owner_subject",
                 table: "documents",
                 type: "varchar(255)",
                 maxLength: 255,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
+                nullable: true,
+                collation: "ascii_bin")
+                .Annotation("MySql:CharSet", "ascii");
 
             migrationBuilder.CreateTable(
                 name: "cleanup_jobs",
@@ -91,10 +93,10 @@ namespace StructaDoc.Migrations.MySql.Migrations
                 {
                     id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
                     document_id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    principal_issuer = table.Column<string>(type: "varchar(512)", maxLength: 512, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    principal_subject = table.Column<string>(type: "varchar(255)", maxLength: 255, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    principal_issuer = table.Column<string>(type: "varchar(512)", maxLength: 512, nullable: false, collation: "ascii_bin")
+                        .Annotation("MySql:CharSet", "ascii"),
+                    principal_subject = table.Column<string>(type: "varchar(255)", maxLength: 255, nullable: false, collation: "ascii_bin")
+                        .Annotation("MySql:CharSet", "ascii"),
                     permissions = table.Column<int>(type: "int", nullable: false),
                     created_by = table.Column<string>(type: "varchar(1024)", maxLength: 1024, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),

@@ -83,144 +83,148 @@ public sealed class EfCoreParseBundleCommitStore(
             return storageVerification;
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        try
+        var executionStrategy = dbContext.Database.CreateExecutionStrategy();
+        return await executionStrategy.ExecuteAsync(async () =>
         {
-            var parseRun = await dbContext.ParseRuns
-                .SingleOrDefaultAsync(item => item.Id == bundle.ParseRunId, cancellationToken);
-            if (parseRun is null)
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            try
             {
-                return new(
-                    ParseBundleCommitStatus.Conflict,
-                    "parse-run-not-found",
-                    "The Parse Run no longer exists.");
-            }
-
-            if (parseRun.Status == ParseRunStatuses.Succeeded)
-            {
-                return string.Equals(parseRun.ResultSha256, fingerprint, StringComparison.Ordinal)
-                    ? new(ParseBundleCommitStatus.AlreadyCommitted)
-                    : new(
+                var parseRun = await dbContext.ParseRuns
+                    .SingleOrDefaultAsync(item => item.Id == bundle.ParseRunId, cancellationToken);
+                if (parseRun is null)
+                {
+                    return new(
                         ParseBundleCommitStatus.Conflict,
-                        "result-conflict",
-                        "The Parse Run already contains a different committed result.");
-            }
+                        "parse-run-not-found",
+                        "The Parse Run no longer exists.");
+                }
 
-            if (parseRun.Status != ParseRunStatuses.Running
-                || parseRun.ClaimedBy != currentLease.WorkerId
-                || parseRun.ConcurrencyVersion != currentLease.ConcurrencyVersion
-                || parseRun.LeaseExpiresAtUtc <= nowUtc)
+                if (parseRun.Status == ParseRunStatuses.Succeeded)
+                {
+                    return string.Equals(parseRun.ResultSha256, fingerprint, StringComparison.Ordinal)
+                        ? new(ParseBundleCommitStatus.AlreadyCommitted)
+                        : new(
+                            ParseBundleCommitStatus.Conflict,
+                            "result-conflict",
+                            "The Parse Run already contains a different committed result.");
+                }
+
+                if (parseRun.Status != ParseRunStatuses.Running
+                    || parseRun.ClaimedBy != currentLease.WorkerId
+                    || parseRun.ConcurrencyVersion != currentLease.ConcurrencyVersion
+                    || parseRun.LeaseExpiresAtUtc <= nowUtc)
+                {
+                    return new(
+                        ParseBundleCommitStatus.LeaseLost,
+                        "lease-lost",
+                        "The Worker no longer holds the Parse Run lease.");
+                }
+
+                if (!ValidateConversionArtifact(parseRun.ConversionJson, bundle.Artifacts))
+                {
+                    return InvalidBundle(
+                        "invalid-conversion-artifact",
+                        "The conversion snapshot does not reference a normalized PDF Artifact in this Bundle.");
+                }
+
+                if (await HasExistingResultRowsAsync(bundle.ParseRunId, cancellationToken))
+                {
+                    return new(
+                        ParseBundleCommitStatus.Conflict,
+                        "partial-result-conflict",
+                        "The running Parse Run already contains result rows.");
+                }
+
+                dbContext.ParsePages.AddRange(bundle.Pages.Select(page => new ParsePageEntity
+                {
+                    ParseRunId = bundle.ParseRunId,
+                    Number = page.Number,
+                    Width = page.Width,
+                    Height = page.Height,
+                    Unit = page.Unit,
+                    SourceLocatorJson = page.SourceLocatorJson,
+                }));
+                dbContext.ParseAssets.AddRange(bundle.Assets.Select(asset => new ParseAssetEntity
+                {
+                    Id = asset.Id,
+                    ParseRunId = bundle.ParseRunId,
+                    Name = asset.Name,
+                    MediaType = asset.MediaType,
+                    SizeBytes = asset.SizeBytes,
+                    Sha256 = asset.Sha256,
+                    StorageRef = asset.StorageRef,
+                    Width = asset.Width,
+                    Height = asset.Height,
+                    CreatedAtUtc = nowUtc,
+                }));
+                dbContext.ParseArtifacts.AddRange(bundle.Artifacts.Select(artifact => new ParseArtifactEntity
+                {
+                    Id = artifact.Id,
+                    ParseRunId = bundle.ParseRunId,
+                    Type = artifact.Type,
+                    Name = artifact.Name,
+                    MediaType = artifact.MediaType,
+                    SizeBytes = artifact.SizeBytes,
+                    Sha256 = artifact.Sha256,
+                    StorageRef = artifact.StorageRef,
+                    MetadataJson = artifact.MetadataJson,
+                    CreatedAtUtc = nowUtc,
+                }));
+                dbContext.ParseBlocks.AddRange(bundle.Blocks.Select(block => new ParseBlockEntity
+                {
+                    Id = block.Id,
+                    ParseRunId = bundle.ParseRunId,
+                    Sequence = block.Sequence,
+                    PageNumber = block.PageNumber,
+                    Type = block.Type,
+                    Subtype = block.Subtype,
+                    Content = block.Content,
+                    ContentFormat = block.ContentFormat,
+                    BoundingBoxX0 = block.BoundingBox?.X0,
+                    BoundingBoxY0 = block.BoundingBox?.Y0,
+                    BoundingBoxX1 = block.BoundingBox?.X1,
+                    BoundingBoxY1 = block.BoundingBox?.Y1,
+                    Confidence = block.Confidence,
+                    AssetId = block.AssetId,
+                    SourceLocatorJson = block.SourceLocatorJson,
+                    ProviderDataJson = block.ProviderDataJson,
+                }));
+
+                parseRun.Status = ParseRunStatuses.Succeeded;
+                parseRun.Stage = null;
+                parseRun.ResultSchemaVersion = bundle.SchemaVersion;
+                parseRun.ResultSha256 = fingerprint;
+                parseRun.ProviderMetadataJson = bundle.ProviderMetadataJson;
+                parseRun.ErrorCode = null;
+                parseRun.ErrorMessage = null;
+                parseRun.ClaimedBy = null;
+                parseRun.LeaseExpiresAtUtc = null;
+                parseRun.NextAttemptAtUtc = nowUtc;
+                parseRun.CompletedAtUtc = nowUtc;
+
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return new(ParseBundleCommitStatus.Committed);
+            }
+            catch (DbUpdateConcurrencyException)
             {
+                await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
                 return new(
                     ParseBundleCommitStatus.LeaseLost,
                     "lease-lost",
-                    "The Worker no longer holds the Parse Run lease.");
+                    "The Parse Run changed while committing its result.");
             }
-
-            if (!ValidateConversionArtifact(parseRun.ConversionJson, bundle.Artifacts))
+            catch (DbUpdateException)
             {
-                return InvalidBundle(
-                    "invalid-conversion-artifact",
-                    "The conversion snapshot does not reference a normalized PDF Artifact in this Bundle.");
-            }
-
-            if (await HasExistingResultRowsAsync(bundle.ParseRunId, cancellationToken))
-            {
+                await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
                 return new(
                     ParseBundleCommitStatus.Conflict,
-                    "partial-result-conflict",
-                    "The running Parse Run already contains result rows.");
+                    "result-conflict",
+                    "The Parse Bundle conflicts with existing result data.");
             }
-
-            dbContext.ParsePages.AddRange(bundle.Pages.Select(page => new ParsePageEntity
-            {
-                ParseRunId = bundle.ParseRunId,
-                Number = page.Number,
-                Width = page.Width,
-                Height = page.Height,
-                Unit = page.Unit,
-                SourceLocatorJson = page.SourceLocatorJson,
-            }));
-            dbContext.ParseAssets.AddRange(bundle.Assets.Select(asset => new ParseAssetEntity
-            {
-                Id = asset.Id,
-                ParseRunId = bundle.ParseRunId,
-                Name = asset.Name,
-                MediaType = asset.MediaType,
-                SizeBytes = asset.SizeBytes,
-                Sha256 = asset.Sha256,
-                StorageRef = asset.StorageRef,
-                Width = asset.Width,
-                Height = asset.Height,
-                CreatedAtUtc = nowUtc,
-            }));
-            dbContext.ParseArtifacts.AddRange(bundle.Artifacts.Select(artifact => new ParseArtifactEntity
-            {
-                Id = artifact.Id,
-                ParseRunId = bundle.ParseRunId,
-                Type = artifact.Type,
-                Name = artifact.Name,
-                MediaType = artifact.MediaType,
-                SizeBytes = artifact.SizeBytes,
-                Sha256 = artifact.Sha256,
-                StorageRef = artifact.StorageRef,
-                MetadataJson = artifact.MetadataJson,
-                CreatedAtUtc = nowUtc,
-            }));
-            dbContext.ParseBlocks.AddRange(bundle.Blocks.Select(block => new ParseBlockEntity
-            {
-                Id = block.Id,
-                ParseRunId = bundle.ParseRunId,
-                Sequence = block.Sequence,
-                PageNumber = block.PageNumber,
-                Type = block.Type,
-                Subtype = block.Subtype,
-                Content = block.Content,
-                ContentFormat = block.ContentFormat,
-                BoundingBoxX0 = block.BoundingBox?.X0,
-                BoundingBoxY0 = block.BoundingBox?.Y0,
-                BoundingBoxX1 = block.BoundingBox?.X1,
-                BoundingBoxY1 = block.BoundingBox?.Y1,
-                Confidence = block.Confidence,
-                AssetId = block.AssetId,
-                SourceLocatorJson = block.SourceLocatorJson,
-                ProviderDataJson = block.ProviderDataJson,
-            }));
-
-            parseRun.Status = ParseRunStatuses.Succeeded;
-            parseRun.Stage = null;
-            parseRun.ResultSchemaVersion = bundle.SchemaVersion;
-            parseRun.ResultSha256 = fingerprint;
-            parseRun.ProviderMetadataJson = bundle.ProviderMetadataJson;
-            parseRun.ErrorCode = null;
-            parseRun.ErrorMessage = null;
-            parseRun.ClaimedBy = null;
-            parseRun.LeaseExpiresAtUtc = null;
-            parseRun.NextAttemptAtUtc = nowUtc;
-            parseRun.CompletedAtUtc = nowUtc;
-
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return new(ParseBundleCommitStatus.Committed);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            dbContext.ChangeTracker.Clear();
-            return new(
-                ParseBundleCommitStatus.LeaseLost,
-                "lease-lost",
-                "The Parse Run changed while committing its result.");
-        }
-        catch (DbUpdateException)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            dbContext.ChangeTracker.Clear();
-            return new(
-                ParseBundleCommitStatus.Conflict,
-                "result-conflict",
-                "The Parse Bundle conflicts with existing result data.");
-        }
+        });
     }
 
     private async Task<ParseBundleCommitResult?> VerifyStorageAsync(

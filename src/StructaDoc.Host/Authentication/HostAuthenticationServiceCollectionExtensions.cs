@@ -205,17 +205,19 @@ public static class HostAuthenticationServiceCollectionExtensions
 
         var issuer = principal.FindFirst("iss")?.Value ?? tokenIssuer;
         var subject = principal.FindFirst("sub")?.Value;
-        if (string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(subject))
+        if (!ExternalIdentityConstraints.IsValidIssuer(issuer)
+            || !ExternalIdentityConstraints.IsValidSubject(subject))
         {
-            throw new InvalidOperationException("OIDC identity is missing issuer or subject.");
+            throw new InvalidOperationException("OIDC identity contains an invalid issuer or subject.");
         }
 
+        var normalizedSubject = subject!;
         identity.AddClaim(new Claim(StructaDocClaimTypes.SubjectType, SubjectTypes.User));
         identity.AddClaim(new Claim(StructaDocClaimTypes.ExternalIssuer, issuer));
-        identity.AddClaim(new Claim(StructaDocClaimTypes.ExternalSubject, subject));
-        if (!principal.HasClaim(ClaimTypes.NameIdentifier, subject))
+        identity.AddClaim(new Claim(StructaDocClaimTypes.ExternalSubject, normalizedSubject));
+        if (!principal.HasClaim(ClaimTypes.NameIdentifier, normalizedSubject))
         {
-            identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, subject));
+            identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, normalizedSubject));
         }
 
         var isAdministrator = principal.Claims.Any(claim =>

@@ -3,7 +3,7 @@ export type DocumentItem = { id: string; originalFileName: string; mediaType: st
 export type ParseRun = { id: string; documentId: string; status: string; stage?: string; providerType: string; attemptCount: number; maxAttempts: number; errorCode?: string; errorMessage?: string; createdAt: string; completedAt?: string }
 export type ParseBlock = { id: string; sequence: number; pageNumber?: number; type: string; subtype?: string; content?: string; contentFormat?: string; confidence?: number; assetId?: string }
 
-let csrf: { token: string; headerName: string } | undefined
+let csrf: { requestToken: string; headerName: string } | undefined
 
 async function problem(response: Response): Promise<never> {
   const body = await response.json().catch(() => ({})) as { title?: string; detail?: string; errors?: Record<string, string[]> }
@@ -27,7 +27,7 @@ export async function mutate<T = any>(url: string, method: string, body?: unknow
   const response = await fetch(url, {
     method,
     credentials: 'same-origin',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json', [token.headerName]: token.token },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json', [token.headerName]: token.requestToken },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!response.ok) return problem(response)
@@ -37,7 +37,7 @@ export async function mutate<T = any>(url: string, method: string, body?: unknow
 export async function upload(file: File): Promise<DocumentItem> {
   const token = await antiforgery()
   const data = new FormData(); data.append('file', file)
-  const response = await fetch('/api/v1/documents', { method: 'POST', credentials: 'same-origin', headers: { [token.headerName]: token.token }, body: data })
+  const response = await fetch('/api/v1/documents', { method: 'POST', credentials: 'same-origin', headers: { [token.headerName]: token.requestToken }, body: data })
   if (!response.ok) return problem(response)
   return response.json()
 }
