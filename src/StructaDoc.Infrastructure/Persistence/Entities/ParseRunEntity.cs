@@ -62,6 +62,10 @@ public sealed class ParseRunEntity
 
     public long ConcurrencyVersion { get; set; }
 
+    public string LifecycleState { get; set; } = "active";
+
+    public DateTime? DeletionRequestedAtUtc { get; set; }
+
     public ICollection<ParsePageEntity> Pages { get; } = [];
 
     public ICollection<ParseBlockEntity> Blocks { get; } = [];
@@ -69,4 +73,6 @@ public sealed class ParseRunEntity
     public ICollection<ParseAssetEntity> Assets { get; } = [];
 
     public ICollection<ParseArtifactEntity> Artifacts { get; } = [];
+
+    public ICollection<ParseSegmentEntity> Segments { get; } = [];
 }

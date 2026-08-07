@@ -13,6 +13,10 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
 
     public DbSet<DocumentEntity> Documents => Set<DocumentEntity>();
 
+    public DbSet<DocumentAccessGrantEntity> DocumentAccessGrants => Set<DocumentAccessGrantEntity>();
+
+    public DbSet<CleanupJobEntity> CleanupJobs => Set<CleanupJobEntity>();
+
     public DbSet<ParseRunEntity> ParseRuns => Set<ParseRunEntity>();
 
     public DbSet<ParsePageEntity> ParsePages => Set<ParsePageEntity>();
@@ -22,6 +26,8 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
     public DbSet<ParseAssetEntity> ParseAssets => Set<ParseAssetEntity>();
 
     public DbSet<ParseArtifactEntity> ParseArtifacts => Set<ParseArtifactEntity>();
+
+    public DbSet<ParseSegmentEntity> ParseSegments => Set<ParseSegmentEntity>();
 
     public DbSet<ProviderConfigEntity> ProviderConfigs => Set<ProviderConfigEntity>();
 
@@ -67,6 +73,14 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
         }
 
         foreach (var entry in ChangeTracker.Entries<ProviderConfigEntity>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.ConcurrencyVersion++;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<CleanupJobEntity>())
         {
             if (entry.State == EntityState.Modified)
             {

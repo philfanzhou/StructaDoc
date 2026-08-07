@@ -45,9 +45,9 @@ public static class DocumentUploadEndpoints
 
         try
         {
-            if (request.HttpContext.User.HasClaim(
+            if (!request.HttpContext.User.HasClaim(
                     StructaDocClaimTypes.SubjectType,
-                    SubjectTypes.Administrator))
+                    SubjectTypes.ApiClient))
             {
                 await antiforgery.ValidateRequestAsync(request.HttpContext);
             }
@@ -64,12 +64,15 @@ public static class DocumentUploadEndpoints
             }
 
             await using var content = file.OpenReadStream();
+            var (ownerIssuer, ownerSubject) = GetOwner(request.HttpContext.User);
             var document = await ingestionService.IngestAsync(
                 new DocumentIngestionRequest(
                     file.FileName,
                     file.ContentType,
                     content,
-                    GetActorId(request.HttpContext.User)),
+                    GetActorId(request.HttpContext.User),
+                    ownerIssuer,
+                    ownerSubject),
                 cancellationToken);
             var response = new DocumentResponse(
                 document.Id,
@@ -126,6 +129,20 @@ public static class DocumentUploadEndpoints
         var subjectId = user.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? throw new InvalidOperationException("Authenticated subject ID is missing.");
         return $"{subjectType}:{subjectId}";
+    }
+
+    private static (string? Issuer, string? Subject) GetOwner(ClaimsPrincipal user)
+    {
+        if (!user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.User))
+        {
+            return (null, null);
+        }
+
+        return (
+            user.FindFirstValue(StructaDocClaimTypes.ExternalIssuer)
+                ?? throw new InvalidOperationException("OIDC issuer is missing."),
+            user.FindFirstValue(StructaDocClaimTypes.ExternalSubject)
+                ?? throw new InvalidOperationException("OIDC subject is missing."));
     }
 
     private static IResult UploadProblem(int statusCode, string code, string detail)

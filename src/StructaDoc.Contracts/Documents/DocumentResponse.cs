@@ -7,7 +7,9 @@ public sealed record DocumentResponse(
     string Extension,
     long SizeBytes,
     string Sha256,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    string? LatestParseStatus = null,
+    bool OwnedByCurrentUser = false);
 
 public sealed record DocumentListResponse(
     IReadOnlyList<DocumentResponse> Items,

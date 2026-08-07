@@ -2,6 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.Storage;
 using StructaDoc.Infrastructure.Storage;
+using Amazon;
+using Amazon.Runtime;
+using Amazon.S3;
 
 namespace StructaDoc.Infrastructure.Documents;
 
@@ -20,15 +23,31 @@ public static class DocumentIngestionServiceCollectionExtensions
 
         services.AddSingleton(ingestionOptions);
         services.AddSingleton(storageOptions);
-        services.AddSingleton<IFileStorage, LocalFileStorage>();
+        if (string.Equals(storageOptions.Provider, "S3", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IAmazonS3>(_ =>
+            {
+                var config = new AmazonS3Config { ForcePathStyle = storageOptions.ForcePathStyle };
+                if (!string.IsNullOrWhiteSpace(storageOptions.ServiceUrl))
+                {
+                    config.ServiceURL = storageOptions.ServiceUrl;
+                    config.AuthenticationRegion = storageOptions.Region ?? "us-east-1";
+                }
+                else config.RegionEndpoint = RegionEndpoint.GetBySystemName(storageOptions.Region ?? "us-east-1");
+                return storageOptions.AccessKey is null
+                    ? new AmazonS3Client(config)
+                    : new AmazonS3Client(new BasicAWSCredentials(storageOptions.AccessKey, storageOptions.SecretKey), config);
+            });
+            services.AddSingleton<IFileStorage, S3FileStorage>();
+        }
+        else services.AddSingleton<IFileStorage, LocalFileStorage>();
         services.AddSingleton<IDocumentTypeDetector, OfficeDocumentTypeDetector>();
         services.AddScoped<IDocumentIngestionService, EfCoreDocumentIngestionService>();
+        services.AddScoped<IDocumentAuthorizationService, EfCoreDocumentAuthorizationService>();
         services.AddScoped<IDocumentReadService, EfCoreDocumentReadService>();
-        services
-            .AddHealthChecks()
-            .AddCheck<LocalFileStorageHealthCheck>(
-                "file-storage",
-                tags: ["ready"]);
+        var health = services.AddHealthChecks();
+        if (string.Equals(storageOptions.Provider, "S3", StringComparison.OrdinalIgnoreCase)) health.AddCheck<S3FileStorageHealthCheck>("file-storage", tags: ["ready"]);
+        else health.AddCheck<LocalFileStorageHealthCheck>("file-storage", tags: ["ready"]);
         return services;
     }
 }

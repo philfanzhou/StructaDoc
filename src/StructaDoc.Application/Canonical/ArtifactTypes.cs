@@ -9,4 +9,5 @@ public static class ArtifactTypes
     public const string Layout = "layout";
     public const string ModelOutput = "model-output";
     public const string ProviderRaw = "provider-raw";
+    public const string SourceSegment = "source-segment";
 }

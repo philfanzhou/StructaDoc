@@ -5,6 +5,7 @@ public static class ParseRunStages
     public const string Validating = "validating";
     public const string PreparingSource = "preparing-source";
     public const string Converting = "converting";
+    public const string Segmenting = "segmenting";
     public const string Submitting = "submitting";
     public const string WaitingProvider = "waiting-provider";
     public const string Downloading = "downloading";
@@ -17,6 +18,7 @@ public static class ParseRunStages
         return stage is Validating
             or PreparingSource
             or Converting
+            or Segmenting
             or Submitting
             or WaitingProvider
             or Downloading

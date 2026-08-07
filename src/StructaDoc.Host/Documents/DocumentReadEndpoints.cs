@@ -33,6 +33,9 @@ public static class DocumentReadEndpoints
     private static async Task<IResult> ListAsync(
         int? limit,
         string? cursor,
+        string? fileName,
+        string? parseStatus,
+        HttpContext context,
         IDocumentReadService service,
         CancellationToken cancellationToken)
     {
@@ -58,7 +61,13 @@ public static class DocumentReadEndpoints
                 });
         }
 
-        var page = await service.ListAsync(pageSize, decodedCursor, cancellationToken);
+        var page = await service.ListAccessibleAsync(
+            pageSize,
+            ResourceAccessContextFactory.Create(context.User),
+            decodedCursor,
+            fileName,
+            parseStatus,
+            cancellationToken);
         return Results.Ok(new DocumentListResponse(
             page.Items.Select(ToResponse).ToArray(),
             page.NextCursor is null ? null : DocumentCursorCodec.Encode(page.NextCursor)));
@@ -66,10 +75,14 @@ public static class DocumentReadEndpoints
 
     private static async Task<IResult> GetAsync(
         Guid id,
+        HttpContext context,
         IDocumentReadService service,
         CancellationToken cancellationToken)
     {
-        var document = await service.GetAsync(id, cancellationToken);
+        var document = await service.GetAccessibleAsync(
+            id,
+            ResourceAccessContextFactory.Create(context.User),
+            cancellationToken);
         return document is null
             ? NotFound(id)
             : Results.Ok(ToResponse(document));
@@ -83,7 +96,10 @@ public static class DocumentReadEndpoints
     {
         try
         {
-            var content = await service.OpenContentAsync(id, cancellationToken);
+            var content = await service.OpenAccessibleContentAsync(
+                id,
+                ResourceAccessContextFactory.Create(context.User),
+                cancellationToken);
 
             if (content is null)
             {
@@ -119,7 +135,9 @@ public static class DocumentReadEndpoints
             document.Extension,
             document.SizeBytes,
             document.Sha256,
-            document.CreatedAtUtc);
+            document.CreatedAtUtc,
+            document.LatestParseStatus,
+            document.OwnedByCurrentUser);
     }
 
     private static IResult NotFound(Guid id)

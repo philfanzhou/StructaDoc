@@ -3,8 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Providers;
+using StructaDoc.Application.Resources;
 using StructaDoc.Infrastructure.Persistence.ParseRuns;
 using StructaDoc.Infrastructure.Persistence.Providers;
+using StructaDoc.Infrastructure.Resources;
 
 namespace StructaDoc.Infrastructure.Persistence;
 
@@ -29,6 +31,8 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IParseRunExecutionContextStore, EfCoreParseRunExecutionContextStore>();
         services.AddScoped<IParseBundleCommitStore, EfCoreParseBundleCommitStore>();
         services.AddScoped<IParseRunService, EfCoreParseRunService>();
+        services.AddScoped<IParseResultReadService, EfCoreParseResultReadService>();
+        services.AddScoped<IResourceDeletionService, EfCoreResourceDeletionService>();
         services.AddScoped<IProviderConfigAdministrationService, EfCoreProviderConfigAdministrationService>();
         services.AddScoped<IParseProviderResolver, ParseProviderResolver>();
         services

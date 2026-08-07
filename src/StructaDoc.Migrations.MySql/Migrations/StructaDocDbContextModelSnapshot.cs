@@ -126,6 +126,118 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("api_clients", (string)null);
                 });
 
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.CleanupJobEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int")
+                        .HasColumnName("attempt_count");
+
+                    b.Property<long>("ConcurrencyVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("concurrency_version");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2048)
+                        .HasColumnType("varchar(2048)")
+                        .HasColumnName("error_message");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("next_attempt_at_utc");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StorageRefsJson")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("storage_refs_json");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("target_type");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "NextAttemptAtUtc")
+                        .HasDatabaseName("ix_cleanup_jobs_due");
+
+                    b.HasIndex("TargetType", "TargetId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cleanup_jobs_target");
+
+                    b.ToTable("cleanup_jobs", (string)null);
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentAccessGrantEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("document_id");
+
+                    b.Property<int>("Permissions")
+                        .HasColumnType("int")
+                        .HasColumnName("permissions");
+
+                    b.Property<string>("PrincipalIssuer")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("principal_issuer");
+
+                    b.Property<string>("PrincipalSubject")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("principal_subject");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId", "PrincipalIssuer", "PrincipalSubject")
+                        .IsUnique()
+                        .HasDatabaseName("ux_document_access_grants_principal");
+
+                    b.ToTable("document_access_grants", (string)null);
+                });
+
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -141,11 +253,22 @@ namespace StructaDoc.Migrations.MySql.Migrations
                         .HasColumnType("varchar(255)")
                         .HasColumnName("created_by");
 
+                    b.Property<DateTime?>("DeletionRequestedAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deletion_requested_at_utc");
+
                     b.Property<string>("Extension")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("varchar(32)")
                         .HasColumnName("extension");
+
+                    b.Property<string>("LifecycleState")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("lifecycle_state");
 
                     b.Property<string>("MediaType")
                         .IsRequired()
@@ -162,6 +285,16 @@ namespace StructaDoc.Migrations.MySql.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("varchar(512)")
                         .HasColumnName("original_file_name");
+
+                    b.Property<string>("OwnerIssuer")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("owner_issuer");
+
+                    b.Property<string>("OwnerSubject")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("owner_subject");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
@@ -187,6 +320,9 @@ namespace StructaDoc.Migrations.MySql.Migrations
 
                     b.HasIndex("CreatedAtUtc", "Id")
                         .HasDatabaseName("ix_documents_created_at_id");
+
+                    b.HasIndex("OwnerIssuer", "OwnerSubject", "CreatedAtUtc")
+                        .HasDatabaseName("ix_documents_owner_created_at");
 
                     b.ToTable("documents", (string)null);
                 });
@@ -477,6 +613,10 @@ namespace StructaDoc.Migrations.MySql.Migrations
                         .HasColumnType("varchar(255)")
                         .HasColumnName("created_by");
 
+                    b.Property<DateTime?>("DeletionRequestedAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deletion_requested_at_utc");
+
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("char(36)")
                         .HasColumnName("document_id");
@@ -506,6 +646,13 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.Property<DateTime?>("LeaseExpiresAtUtc")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("lease_expires_at_utc");
+
+                    b.Property<string>("LifecycleState")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("lifecycle_state");
 
                     b.Property<int>("MaxAttempts")
                         .HasColumnType("int")
@@ -600,6 +747,74 @@ namespace StructaDoc.Migrations.MySql.Migrations
                         .HasDatabaseName("ux_parse_runs_idempotency");
 
                     b.ToTable("parse_runs", (string)null);
+                });
+
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseSegmentEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("id");
+
+                    b.Property<int>("EndPage")
+                        .HasColumnType("int")
+                        .HasColumnName("end_page");
+
+                    b.Property<string>("ExternalTaskId")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("external_task_id");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("int")
+                        .HasColumnName("segment_index");
+
+                    b.Property<Guid>("ParseRunId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("parse_run_id");
+
+                    b.Property<string>("ProtectedSubmissionContinuation")
+                        .HasColumnType("longtext")
+                        .HasColumnName("protected_submission_continuation");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("sha256");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<int>("StartPage")
+                        .HasColumnType("int")
+                        .HasColumnName("start_page");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StorageRef")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("varchar(2048)")
+                        .HasColumnName("storage_ref");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParseRunId", "Index")
+                        .IsUnique()
+                        .HasDatabaseName("ux_parse_segments_index");
+
+                    b.ToTable("parse_segments", (string)null);
                 });
 
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", b =>
@@ -708,6 +923,17 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("provider_config_versions", (string)null);
                 });
 
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentAccessGrantEntity", b =>
+                {
+                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", "Document")
+                        .WithMany("AccessGrants")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseArtifactEntity", b =>
                 {
                     b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
@@ -776,6 +1002,17 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.Navigation("Document");
                 });
 
+            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseSegmentEntity", b =>
+                {
+                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
+                        .WithMany("Segments")
+                        .HasForeignKey("ParseRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ParseRun");
+                });
+
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigVersionEntity", b =>
                 {
                     b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", "ProviderConfig")
@@ -789,6 +1026,8 @@ namespace StructaDoc.Migrations.MySql.Migrations
 
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
                 {
+                    b.Navigation("AccessGrants");
+
                     b.Navigation("ParseRuns");
                 });
 
@@ -806,6 +1045,8 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.Navigation("Blocks");
 
                     b.Navigation("Pages");
+
+                    b.Navigation("Segments");
                 });
 
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", b =>

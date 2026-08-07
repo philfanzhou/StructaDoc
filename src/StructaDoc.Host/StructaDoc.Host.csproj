@@ -10,4 +10,9 @@
     <ProjectReference Include="..\StructaDoc.Migrations.MariaDb\StructaDoc.Migrations.MariaDb.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Markdig" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
+  </ItemGroup>
+
 </Project>

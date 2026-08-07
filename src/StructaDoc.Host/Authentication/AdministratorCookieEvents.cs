@@ -12,6 +12,18 @@ public sealed class AdministratorCookieEvents(StructaDocDbContext dbContext)
 {
     public override async Task ValidatePrincipal(CookieValidatePrincipalContext context)
     {
+        var subjectType = context.Principal?.FindFirstValue(StructaDocClaimTypes.SubjectType);
+        if (string.Equals(subjectType, SubjectTypes.User, StringComparison.Ordinal))
+        {
+            if (string.IsNullOrWhiteSpace(context.Principal?.FindFirstValue(StructaDocClaimTypes.ExternalIssuer))
+                || string.IsNullOrWhiteSpace(context.Principal?.FindFirstValue(StructaDocClaimTypes.ExternalSubject)))
+            {
+                context.RejectPrincipal();
+            }
+
+            return;
+        }
+
         var idValue = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
         var stampValue = context.Principal?.FindFirstValue(StructaDocClaimTypes.SecurityStamp);
 

@@ -1,8 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.Storage;
 using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Infrastructure.Persistence.Entities;
+using StructaDoc.Domain.Resources;
 
 namespace StructaDoc.Infrastructure.Documents;
 
@@ -16,8 +19,46 @@ public sealed class EfCoreDocumentReadService(
         DocumentCursor? cursor = null,
         CancellationToken cancellationToken = default)
     {
+        return await ListAccessibleAsync(
+            limit,
+            ResourceAccessContext.System,
+            cursor,
+            cancellationToken: cancellationToken);
+    }
+
+    public async Task<DocumentPage> ListAccessibleAsync(
+        int limit,
+        ResourceAccessContext access,
+        DocumentCursor? cursor = null,
+        string? fileName = null,
+        string? parseStatus = null,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
-        var query = dbContext.Documents.AsNoTracking();
+        var query = ApplyAccess(
+            dbContext.Documents.AsNoTracking()
+                .Where(document => document.LifecycleState == ResourceLifecycleStates.Active),
+            access,
+            DocumentPermissions.Read);
+
+        if (!string.IsNullOrWhiteSpace(fileName))
+        {
+            var normalizedFileName = fileName.Trim();
+            query = query.Where(document => document.OriginalFileName.Contains(normalizedFileName));
+        }
+
+        if (!string.IsNullOrWhiteSpace(parseStatus))
+        {
+            var normalizedStatus = parseStatus.Trim();
+            query = string.Equals(normalizedStatus, "unparsed", StringComparison.OrdinalIgnoreCase)
+                ? query.Where(document => !document.ParseRuns.Any(run =>
+                    run.LifecycleState == ResourceLifecycleStates.Active))
+                : query.Where(document => document.ParseRuns
+                    .Where(run => run.LifecycleState == ResourceLifecycleStates.Active)
+                    .OrderByDescending(run => run.CreatedAtUtc)
+                    .Select(run => run.Status)
+                    .FirstOrDefault() == normalizedStatus);
+        }
 
         if (cursor is not null)
         {
@@ -38,7 +79,15 @@ public sealed class EfCoreDocumentReadService(
                 document.Extension,
                 document.SizeBytes,
                 document.Sha256,
-                document.CreatedAtUtc))
+                document.CreatedAtUtc,
+                document.ParseRuns
+                    .Where(run => run.LifecycleState == ResourceLifecycleStates.Active)
+                    .OrderByDescending(run => run.CreatedAtUtc)
+                    .Select(run => run.Status)
+                    .FirstOrDefault(),
+                access.IsInteractiveUser
+                    && document.OwnerIssuer == access.Issuer
+                    && document.OwnerSubject == access.Subject))
             .Take(checked(limit + 1))
             .ToListAsync(cancellationToken);
         var hasMore = documents.Count > limit;
@@ -58,9 +107,20 @@ public sealed class EfCoreDocumentReadService(
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        return dbContext.Documents
+        return GetAccessibleAsync(id, ResourceAccessContext.System, cancellationToken);
+    }
+
+    public Task<DocumentRecord?> GetAccessibleAsync(
+        Guid id,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
+    {
+        return ApplyAccess(dbContext.Documents
             .AsNoTracking()
-            .Where(document => document.Id == id)
+            .Where(document => document.Id == id
+                && document.LifecycleState == ResourceLifecycleStates.Active),
+            access,
+            DocumentPermissions.Read)
             .Select(document => new DocumentRecord(
                 document.Id,
                 document.OriginalFileName,
@@ -68,7 +128,15 @@ public sealed class EfCoreDocumentReadService(
                 document.Extension,
                 document.SizeBytes,
                 document.Sha256,
-                document.CreatedAtUtc))
+                document.CreatedAtUtc,
+                document.ParseRuns
+                    .Where(run => run.LifecycleState == ResourceLifecycleStates.Active)
+                    .OrderByDescending(run => run.CreatedAtUtc)
+                    .Select(run => run.Status)
+                    .FirstOrDefault(),
+                access.IsInteractiveUser
+                    && document.OwnerIssuer == access.Issuer
+                    && document.OwnerSubject == access.Subject))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -76,9 +144,20 @@ public sealed class EfCoreDocumentReadService(
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        var storedDocument = await dbContext.Documents
+        return await OpenAccessibleContentAsync(id, ResourceAccessContext.System, cancellationToken);
+    }
+
+    public async Task<DocumentContent?> OpenAccessibleContentAsync(
+        Guid id,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
+    {
+        var storedDocument = await ApplyAccess(dbContext.Documents
             .AsNoTracking()
-            .Where(document => document.Id == id)
+            .Where(document => document.Id == id
+                && document.LifecycleState == ResourceLifecycleStates.Active),
+            access,
+            DocumentPermissions.Read)
             .Select(document => new StoredDocument(
                 new DocumentRecord(
                     document.Id,
@@ -87,7 +166,15 @@ public sealed class EfCoreDocumentReadService(
                     document.Extension,
                     document.SizeBytes,
                     document.Sha256,
-                    document.CreatedAtUtc),
+                    document.CreatedAtUtc,
+                    document.ParseRuns
+                        .Where(run => run.LifecycleState == ResourceLifecycleStates.Active)
+                        .OrderByDescending(run => run.CreatedAtUtc)
+                        .Select(run => run.Status)
+                        .FirstOrDefault(),
+                    access.IsInteractiveUser
+                        && document.OwnerIssuer == access.Issuer
+                        && document.OwnerSubject == access.Subject),
                 document.StorageRef))
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -112,6 +199,30 @@ public sealed class EfCoreDocumentReadService(
                 id);
             throw new DocumentContentUnavailableException(id, exception);
         }
+    }
+
+    private static IQueryable<DocumentEntity> ApplyAccess(
+        IQueryable<DocumentEntity> query,
+        ResourceAccessContext access,
+        DocumentPermissions permission)
+    {
+        if (access.IsAdministrator || access.IsServiceClient)
+        {
+            return query;
+        }
+
+        if (!access.IsInteractiveUser)
+        {
+            return query.Where(_ => false);
+        }
+
+        var required = (int)permission;
+        return query.Where(document =>
+            (document.OwnerIssuer == access.Issuer && document.OwnerSubject == access.Subject)
+            || document.AccessGrants.Any(grant =>
+                grant.PrincipalIssuer == access.Issuer
+                && grant.PrincipalSubject == access.Subject
+                && (grant.Permissions & required) == required));
     }
 
     private static void RequireUtc(DateTime value)

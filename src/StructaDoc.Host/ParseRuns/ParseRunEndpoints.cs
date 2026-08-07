@@ -32,6 +32,8 @@ public static class ParseRunEndpoints
             .RequireAuthorization(AuthorizationPolicies.ParsesRead)
             .Produces<ParseRunResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
+        endpoints.MapGet("/api/v1/documents/{documentId:guid}/parse-runs", ListForDocumentAsync)
+            .RequireAuthorization(AuthorizationPolicies.ParsesRead);
         return endpoints;
     }
 
@@ -41,10 +43,11 @@ public static class ParseRunEndpoints
         HttpContext context,
         IAntiforgery antiforgery,
         IParseRunService service,
+        StructaDoc.Application.Documents.IDocumentAuthorizationService authorizationService,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
-        if (context.User.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.Administrator))
+        if (!context.User.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.ApiClient))
         {
             try
             {
@@ -77,13 +80,25 @@ public static class ParseRunEndpoints
                 $"Idempotency-Key must be a single visible ASCII value up to {MaximumIdempotencyKeyLength} characters.");
         }
 
+        if (!await authorizationService.HasPermissionAsync(
+                documentId,
+                ResourceAccessContextFactory.Create(context.User),
+                StructaDoc.Application.Authentication.DocumentPermissions.Parse,
+                cancellationToken))
+        {
+            return Results.Problem(
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Document not found",
+                detail: $"Document '{documentId:D}' does not exist or is not accessible.");
+        }
+
         var result = await service.CreateAsync(
             new StructaDoc.Application.ParseRuns.ParseRunCreateRequest(
                 documentId,
                 request.ProviderConfigId,
                 optionsJson,
                 maxAttempts,
-                GetActorId(context.User),
+                ResourceAccessContextFactory.GetActorId(context.User),
                 idempotencyKey,
                 timeProvider.GetUtcNow().UtcDateTime),
             cancellationToken);
@@ -114,16 +129,28 @@ public static class ParseRunEndpoints
 
     private static async Task<IResult> GetAsync(
         Guid id,
-        IParseRunService service,
+        HttpContext context,
+        IParseResultReadService service,
         CancellationToken cancellationToken)
     {
-        var parseRun = await service.GetAsync(id, cancellationToken);
+        var parseRun = await service.GetAsync(id, ResourceAccessContextFactory.Create(context.User), cancellationToken);
         return parseRun is null
             ? Results.Problem(
                 statusCode: StatusCodes.Status404NotFound,
                 title: "Parse Run not found",
                 detail: $"Parse Run '{id:D}' does not exist.")
             : Results.Ok(ToResponse(parseRun));
+    }
+
+    private static async Task<IResult> ListForDocumentAsync(Guid documentId, HttpContext context, IParseResultReadService service, StructaDoc.Application.Documents.IDocumentAuthorizationService authorizationService, CancellationToken cancellationToken)
+    {
+        var access = ResourceAccessContextFactory.Create(context.User);
+        if (!await authorizationService.HasPermissionAsync(documentId, access, DocumentPermissions.Read, cancellationToken))
+        {
+            return Results.Problem(statusCode: 404, title: "Document not found", detail: $"Document '{documentId:D}' does not exist or is not accessible.");
+        }
+        var runs = await service.ListForDocumentAsync(documentId, access, cancellationToken);
+        return Results.Ok(runs.Select(ToResponse));
     }
 
     private static bool TryNormalizeOptions(JsonElement? options, out string json, out string error)

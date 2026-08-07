@@ -53,8 +53,15 @@ public sealed class EfCoreDocumentIngestionService(
                 Sha256 = storedFile.Sha256,
                 StorageRef = storedFile.StorageRef,
                 CreatedBy = NormalizeCreatedBy(request.CreatedBy),
+                OwnerIssuer = NormalizeOwnerPart(request.OwnerIssuer, 512, nameof(request.OwnerIssuer)),
+                OwnerSubject = NormalizeOwnerPart(request.OwnerSubject, 255, nameof(request.OwnerSubject)),
                 CreatedAtUtc = createdAtUtc,
             };
+
+            if ((entity.OwnerIssuer is null) != (entity.OwnerSubject is null))
+            {
+                throw new ArgumentException("Document owner issuer and subject must be provided together.");
+            }
 
             dbContext.Documents.Add(entity);
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -126,5 +133,18 @@ public sealed class EfCoreDocumentIngestionService(
         return normalized.Length <= 255
             ? normalized
             : throw new ArgumentException("Creator ID cannot exceed 255 characters.", nameof(createdBy));
+    }
+
+    private static string? NormalizeOwnerPart(string? value, int maxLength, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Trim();
+        return normalized.Length <= maxLength
+            ? normalized
+            : throw new ArgumentException($"{parameterName} cannot exceed {maxLength} characters.", parameterName);
     }
 }

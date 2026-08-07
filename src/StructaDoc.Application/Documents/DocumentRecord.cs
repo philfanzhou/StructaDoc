@@ -7,7 +7,9 @@ public sealed record DocumentRecord(
     string Extension,
     long SizeBytes,
     string Sha256,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    string? LatestParseStatus = null,
+    bool OwnedByCurrentUser = false);
 
 public sealed record DocumentCursor(
     DateTime CreatedAtUtc,

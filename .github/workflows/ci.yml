@@ -1,0 +1,196 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  build-and-test:
+    name: Build and unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Restore .NET dependencies
+        run: dotnet restore StructaDoc.slnx
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Audit web dependencies
+        working-directory: web
+        run: npm audit --audit-level=high
+
+      - name: Build web workspace
+        working-directory: web
+        run: npm run build
+
+      - name: Build .NET solution
+        run: dotnet build StructaDoc.slnx --configuration Release --no-restore
+
+      - name: Run tests that do not require Docker
+        run: >-
+          dotnet test StructaDoc.slnx
+          --configuration Release
+          --no-build
+          --no-restore
+          --logger "trx;LogFilePrefix=unit"
+          --results-directory artifacts/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: unit-test-results
+          path: artifacts/test-results
+          if-no-files-found: ignore
+
+  database-contracts:
+    name: PostgreSQL, MySQL, and MariaDB contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS: 1
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore database contract test dependencies
+        run: dotnet restore tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj
+
+      - name: Run contracts against real database containers
+        run: >-
+          dotnet test tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj
+          --configuration Release
+          --no-restore
+          --logger "trx;LogFileName=database-contracts.trx"
+          --results-directory artifacts/database-contract-results
+
+      - name: Upload database contract results
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: database-contract-results
+          path: artifacts/database-contract-results
+          if-no-files-found: ignore
+
+  container-and-browser:
+    name: Production container and browser smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STRUCTADOC_E2E_ADMIN_EMAIL: admin@example.test
+      STRUCTADOC_E2E_ADMIN_PASSWORD: StructaDoc-${{ github.run_id }}-${{ github.run_attempt }}
+      STRUCTADOC_E2E_BASE_URL: http://127.0.0.1:8080
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install browser test dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Build production image
+        run: docker build --tag structadoc:ci .
+
+      - name: Start production container
+        run: |
+          docker run --detach --name structadoc-ci \
+            --read-only \
+            --security-opt no-new-privileges:true \
+            --cap-drop ALL \
+            --tmpfs /tmp:size=256m,mode=1777 \
+            --publish 127.0.0.1:8080:8080 \
+            --env Authentication__BootstrapAdministratorEmail="$STRUCTADOC_E2E_ADMIN_EMAIL" \
+            --env Authentication__BootstrapAdministratorPassword="$STRUCTADOC_E2E_ADMIN_PASSWORD" \
+            --env Worker__ExecutionEnabled=false \
+            structadoc:ci
+
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8080/health/ready; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs structadoc-ci
+          exit 1
+
+      - name: Verify live and system endpoints
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8080/health/live
+          curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/system/info
+
+      - name: Run browser workspace contract
+        working-directory: web
+        run: npm run test:e2e
+
+      - name: Upload browser report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: browser-results
+          path: |
+            web/playwright-report
+            web/test-results
+          if-no-files-found: ignore
+
+      - name: Capture container logs
+        if: always()
+        run: docker logs structadoc-ci > structadoc-container.log 2>&1 || true
+
+      - name: Upload container logs
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: container-logs
+          path: structadoc-container.log
+          if-no-files-found: ignore
+
+      - name: Stop production container
+        if: always()
+        run: docker rm --force structadoc-ci >/dev/null 2>&1 || true

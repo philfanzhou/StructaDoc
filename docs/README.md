@@ -20,6 +20,8 @@
 | [ADR-0003](./adr/0003-technology-and-single-image-deployment.md) | Accepted | 使用 .NET 10 和包含管理网页、Worker、LibreOffice 的单一应用镜像 |
 | [ADR-0004](./adr/0004-relational-database-portability.md) | Accepted | 支持 SQLite、PostgreSQL、MySQL / MariaDB，并保持任务可靠性语义一致 |
 | [ADR-0005](./adr/0005-authentication-and-api-clients.md) | Accepted | 分离管理员 Cookie 会话、API Client 密钥、scope 与防伪请求 |
+| [ADR-0006](./adr/0006-user-workspace-and-oidc.md) | Accepted | 用户工作区、泛化 OIDC 认证和资源级授权 |
+| [ADR-0007](./adr/0007-resource-lifecycle-and-cleanup.md) | Accepted | 文档所有权、共享和可靠删除清理 |
 
 ## 规格
 
@@ -43,6 +45,7 @@
 | [Provider Result Intake](./development/provider-result-intake.md) | Provider ZIP 的幂等落盘、资源限制、安全校验和当前归一化边界 |
 | [Provider Result Normalization](./development/provider-result-normalization.md) | 已验证 MinerU ZIP 的条目识别、派生存储、确定性 ID 和 Canonical 映射 |
 | [Canonical Result Persistence](./development/canonical-result-persistence.md) | Parse Bundle 验证、存储复核、幂等成功事务和当前限制 |
+| [Continuous Integration](./development/continuous-integration.md) | 常规测试、真实数据库契约、生产容器和浏览器工作流 |
 
 ## 部署
 

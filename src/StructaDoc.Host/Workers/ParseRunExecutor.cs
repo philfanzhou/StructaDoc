@@ -15,6 +15,7 @@ public sealed class ParseRunExecutor(
     IEnumerable<IDocumentConverter> converters,
     IProviderResultIntake resultIntake,
     IFileStorage fileStorage,
+    LargePdfParseOrchestrator largePdf,
     ParseRunLeaseHeartbeat heartbeat,
     ParseRunWorkerOptions options,
     ILogger<ParseRunExecutor> logger)
@@ -68,6 +69,40 @@ public sealed class ParseRunExecutor(
                 source = preparedSource.Source;
                 conversion = preparedSource.Conversion;
                 stage = ParseRunStages.Submitting;
+
+                if (await largePdf.RequiresSegmentationAsync(
+                        source,
+                        preparedSource.Capabilities,
+                        session.ExecutionCancellationToken))
+                {
+                    var segmentedBundle = await largePdf.ExecuteAsync(
+                        session,
+                        context,
+                        source,
+                        preparedSource.Capabilities,
+                        provider,
+                        normalizer,
+                        stoppingToken);
+                    if (conversion is not null)
+                    {
+                        segmentedBundle = AddConversionArtifact(segmentedBundle, conversion);
+                    }
+                    if (await session.TryUpdateStageAsync(ParseRunStages.Persisting, stoppingToken) is null)
+                    {
+                        return;
+                    }
+                    var segmentedCommit = await session.TryCommitBundleAsync(segmentedBundle, stoppingToken);
+                    if (segmentedCommit is null
+                        || segmentedCommit.Status is ParseBundleCommitStatus.Committed
+                            or ParseBundleCommitStatus.AlreadyCommitted
+                            or ParseBundleCommitStatus.LeaseLost)
+                    {
+                        return;
+                    }
+                    throw segmentedCommit.Status == ParseBundleCommitStatus.StorageMismatch
+                        ? Failure(segmentedCommit.ErrorCode ?? "parse-result-storage-mismatch", segmentedCommit.ErrorMessage ?? "The segmented result storage could not be verified.", retryable: true)
+                        : Failure(segmentedCommit.ErrorCode ?? "parse-result-commit-failed", segmentedCommit.ErrorMessage ?? "The segmented result could not be committed.", retryable: false);
+                }
 
                 try
                 {
@@ -410,10 +445,13 @@ public sealed class ParseRunExecutor(
         if (capabilities.MaxFileBytes.HasValue
             && source.SizeBytes > capabilities.MaxFileBytes.Value)
         {
-            throw Failure(
-                "provider-source-file-too-large",
-                "The prepared document exceeds the Provider file size limit.",
-                retryable: false);
+            if (!string.Equals(source.MediaType, DocumentConversionMediaTypes.Pdf, StringComparison.OrdinalIgnoreCase))
+            {
+                throw Failure(
+                    "provider-source-file-too-large",
+                    "The prepared document exceeds the Provider file size limit.",
+                    retryable: false);
+            }
         }
 
         if (conversion is null
@@ -431,7 +469,7 @@ public sealed class ParseRunExecutor(
             throw new OperationCanceledException(session.ExecutionCancellationToken);
         }
 
-        return new PreparedSource(source, conversion);
+        return new PreparedSource(source, conversion, capabilities);
     }
 
     private async Task WaitForProviderAsync(
@@ -655,5 +693,6 @@ public sealed class ParseRunExecutor(
 
     private sealed record PreparedSource(
         ProviderDocumentSource Source,
-        ParseRunConversion? Conversion);
+        ParseRunConversion? Conversion,
+        ProviderCapabilities Capabilities);
 }

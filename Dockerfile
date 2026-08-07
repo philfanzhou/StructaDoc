@@ -1,5 +1,13 @@
 ARG DOTNET_VERSION=10.0
 ARG DOTNET_REGISTRY=mcr.microsoft.com/dotnet
+ARG NODE_VERSION=24
+
+FROM node:${NODE_VERSION}-bookworm-slim AS web-build
+WORKDIR /source/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build -- --outDir /web-dist
 
 FROM ${DOTNET_REGISTRY}/sdk:${DOTNET_VERSION}-noble AS build
 ARG BUILD_CONFIGURATION=Release
@@ -21,6 +29,7 @@ RUN test -n "${NUGET_SOURCE}" \
         --source "${NUGET_SOURCE}"
 
 COPY src/ src/
+COPY --from=web-build /web-dist/ src/StructaDoc.Host/wwwroot/
 RUN dotnet publish src/StructaDoc.Host/StructaDoc.Host.csproj \
     --configuration "${BUILD_CONFIGURATION}" \
     --no-restore \

@@ -36,6 +36,18 @@ internal sealed class DocumentEntityConfiguration : IEntityTypeConfiguration<Doc
         builder.Property(document => document.CreatedBy)
             .HasColumnName("created_by")
             .HasMaxLength(255);
+        builder.Property(document => document.OwnerIssuer)
+            .HasColumnName("owner_issuer")
+            .HasMaxLength(512);
+        builder.Property(document => document.OwnerSubject)
+            .HasColumnName("owner_subject")
+            .HasMaxLength(255);
+        builder.Property(document => document.LifecycleState)
+            .HasColumnName("lifecycle_state")
+            .HasMaxLength(32)
+            .IsUnicode(false);
+        builder.Property(document => document.DeletionRequestedAtUtc)
+            .HasColumnName("deletion_requested_at_utc");
         builder.Property(document => document.CreatedAtUtc)
             .HasColumnName("created_at_utc");
         builder.Property(document => document.MetadataJson)
@@ -45,5 +57,12 @@ internal sealed class DocumentEntityConfiguration : IEntityTypeConfiguration<Doc
             .HasDatabaseName("ix_documents_sha256");
         builder.HasIndex(document => new { document.CreatedAtUtc, document.Id })
             .HasDatabaseName("ix_documents_created_at_id");
+        builder.HasIndex(document => new
+            {
+                document.OwnerIssuer,
+                document.OwnerSubject,
+                document.CreatedAtUtc,
+            })
+            .HasDatabaseName("ix_documents_owner_created_at");
     }
 }

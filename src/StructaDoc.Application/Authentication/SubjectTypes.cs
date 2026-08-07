@@ -4,4 +4,5 @@ public static class SubjectTypes
 {
     public const string Administrator = "administrator";
     public const string ApiClient = "api-client";
+    public const string User = "user";
 }

@@ -9,6 +9,7 @@ using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
 using StructaDoc.Host.ParseRuns;
 using StructaDoc.Host.Providers;
+using StructaDoc.Host.Resources;
 using StructaDoc.Host.Workers;
 using StructaDoc.Infrastructure.Authentication;
 using StructaDoc.Infrastructure.Conversion;
@@ -51,6 +52,10 @@ var authenticationOptions = builder.Configuration
     .GetSection(StructaDocAuthenticationOptions.SectionName)
     .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
 authenticationOptions.Validate();
+var oidcOptions = builder.Configuration
+    .GetSection(OidcAuthenticationOptions.SectionName)
+    .Get<OidcAuthenticationOptions>() ?? new OidcAuthenticationOptions();
+oidcOptions.Validate();
 
 builder.Services
     .AddHealthChecks()
@@ -62,13 +67,17 @@ builder.Services.AddStructaDocParseProviders();
 builder.Services.AddStructaDocProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
-builder.Services.AddStructaDocHostAuthentication(authenticationOptions);
+builder.Services.AddStructaDocHostAuthentication(authenticationOptions, oidcOptions);
+builder.Services.AddSingleton(oidcOptions);
 builder.Services.AddSingleton(workerOptions);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ParseRunLeaseHeartbeat>();
 builder.Services.AddScoped<ParseRunExecutor>();
+builder.Services.AddScoped<LargePdfParseOrchestrator>();
+builder.Services.AddScoped<StructaDoc.Application.ParseRuns.IParseExportService, ParseExportService>();
 builder.Services.AddHostedService<ParseRunMaintenanceWorker>();
 builder.Services.AddHostedService<ParseRunExecutionWorker>();
+builder.Services.AddHostedService<ResourceCleanupWorker>();
 builder.Services.Configure<FormOptions>(options =>
     options.MultipartBodyLengthLimit = checked(ingestionOptions.MaxUploadBytes + (1024 * 1024)));
 
@@ -82,6 +91,8 @@ await app.Services.BootstrapStructaDocAdministratorAsync(
     app.Lifetime.ApplicationStopping);
 
 app.UseRateLimiter();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -100,12 +111,17 @@ if (ingestionOptions.UploadApiEnabled)
     app.MapDocumentUpload(ingestionOptions.MaxUploadBytes);
 }
 app.MapDocumentReadEndpoints();
+app.MapDocumentAccessGrantEndpoints();
 
 app.MapAdministratorSessionEndpoints(
     authenticationOptions.AdministratorSessionLifetime);
+app.MapInteractiveSessionEndpoints(oidcOptions);
 app.MapApiClientAdministrationEndpoints();
 app.MapProviderConfigAdministrationEndpoints();
 app.MapParseRunEndpoints();
+app.MapParseResultEndpoints();
+app.MapParseExportEndpoints();
+app.MapResourceDeletionEndpoints();
 
 app.MapHealthChecks(
     "/health/live",
@@ -115,6 +131,8 @@ app.MapHealthChecks(
     });
 
 app.MapHealthChecks("/health/ready");
+
+app.MapFallbackToFile("index.html");
 
 app.Run();
 

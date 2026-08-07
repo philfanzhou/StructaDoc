@@ -1,5 +1,23 @@
 # StructaDoc
 
+## 当前已实现能力（2026-08）
+
+StructaDoc 现在同时提供面向终端用户的 Vue 工作台和受控管理员区域。外部用户通过泛化 OIDC 登录，以 `(issuer, subject)` 作为稳定身份；SignaCore 可以作为 OIDC Provider，但项目不绑定其私有模型。用户可管理自己的文档、解析记录、规范化页面/块/资源、Markdown 预览、共享权限和 Markdown/HTML/ZIP/PDF 导出。
+
+后端已实现 Local/S3-compatible 存储、持久化 Parse Run、可恢复的大 PDF 分段、稳定结果 DTO、受控内容下载，以及基于持久化 Cleanup Job 的完整删除。Provider 原始 JSON 不作为公共契约。全文检索、OpenSearch、Embedding、RAG 和元数据/LLM 扩展明确不在本次实现范围。
+
+本地开发除 .NET 10 SDK 外需要 Node.js 24：
+
+```bash
+cd web
+npm ci
+npm run build
+cd ..
+dotnet run --project src/StructaDoc.Host
+```
+
+详细说明见 [用户工作台与 OIDC](./docs/development/user-workspace-oidc.md)、[结果 API 与资源生命周期](./docs/development/result-api-and-resource-lifecycle.md)、[S3 与大 PDF](./docs/development/s3-and-large-pdf.md)。
+
 > A self-hosted document ingestion and structured parsing service.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
@@ -11,7 +29,7 @@ StructaDoc 关注的是从“文件”到“结构化文档数据”的可靠转
 
 ## 项目状态
 
-StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、Cloud 两阶段上传加密 checkpoint、运行中任务接管、串行化心跳会话、可恢复执行器、受限 LibreOffice Office-to-PDF 回退、MinerU Cloud 签名上传与 Local multipart HTTP 适配、签名传输连接级公共地址策略、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现。当前 Host、LibreOffice 和字体的单一运行时 Dockerfile 与 SQLite Compose 入口已提供，但本机没有容器引擎，尚未完成真实镜像构建和样本转换验证；管理员配置 Base URL 的部署级出站策略、统一结果读取 API、管理员账户管理、文档删除和管理网页仍未实现。实际解析执行默认关闭，只有显式设置 `Worker__ExecutionEnabled=true` 后，执行 Worker 才会抢占队列并产生 Provider 出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
+StructaDoc 当前处于早期实现阶段，已经提供可编译、可测试和可启动的 .NET 10 Host、健康检查、四种数据库实现、Document 摄取与读取、管理员/API Client 认证，以及版本化 Provider Config 和 Parse Run 创建/状态查询。Parse Run 的原子抢占、续租、失败转换、到期恢复、Provider 执行契约、租约约束的配置快照读取、阶段与外部任务 ID 持久化、Cloud 两阶段上传加密 checkpoint、运行中任务接管、串行化心跳会话、可恢复执行器、受限 LibreOffice Office-to-PDF 回退、MinerU Cloud 签名上传与 Local multipart HTTP 适配、签名传输连接级公共地址策略、Provider ZIP 结果受限接收、Cloud/Local ZIP 到 Canonical Parse Bundle 的确定性归一化，以及 Pages / Blocks / Assets / Artifacts 的幂等成功提交也已实现。当前还包括用户工作台、泛化 OIDC、资源级授权、统一结果读取与导出、文档删除清理、S3-compatible 存储和大 PDF 分段。Host、LibreOffice 和字体的单一运行时 Dockerfile 与 SQLite Compose 入口已经提供；由于本机没有容器引擎，真实镜像、三种服务端数据库契约和 Chromium 工作流由 GitHub Actions 承担，但在工作流首次远端成功运行前仍视为待验证。实际解析执行默认关闭，只有显式设置 `Worker__ExecutionEnabled=true` 后，执行 Worker 才会抢占队列并产生 Provider 出站请求。本 README 中未明确标记为已实现的业务能力仍表示目标设计。
 
 设计决策和规格入口见 [`docs/README.md`](./docs/README.md)。
 
@@ -26,6 +44,8 @@ dotnet build StructaDoc.slnx --no-restore
 dotnet test StructaDoc.slnx --no-build --no-restore
 dotnet run --project src/StructaDoc.Host
 ```
+
+GitHub Actions 会在 push、pull request 和手动触发时执行常规构建/测试、PostgreSQL/MySQL/MariaDB Testcontainers 契约，以及生产镜像中的 Chromium 工作台流程。CI 的边界、产物和本地复现方式见 [持续集成](./docs/development/continuous-integration.md)。
 
 启动后可访问：
 

@@ -92,6 +92,12 @@ internal sealed class ParseRunEntityConfiguration : IEntityTypeConfiguration<Par
         builder.Property(parseRun => parseRun.ConcurrencyVersion)
             .HasColumnName("concurrency_version")
             .IsConcurrencyToken();
+        builder.Property(parseRun => parseRun.LifecycleState)
+            .HasColumnName("lifecycle_state")
+            .HasMaxLength(32)
+            .IsUnicode(false);
+        builder.Property(parseRun => parseRun.DeletionRequestedAtUtc)
+            .HasColumnName("deletion_requested_at_utc");
 
         builder.HasOne(parseRun => parseRun.Document)
             .WithMany(document => document.ParseRuns)

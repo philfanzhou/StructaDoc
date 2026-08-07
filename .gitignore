@@ -1,5 +1,9 @@
 **/bin/
 **/obj/
+web/node_modules/
+web/playwright-report/
+web/test-results/
+*.tsbuildinfo
 .vs/
 .vscode/
 .idea/
