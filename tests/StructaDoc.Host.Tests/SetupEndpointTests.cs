@@ -90,7 +90,7 @@ public sealed class SetupEndpointTests
     [InlineData("ab", Password)]
     [InlineData("has space", Password)]
     [InlineData("-leading", Password)]
-    [InlineData("valid-name", "too-short")]
+    [InlineData("valid-name", "short")]
     public async Task Claim_rejects_values_outside_the_username_and_password_policy(
         string username,
         string password)

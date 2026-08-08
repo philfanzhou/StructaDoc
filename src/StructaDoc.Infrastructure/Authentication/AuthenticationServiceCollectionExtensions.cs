@@ -16,6 +16,7 @@ public static class AuthenticationServiceCollectionExtensions
         services.AddSingleton<AdministratorPasswordVerifier>();
         services.AddScoped<IAdministratorAuthenticationService, AdministratorAuthenticationService>();
         services.AddScoped<IAdministratorProvisioningService, AdministratorProvisioningService>();
+        services.AddScoped<IAdministratorAccountService, AdministratorAccountService>();
         services.AddScoped<IApiClientAdministrationService, ApiClientAdministrationService>();
         return services;
     }

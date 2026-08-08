@@ -49,9 +49,10 @@ public static class SetupEndpoints
             TimeProvider timeProvider,
             CancellationToken cancellationToken)
         {
-            if (!await ValidateAntiforgeryAsync(context, antiforgery))
+            var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
+            if (antiforgeryFailure is not null)
             {
-                return AntiforgeryProblem();
+                return antiforgeryFailure;
             }
 
             var result = await provisioning.ClaimFirstAdministratorAsync(
@@ -121,9 +122,10 @@ public static class SetupEndpoints
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
-        if (!await ValidateAntiforgeryAsync(context, antiforgery))
+        var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
+        if (antiforgeryFailure is not null)
         {
-            return AntiforgeryProblem();
+            return antiforgeryFailure;
         }
 
         await provisioning.AcknowledgeClaimAsync(
@@ -138,28 +140,5 @@ public static class SetupEndpoints
             statusCode: StatusCodes.Status404NotFound,
             title: "Setup is not available",
             detail: "An administrator already exists.");
-    }
-
-    private static async Task<bool> ValidateAntiforgeryAsync(
-        HttpContext context,
-        IAntiforgery antiforgery)
-    {
-        try
-        {
-            await antiforgery.ValidateRequestAsync(context);
-            return true;
-        }
-        catch (AntiforgeryValidationException)
-        {
-            return false;
-        }
-    }
-
-    private static IResult AntiforgeryProblem()
-    {
-        return Results.Problem(
-            statusCode: StatusCodes.Status400BadRequest,
-            title: "Antiforgery validation failed",
-            detail: "A valid antiforgery token is required.");
     }
 }

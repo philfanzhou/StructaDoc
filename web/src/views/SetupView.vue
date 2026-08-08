@@ -47,6 +47,6 @@ async function claim() {
       <p v-if="mismatch" class="login-note">两次输入的密码不一致。</p>
       <button class="secondary" :disabled="busy || mismatch">{{ busy ? '创建中…' : '创建管理员' }}</button>
     </form>
-    <p class="login-note">用户名由 3–64 个字母、数字、<code>.</code>、<code>_</code>、<code>-</code> 组成，密码至少 12 位。此账号在身份平台故障时仍可登录，请妥善保管。</p>
+    <p class="login-note">用户名由 3–64 个字母、数字、<code>.</code>、<code>_</code>、<code>-</code> 组成，密码至少 8 位。此账号在身份平台故障时仍可登录，请妥善保管。</p>
   </AuthShell>
 </template>

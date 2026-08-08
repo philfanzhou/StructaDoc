@@ -51,9 +51,10 @@ public static class AdministratorSessionEndpoints
             TimeProvider timeProvider,
             CancellationToken cancellationToken)
         {
-            if (!await ValidateAntiforgeryAsync(context, antiforgery))
+            var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
+            if (antiforgeryFailure is not null)
             {
-                return AntiforgeryProblem();
+                return antiforgeryFailure;
             }
 
             var administrator = await authenticationService.AuthenticateAsync(
@@ -96,9 +97,10 @@ public static class AdministratorSessionEndpoints
         HttpContext context,
         IAntiforgery antiforgery)
     {
-        if (!await ValidateAntiforgeryAsync(context, antiforgery))
+        var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
+        if (antiforgeryFailure is not null)
         {
-            return AntiforgeryProblem();
+            return antiforgeryFailure;
         }
 
         await context.SignOutAsync(AuthenticationSchemes.AdministratorCookie);
@@ -126,28 +128,5 @@ public static class AdministratorSessionEndpoints
             administrator.Id,
             administrator.Username,
             administrator.DisplayName);
-    }
-
-    private static async Task<bool> ValidateAntiforgeryAsync(
-        HttpContext context,
-        IAntiforgery antiforgery)
-    {
-        try
-        {
-            await antiforgery.ValidateRequestAsync(context);
-            return true;
-        }
-        catch (AntiforgeryValidationException)
-        {
-            return false;
-        }
-    }
-
-    private static IResult AntiforgeryProblem()
-    {
-        return Results.Problem(
-            statusCode: StatusCodes.Status400BadRequest,
-            title: "Antiforgery validation failed",
-            detail: "A valid antiforgery token is required.");
     }
 }

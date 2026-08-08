@@ -1,7 +1,7 @@
 # Authentication
 
 - Status: Implementation note
-- Last updated: 2026-08-07
+- Last updated: 2026-08-08
 
 ## Current Boundary
 
@@ -64,7 +64,22 @@ Authentication__BootstrapAdministratorPassword
 Authentication__BootstrapAdministratorDisplayName
 ```
 
-Username and password must be configured together. Password length is 12–1024 characters. After migration, the Host creates the account only if its normalized username does not exist, which also closes first-run setup. Bootstrap settings never overwrite a stored password, enabled state, or security stamp. Remove the bootstrap password after first use.
+Username and password must be configured together. Password length is 8–1024 characters. After migration, the Host creates the account only if its normalized username does not exist, which also closes first-run setup. Bootstrap settings never overwrite a stored password, enabled state, or security stamp. Remove the bootstrap password after first use.
+
+## Account Administration
+
+Administrator Cookie endpoints under `/api/v1/admin/administrators` list accounts, add them, change passwords, enable and disable them, and delete them. All writes require antiforgery validation.
+
+Every password change rotates the security stamp, which is what ends the sessions the old password opened. Changing your own password through `/me/password` requires the current one and re-issues the calling session, so the caller stays signed in while its other sessions do not. Resetting another administrator's password requires no current password, so it is refused against your own account; otherwise the current-password requirement would enforce nothing.
+
+Two rules protect against locking a deployment out of itself:
+
+- an administrator cannot disable or delete their own account, so a single mistaken request cannot remove the last way in;
+- disabling or deleting an account is refused while it is the only active administrator.
+
+Sequentially the first rule already covers the second: the only active administrator is always the caller. The second exists for the case the first cannot cover, two administrators removing each other at the same time, and is enforced by the condition travelling into the `UPDATE` or `DELETE` statement rather than being read first. Disabling takes effect on the account's next request, because cookie validation rejects an inactive account.
+
+Deleting is irreversible and drops the account's history, while disabling keeps it and can be undone. `created_by` values recorded in the business database are plain strings, so deleting an account does not remove what it created; it removes the ability to resolve who that was.
 
 ## Local Administrator Session Flow
 
@@ -103,7 +118,7 @@ Provider bearer tokens remain separate from every user credential. Adapters decr
 
 ## Remaining Work
 
-- administrator account management: password change, additional accounts, and disabling;
 - configurable failed-login lockout and persistent authentication audit;
+- rate limiting on the password-change endpoint, which currently shares nothing with the sign-in limiter;
 - production reverse-proxy, HTTPS, and Cookie Secure deployment recipes;
 - an external Data Protection key-ring option for multi-instance platforms.

@@ -53,7 +53,7 @@ public static class ApiClientAdministrationEndpoints
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
-        var antiforgeryFailure = await ValidateAntiforgeryAsync(context, antiforgery);
+        var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
 
         if (antiforgeryFailure is not null)
         {
@@ -83,7 +83,7 @@ public static class ApiClientAdministrationEndpoints
         IApiClientAdministrationService service,
         CancellationToken cancellationToken)
     {
-        var antiforgeryFailure = await ValidateAntiforgeryAsync(context, antiforgery);
+        var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
 
         if (antiforgeryFailure is not null)
         {
@@ -111,7 +111,7 @@ public static class ApiClientAdministrationEndpoints
         IApiClientAdministrationService service,
         CancellationToken cancellationToken)
     {
-        var antiforgeryFailure = await ValidateAntiforgeryAsync(context, antiforgery);
+        var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
 
         if (antiforgeryFailure is not null)
         {
@@ -142,7 +142,7 @@ public static class ApiClientAdministrationEndpoints
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
-        var antiforgeryFailure = await ValidateAntiforgeryAsync(context, antiforgery);
+        var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
 
         if (antiforgeryFailure is not null)
         {
@@ -180,24 +180,6 @@ public static class ApiClientAdministrationEndpoints
                 [errorField] = [errorMessage],
             });
         return false;
-    }
-
-    private static async Task<IResult?> ValidateAntiforgeryAsync(
-        HttpContext context,
-        IAntiforgery antiforgery)
-    {
-        try
-        {
-            await antiforgery.ValidateRequestAsync(context);
-            return null;
-        }
-        catch (AntiforgeryValidationException)
-        {
-            return Results.Problem(
-                statusCode: StatusCodes.Status400BadRequest,
-                title: "Antiforgery validation failed",
-                detail: "A valid antiforgery token is required.");
-        }
     }
 
     private static ApiClientResponse ToResponse(ApiClientRecord client)

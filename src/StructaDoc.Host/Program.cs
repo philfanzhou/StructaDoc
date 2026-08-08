@@ -147,6 +147,8 @@ app.MapSetupEndpoints(authenticationOptions.AdministratorSessionLifetime);
 app.MapAdministratorSessionEndpoints(
     authenticationOptions.AdministratorSessionLifetime);
 app.MapInteractiveSessionEndpoints(oidcOptions);
+app.MapAdministratorAccountEndpoints(
+    authenticationOptions.AdministratorSessionLifetime);
 app.MapApiClientAdministrationEndpoints();
 app.MapProviderConfigAdministrationEndpoints();
 app.MapParseRunEndpoints();
