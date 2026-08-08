@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Identity;
-using StructaDoc.Infrastructure.Persistence.Entities;
+using StructaDoc.Infrastructure.ControlPlane.Entities;
 
 namespace StructaDoc.Infrastructure.Authentication;
 
@@ -15,8 +15,8 @@ public sealed class AdministratorPasswordVerifier
         dummyUser = new AdminUserEntity
         {
             Id = Guid.Empty,
-            Email = "dummy@invalid.example",
-            NormalizedEmail = "DUMMY@INVALID.EXAMPLE",
+            Username = "dummy-account",
+            NormalizedUsername = "DUMMY-ACCOUNT",
             DisplayName = "Dummy",
             PasswordHash = string.Empty,
             IsActive = false,

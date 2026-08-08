@@ -14,7 +14,15 @@ public static class InteractiveSessionEndpoints
         OidcAuthenticationOptions oidcOptions)
     {
         var group = endpoints.MapGroup("/api/v1/session");
-        group.MapGet("", (ClaimsPrincipal user) => Results.Ok(ToResponse(user, oidcOptions.Enabled)))
+        group.MapGet(
+                "",
+                async (
+                    ClaimsPrincipal user,
+                    IAdministratorProvisioningService provisioning,
+                    CancellationToken cancellationToken) => Results.Ok(ToResponse(
+                    user,
+                    oidcOptions.Enabled,
+                    !await provisioning.AnyAdministratorExistsAsync(cancellationToken))))
             .AllowAnonymous()
             .Produces<InteractiveSessionResponse>();
         group.MapGet("/login", (HttpContext context, string? returnUrl) =>
@@ -75,7 +83,8 @@ public static class InteractiveSessionEndpoints
 
     private static InteractiveSessionResponse ToResponse(
         ClaimsPrincipal user,
-        bool oidcEnabled)
+        bool oidcEnabled,
+        bool setupRequired)
     {
         var authenticated = user.Identity?.IsAuthenticated == true;
         return new InteractiveSessionResponse(
@@ -90,7 +99,8 @@ public static class InteractiveSessionEndpoints
             authenticated ? user.FindFirstValue(ClaimTypes.Email) ?? user.FindFirstValue("email") : null,
             authenticated && (user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.Administrator)
                 || user.HasClaim(StructaDocClaimTypes.Administrator, bool.TrueString)),
-            oidcEnabled);
+            oidcEnabled,
+            setupRequired);
     }
 
     private static string NormalizeReturnUrl(string? returnUrl)

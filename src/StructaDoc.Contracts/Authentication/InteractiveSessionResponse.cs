@@ -8,4 +8,5 @@ public sealed record InteractiveSessionResponse(
     string? DisplayName,
     string? Email,
     bool IsAdministrator,
-    bool OidcEnabled);
+    bool OidcEnabled,
+    bool SetupRequired);

@@ -96,6 +96,7 @@ ENV ASPNETCORE_HTTP_PORTS=8080 \
     XDG_CACHE_HOME=/tmp/.cache \
     Database__Provider=Sqlite \
     Database__ConnectionString="Data Source=/data/structadoc.db" \
+    ControlPlane__DatabasePath=/data/control.db \
     Database__ApplyMigrationsOnStartup=true \
     Storage__Provider=Local \
     Storage__RootPath=/data/storage \

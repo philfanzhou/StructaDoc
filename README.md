@@ -77,6 +77,7 @@ dotnet run --project src/StructaDoc.Host
 The Host serves the compiled web application and API on one address:
 
 - `/` — the document workspace for signed-in users;
+- `/setup` — first-run administrator creation, reachable only while no administrator exists;
 - `/admin` — the administration area, restricted to administrators;
 - `/api/v1/...` — the service API.
 
@@ -90,36 +91,40 @@ For CI coverage and local reproduction, see [Continuous Integration](./docs/deve
 
 ## Single-Container Start
 
-The root `Dockerfile` builds the Vue application and .NET Host, then creates one non-root runtime image containing ASP.NET Core, LibreOffice no-GUI components, and common fonts. `compose.yaml` starts one application container backed by a named SQLite volume.
-
-Set the bootstrap administrator secret and start the service:
+The root `Dockerfile` builds the Vue application and .NET Host, then creates one non-root runtime image containing ASP.NET Core, LibreOffice no-GUI components, and common fonts. The image is the whole deployment unit: build it, then run one container with `/data` mounted.
 
 ```bash
-export STRUCTADOC_ADMIN_EMAIL='admin@example.com'
-export STRUCTADOC_ADMIN_PASSWORD='use-a-secret-manager-or-a-long-random-value'
-docker compose up --build --detach
+docker build --tag structadoc:local .
+docker run --detach --name structadoc \
+  --publish 8080:8080 \
+  --volume /srv/structadoc/data:/data \
+  --env Authentication__BootstrapAdministratorUsername='structadoc-admin' \
+  --env Authentication__BootstrapAdministratorPassword='use-a-secret-manager-or-a-long-random-value' \
+  structadoc:local
 ```
 
 PowerShell:
 
 ```powershell
-$env:STRUCTADOC_ADMIN_EMAIL = 'admin@example.com'
-$env:STRUCTADOC_ADMIN_PASSWORD = 'use-a-secret-manager-or-a-long-random-value'
-docker compose up --build --detach
+docker build --tag structadoc:local .
+docker run --detach --name structadoc `
+  --publish 8080:8080 `
+  --volume D:\StructaDoc\data:/data `
+  --env Authentication__BootstrapAdministratorUsername='structadoc-admin' `
+  --env Authentication__BootstrapAdministratorPassword='use-a-secret-manager-or-a-long-random-value' `
+  structadoc:local
 ```
 
-The default address is `http://localhost:8080`, with the workspace at `/` and the administration area at `/admin`. The example values show the required shape and are not default credentials. Inject production secrets through the deployment platform and remove bootstrap credentials after the first administrator exists.
+The default address is `http://localhost:8080`, with the workspace at `/` and the administration area at `/admin`. The bootstrap variables are optional: omit them and the first visitor is sent to `/setup` to create the administrator. The example values show the required shape and are not default credentials. Inject production secrets through the deployment platform and remove bootstrap credentials after the first administrator exists.
 
 For restricted networks, the repository includes explicit `official`, `china`, and connectivity-based `auto` build modes:
 
 ```bash
 bash ./scripts/build-container.sh auto
-docker compose up --detach --no-build
 ```
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-container.ps1 -MirrorMode Auto
-docker compose up --detach --no-build
 ```
 
 Review [Single-Container Deployment](./docs/deployment/single-container.md) for image contents, mirror trust, non-root permissions, persistent data, backup requirements, and runtime limits.

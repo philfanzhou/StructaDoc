@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Application.Authentication;
-using StructaDoc.Infrastructure.Persistence.Entities;
+using StructaDoc.Infrastructure.ControlPlane.Entities;
 
 namespace StructaDoc.Infrastructure.Authentication;
 
@@ -15,6 +15,7 @@ public static class AuthenticationServiceCollectionExtensions
         services.AddSingleton<IPasswordHasher<AdminUserEntity>, PasswordHasher<AdminUserEntity>>();
         services.AddSingleton<AdministratorPasswordVerifier>();
         services.AddScoped<IAdministratorAuthenticationService, AdministratorAuthenticationService>();
+        services.AddScoped<IAdministratorProvisioningService, AdministratorProvisioningService>();
         services.AddScoped<IApiClientAdministrationService, ApiClientAdministrationService>();
         return services;
     }

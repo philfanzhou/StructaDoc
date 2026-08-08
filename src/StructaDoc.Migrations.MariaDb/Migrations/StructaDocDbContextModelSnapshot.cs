@@ -22,62 +22,6 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.AdminUserEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("char(36)")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("varchar(255)")
-                        .HasColumnName("display_name");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("varchar(320)")
-                        .HasColumnName("email");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)")
-                        .HasColumnName("is_active");
-
-                    b.Property<DateTime?>("LastLoginAtUtc")
-                        .HasColumnType("datetime(6)")
-                        .HasColumnName("last_login_at_utc");
-
-                    b.Property<string>("NormalizedEmail")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("varchar(320)")
-                        .HasColumnName("normalized_email");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(1024)")
-                        .HasColumnName("password_hash");
-
-                    b.Property<Guid>("SecurityStamp")
-                        .HasColumnType("char(36)")
-                        .HasColumnName("security_stamp");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NormalizedEmail")
-                        .IsUnique()
-                        .HasDatabaseName("ux_admin_users_normalized_email");
-
-                    b.ToTable("admin_users", (string)null);
-                });
-
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ApiClientEntity", b =>
                 {
                     b.Property<Guid>("Id")

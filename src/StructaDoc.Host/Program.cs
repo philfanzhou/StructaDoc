@@ -10,8 +10,10 @@ using StructaDoc.Host.Documents;
 using StructaDoc.Host.ParseRuns;
 using StructaDoc.Host.Providers;
 using StructaDoc.Host.Resources;
+using StructaDoc.Host.Setup;
 using StructaDoc.Host.Workers;
 using StructaDoc.Infrastructure.Authentication;
+using StructaDoc.Infrastructure.ControlPlane;
 using StructaDoc.Infrastructure.Conversion;
 using StructaDoc.Infrastructure.Documents;
 using StructaDoc.Infrastructure.Persistence;
@@ -52,6 +54,10 @@ var authenticationOptions = builder.Configuration
     .GetSection(StructaDocAuthenticationOptions.SectionName)
     .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
 authenticationOptions.Validate();
+var controlPlaneOptions = builder.Configuration
+    .GetSection(ControlPlaneOptions.SectionName)
+    .Get<ControlPlaneOptions>() ?? new ControlPlaneOptions();
+controlPlaneOptions.Validate();
 var oidcOptions = builder.Configuration
     .GetSection(OidcAuthenticationOptions.SectionName)
     .Get<OidcAuthenticationOptions>() ?? new OidcAuthenticationOptions();
@@ -60,6 +66,7 @@ oidcOptions.Validate();
 builder.Services
     .AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
+builder.Services.AddStructaDocControlPlane(controlPlaneOptions);
 builder.Services.AddStructaDocPersistence(databaseOptions);
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions);
 builder.Services.AddStructaDocDocumentConversion(conversionOptions);
@@ -83,6 +90,9 @@ builder.Services.Configure<FormOptions>(options =>
 
 var app = builder.Build();
 
+// The control plane is migrated first and unconditionally: administration must be reachable even
+// when the configured business database is not, and it is what an administrator uses to fix that.
+await app.Services.ApplyStructaDocControlPlaneMigrationsAsync(app.Lifetime.ApplicationStopping);
 await app.Services.ApplyStructaDocMigrationsAsync(
     databaseOptions,
     app.Lifetime.ApplicationStopping);
@@ -133,6 +143,7 @@ if (ingestionOptions.UploadApiEnabled)
 app.MapDocumentReadEndpoints();
 app.MapDocumentAccessGrantEndpoints();
 
+app.MapSetupEndpoints(authenticationOptions.AdministratorSessionLifetime);
 app.MapAdministratorSessionEndpoints(
     authenticationOptions.AdministratorSessionLifetime);
 app.MapInteractiveSessionEndpoints(oidcOptions);

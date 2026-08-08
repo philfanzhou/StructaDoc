@@ -2,6 +2,6 @@ namespace StructaDoc.Application.Authentication;
 
 public sealed record AuthenticatedAdministrator(
     Guid Id,
-    string Email,
+    string Username,
     string DisplayName,
     Guid SecurityStamp);

@@ -372,11 +372,6 @@ internal static class ParseRunLeaseContract
         Assert.Single(await verificationContext.ParseBlocks.ToListAsync());
         Assert.Equal(2, await verificationContext.ParseArtifacts.CountAsync());
 
-        var administrator = await verificationContext.AdminUsers
-            .AsNoTracking()
-            .SingleAsync();
-        Assert.Equal("ADMIN@STRUCTADOC.TEST", administrator.NormalizedEmail);
-
         var apiClient = await verificationContext.ApiClients
             .AsNoTracking()
             .SingleAsync();
@@ -441,17 +436,6 @@ internal static class ParseRunLeaseContract
                 CreatedAtUtc = index <= 2 ? nowUtc : nowUtc.AddSeconds(-1),
             });
         }
-        dbContext.AdminUsers.Add(new AdminUserEntity
-        {
-            Id = Guid.NewGuid(),
-            Email = "admin@structadoc.test",
-            NormalizedEmail = "ADMIN@STRUCTADOC.TEST",
-            DisplayName = "Contract administrator",
-            PasswordHash = "contract-test-password-hash",
-            IsActive = true,
-            SecurityStamp = Guid.NewGuid(),
-            CreatedAtUtc = nowUtc,
-        });
         dbContext.ApiClients.Add(new ApiClientEntity
         {
             Id = Guid.NewGuid(),

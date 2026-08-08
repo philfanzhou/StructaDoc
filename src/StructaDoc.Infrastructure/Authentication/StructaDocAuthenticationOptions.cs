@@ -1,4 +1,4 @@
-using System.Net.Mail;
+using StructaDoc.Application.Authentication;
 
 namespace StructaDoc.Infrastructure.Authentication;
 
@@ -14,7 +14,7 @@ public sealed class StructaDocAuthenticationOptions
 
     public TimeSpan LoginRateLimitWindow { get; init; } = TimeSpan.FromMinutes(1);
 
-    public string? BootstrapAdministratorEmail { get; init; }
+    public string? BootstrapAdministratorUsername { get; init; }
 
     public string? BootstrapAdministratorPassword { get; init; }
 
@@ -48,38 +48,30 @@ public sealed class StructaDocAuthenticationOptions
                 "Authentication:LoginRateLimitWindow must be between 1 second and 1 hour.");
         }
 
-        var hasEmail = !string.IsNullOrWhiteSpace(BootstrapAdministratorEmail);
+        var hasUsername = !string.IsNullOrWhiteSpace(BootstrapAdministratorUsername);
         var hasPassword = !string.IsNullOrWhiteSpace(BootstrapAdministratorPassword);
 
-        if (hasEmail != hasPassword)
+        if (hasUsername != hasPassword)
         {
             throw new InvalidOperationException(
-                "Bootstrap administrator email and password must be configured together.");
+                "Bootstrap administrator username and password must be configured together.");
         }
 
-        if (!hasEmail)
+        if (!hasUsername)
         {
             return;
         }
 
-        if (!MailAddress.TryCreate(BootstrapAdministratorEmail, out _)
-            || BootstrapAdministratorEmail!.Length > 320)
+        if (!AdministratorUsernamePolicy.IsAcceptable(BootstrapAdministratorUsername))
         {
             throw new InvalidOperationException(
-                "Authentication:BootstrapAdministratorEmail must be a valid email address.");
+                $"Authentication:BootstrapAdministratorUsername must contain {AdministratorUsernamePolicy.MinimumLength} to {AdministratorUsernamePolicy.MaximumLength} letters, digits, '.', '_', or '-', and start and end with a letter or digit.");
         }
 
-        if (BootstrapAdministratorPassword!.Length < 12)
+        if (!AdministratorPasswordPolicy.IsAcceptable(BootstrapAdministratorPassword))
         {
             throw new InvalidOperationException(
-                "Authentication:BootstrapAdministratorPassword must contain at least 12 characters.");
-        }
-
-        if (BootstrapAdministratorPassword.Length
-            > AdministratorAuthenticationService.MaximumPasswordLength)
-        {
-            throw new InvalidOperationException(
-                $"Authentication:BootstrapAdministratorPassword cannot exceed {AdministratorAuthenticationService.MaximumPasswordLength} characters.");
+                $"Authentication:BootstrapAdministratorPassword must contain {AdministratorPasswordPolicy.MinimumLength} to {AdministratorPasswordPolicy.MaximumLength} characters.");
         }
 
         if (BootstrapAdministratorDisplayName?.Length > 255)

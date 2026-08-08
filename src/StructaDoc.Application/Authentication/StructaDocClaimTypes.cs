@@ -8,4 +8,5 @@ public static class StructaDocClaimTypes
     public const string ExternalIssuer = "external_issuer";
     public const string ExternalSubject = "external_subject";
     public const string Administrator = "structadoc_administrator";
+    public const string Username = "structadoc_username";
 }

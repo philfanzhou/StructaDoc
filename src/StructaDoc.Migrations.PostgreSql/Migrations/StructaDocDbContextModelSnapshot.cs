@@ -22,62 +22,6 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.AdminUserEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("display_name");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("character varying(320)")
-                        .HasColumnName("email");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<DateTime?>("LastLoginAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_login_at_utc");
-
-                    b.Property<string>("NormalizedEmail")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("character varying(320)")
-                        .HasColumnName("normalized_email");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .IsUnicode(false)
-                        .HasColumnType("character varying(1024)")
-                        .HasColumnName("password_hash");
-
-                    b.Property<Guid>("SecurityStamp")
-                        .HasColumnType("uuid")
-                        .HasColumnName("security_stamp");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NormalizedEmail")
-                        .IsUnique()
-                        .HasDatabaseName("ux_admin_users_normalized_email");
-
-                    b.ToTable("admin_users", (string)null);
-                });
-
             modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ApiClientEntity", b =>
                 {
                     b.Property<Guid>("Id")

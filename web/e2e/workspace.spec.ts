@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const administratorEmail = process.env.STRUCTADOC_E2E_ADMIN_EMAIL ?? 'admin@example.test'
+const administratorUsername = process.env.STRUCTADOC_E2E_ADMIN_USERNAME ?? 'structadoc-admin'
 const administratorPassword = process.env.STRUCTADOC_E2E_ADMIN_PASSWORD ?? 'StructaDoc-E2E-Password'
 
 test('administrator can use the document workspace and administration area', async ({ page }) => {
@@ -11,7 +11,7 @@ test('administrator can use the document workspace and administration area', asy
 
   await page.goto('/admin')
   await expect(page).toHaveURL(/\/admin\/signin/)
-  await page.locator('form input[type="email"]').fill(administratorEmail)
+  await page.locator('form input[name="username"]').fill(administratorUsername)
   await page.locator('form input[type="password"]').fill(administratorPassword)
   await page.locator('form button').click()
 

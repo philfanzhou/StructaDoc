@@ -3,11 +3,11 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using StructaDoc.Application.Authentication;
-using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Infrastructure.ControlPlane;
 
 namespace StructaDoc.Host.Authentication;
 
-public sealed class AdministratorCookieEvents(StructaDocDbContext dbContext)
+public sealed class AdministratorCookieEvents(ControlPlaneDbContext dbContext)
     : CookieAuthenticationEvents
 {
     public override async Task ValidatePrincipal(CookieValidatePrincipalContext context)

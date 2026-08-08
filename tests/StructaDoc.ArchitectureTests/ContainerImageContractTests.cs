@@ -4,8 +4,6 @@ public sealed class ContainerImageContractTests
 {
     private static readonly string Dockerfile = File.ReadAllText(
         Path.Combine(AppContext.BaseDirectory, "Dockerfile"));
-    private static readonly string ComposeFile = File.ReadAllText(
-        Path.Combine(AppContext.BaseDirectory, "compose.yaml"));
     private static readonly string PowerShellBuildScript = File.ReadAllText(
         Path.Combine(AppContext.BaseDirectory, "scripts", "build-container.ps1"));
     private static readonly string BashBuildScript = File.ReadAllText(
@@ -52,9 +50,20 @@ public sealed class ContainerImageContractTests
         Assert.Contains("--source \"${NUGET_SOURCE}\"", Dockerfile, StringComparison.Ordinal);
         Assert.DoesNotContain("ipinfo", Dockerfile, StringComparison.OrdinalIgnoreCase);
 
-        Assert.Contains("STRUCTADOC_DOTNET_REGISTRY", ComposeFile, StringComparison.Ordinal);
-        Assert.Contains("STRUCTADOC_NUGET_SOURCE", ComposeFile, StringComparison.Ordinal);
-        Assert.Contains("STRUCTADOC_APT_MIRROR", ComposeFile, StringComparison.Ordinal);
+        // The image is the only deployment unit, so the build scripts are the sole place that can
+        // redirect a package source. Each overridable source must reach `docker build` explicitly.
+        foreach (var buildArgument in new[]
+                 {
+                     "DOTNET_REGISTRY=",
+                     "NUGET_SOURCE=",
+                     "APT_MIRROR=",
+                     "APT_PORTS_MIRROR=",
+                 })
+        {
+            Assert.Contains(buildArgument, PowerShellBuildScript, StringComparison.Ordinal);
+            Assert.Contains(buildArgument, BashBuildScript, StringComparison.Ordinal);
+        }
+
         Assert.Contains("Test-BuildEndpoint", PowerShellBuildScript, StringComparison.Ordinal);
         Assert.Contains("probe_endpoint", BashBuildScript, StringComparison.Ordinal);
         Assert.Contains("https://repo.huaweicloud.com/repository/nuget/v3/index.json", PowerShellBuildScript, StringComparison.Ordinal);

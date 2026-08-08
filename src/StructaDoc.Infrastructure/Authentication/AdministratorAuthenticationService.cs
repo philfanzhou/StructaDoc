@@ -1,32 +1,31 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using StructaDoc.Application.Authentication;
-using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Infrastructure.ControlPlane;
 
 namespace StructaDoc.Infrastructure.Authentication;
 
 public sealed class AdministratorAuthenticationService(
-    StructaDocDbContext dbContext,
-    IPasswordHasher<Persistence.Entities.AdminUserEntity> passwordHasher,
+    ControlPlaneDbContext dbContext,
+    IPasswordHasher<ControlPlane.Entities.AdminUserEntity> passwordHasher,
     AdministratorPasswordVerifier passwordVerifier) : IAdministratorAuthenticationService
 {
-    internal const int MaximumPasswordLength = 1024;
-
     public async Task<AuthenticatedAdministrator?> AuthenticateAsync(
-        string email,
+        string username,
         string password,
         DateTime nowUtc,
         CancellationToken cancellationToken = default)
     {
         ValidateUtc(nowUtc);
-        var suppliedPassword = password is not null && password.Length <= MaximumPasswordLength
-            ? password
-            : string.Empty;
-        var normalizedEmail = NormalizeEmail(email);
-        var user = normalizedEmail is null
+        var suppliedPassword =
+            password is not null && password.Length <= AdministratorPasswordPolicy.MaximumLength
+                ? password
+                : string.Empty;
+        var normalizedUsername = AdministratorUsernamePolicy.Normalize(username);
+        var user = normalizedUsername is null
             ? null
             : await dbContext.AdminUsers.SingleOrDefaultAsync(
-                candidate => candidate.NormalizedEmail == normalizedEmail,
+                candidate => candidate.NormalizedUsername == normalizedUsername,
                 cancellationToken);
         var verificationResult = passwordVerifier.Verify(user, suppliedPassword);
 
@@ -47,19 +46,9 @@ public sealed class AdministratorAuthenticationService(
 
         return new AuthenticatedAdministrator(
             user.Id,
-            user.Email,
+            user.Username,
             user.DisplayName,
             user.SecurityStamp);
-    }
-
-    internal static string? NormalizeEmail(string? email)
-    {
-        if (string.IsNullOrWhiteSpace(email) || email.Length > 320)
-        {
-            return null;
-        }
-
-        return email.Trim().ToUpperInvariant();
     }
 
     private static void ValidateUtc(DateTime value)

@@ -13,7 +13,7 @@ internal static class AuthenticationTestClientExtensions
             "/api/v1/admin/session")
         {
             Content = JsonContent.Create(new AdministratorLoginRequest(
-                StructaDocWebApplicationFactory.AdministratorEmail,
+                StructaDocWebApplicationFactory.AdministratorUsername,
                 StructaDocWebApplicationFactory.AdministratorPassword)),
         };
         loginRequest.Headers.Add(anonymousToken.HeaderName, anonymousToken.RequestToken);

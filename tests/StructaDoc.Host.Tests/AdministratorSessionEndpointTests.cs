@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Contracts.Authentication;
-using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Infrastructure.ControlPlane;
 
 namespace StructaDoc.Host.Tests;
 
@@ -19,7 +19,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/session",
             new AdministratorLoginRequest(
-                StructaDocWebApplicationFactory.AdministratorEmail,
+                StructaDocWebApplicationFactory.AdministratorUsername,
                 StructaDocWebApplicationFactory.AdministratorPassword));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -33,7 +33,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/session")
         {
             Content = JsonContent.Create(new AdministratorLoginRequest(
-                StructaDocWebApplicationFactory.AdministratorEmail,
+                StructaDocWebApplicationFactory.AdministratorUsername,
                 "not-the-password")),
         };
         request.Headers.Add(token.HeaderName, token.RequestToken);
@@ -56,7 +56,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
             using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/session")
             {
                 Content = JsonContent.Create(new AdministratorLoginRequest(
-                    StructaDocWebApplicationFactory.AdministratorEmail,
+                    StructaDocWebApplicationFactory.AdministratorUsername,
                     "not-the-password")),
             };
             request.Headers.Add(token.HeaderName, token.RequestToken);
@@ -81,7 +81,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
 
         Assert.Equal(HttpStatusCode.OK, sessionResponse.StatusCode);
         Assert.NotNull(session);
-        Assert.Equal(StructaDocWebApplicationFactory.AdministratorEmail, session.Email);
+        Assert.Equal(StructaDocWebApplicationFactory.AdministratorUsername, session.Username);
 
         using var logoutResponse = await client.DeleteAsync("/api/v1/admin/session");
         Assert.Equal(HttpStatusCode.NoContent, logoutResponse.StatusCode);
@@ -100,7 +100,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
 
         await using (var scope = isolatedFactory.Services.CreateAsyncScope())
         {
-            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ControlPlaneDbContext>();
             var administrator = await dbContext.AdminUsers.SingleAsync();
             originalStamp = administrator.SecurityStamp;
             administrator.SecurityStamp = Guid.NewGuid();
@@ -115,7 +115,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
         finally
         {
             await using var scope = isolatedFactory.Services.CreateAsyncScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ControlPlaneDbContext>();
             var administrator = await dbContext.AdminUsers.SingleAsync();
             administrator.SecurityStamp = originalStamp;
             await dbContext.SaveChangesAsync();

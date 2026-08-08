@@ -2,13 +2,19 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using StructaDoc.Infrastructure.Persistence;
-using StructaDoc.Infrastructure.Persistence.Entities;
+using StructaDoc.Application.Authentication;
+using StructaDoc.Infrastructure.ControlPlane;
+using StructaDoc.Infrastructure.ControlPlane.Entities;
 
 namespace StructaDoc.Infrastructure.Authentication;
 
 public static class AdministratorBootstrapExtensions
 {
+    /// <summary>
+    /// Creates an administrator from deployment configuration. Interactive first-run setup is the
+    /// normal path; this one exists so unattended deployments and CI can provision without a
+    /// browser. Configuring it also closes first-run setup, because an administrator then exists.
+    /// </summary>
     public static async Task BootstrapStructaDocAdministratorAsync(
         this IServiceProvider serviceProvider,
         StructaDocAuthenticationOptions options,
@@ -18,36 +24,36 @@ public static class AdministratorBootstrapExtensions
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
 
-        if (string.IsNullOrWhiteSpace(options.BootstrapAdministratorEmail))
+        if (string.IsNullOrWhiteSpace(options.BootstrapAdministratorUsername))
         {
             return;
         }
 
         await using var scope = serviceProvider.CreateAsyncScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ControlPlaneDbContext>();
         var passwordHasher = scope.ServiceProvider
             .GetRequiredService<IPasswordHasher<AdminUserEntity>>();
         var logger = scope.ServiceProvider
             .GetRequiredService<ILoggerFactory>()
             .CreateLogger("StructaDoc.AdministratorBootstrap");
-        var normalizedEmail = AdministratorAuthenticationService.NormalizeEmail(
-            options.BootstrapAdministratorEmail)!;
+        var normalizedUsername = AdministratorUsernamePolicy.Normalize(
+            options.BootstrapAdministratorUsername)!;
 
         if (await dbContext.AdminUsers.AnyAsync(
-                user => user.NormalizedEmail == normalizedEmail,
+                user => user.NormalizedUsername == normalizedUsername,
                 cancellationToken))
         {
             return;
         }
 
-        var email = options.BootstrapAdministratorEmail.Trim();
+        var username = options.BootstrapAdministratorUsername.Trim();
         var user = new AdminUserEntity
         {
             Id = Guid.NewGuid(),
-            Email = email,
-            NormalizedEmail = normalizedEmail,
+            Username = username,
+            NormalizedUsername = normalizedUsername,
             DisplayName = string.IsNullOrWhiteSpace(options.BootstrapAdministratorDisplayName)
-                ? email
+                ? username
                 : options.BootstrapAdministratorDisplayName.Trim(),
             PasswordHash = string.Empty,
             IsActive = true,
@@ -71,7 +77,7 @@ public static class AdministratorBootstrapExtensions
             dbContext.ChangeTracker.Clear();
 
             if (!await dbContext.AdminUsers.AnyAsync(
-                    candidate => candidate.NormalizedEmail == normalizedEmail,
+                    candidate => candidate.NormalizedUsername == normalizedUsername,
                     cancellationToken))
             {
                 throw;

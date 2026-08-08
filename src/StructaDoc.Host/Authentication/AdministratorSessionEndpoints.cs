@@ -57,7 +57,7 @@ public static class AdministratorSessionEndpoints
             }
 
             var administrator = await authenticationService.AuthenticateAsync(
-                request.Email,
+                request.Username,
                 request.Password,
                 timeProvider.GetUtcNow().UtcDateTime,
                 cancellationToken);
@@ -67,7 +67,7 @@ public static class AdministratorSessionEndpoints
                 return Results.Problem(
                     statusCode: StatusCodes.Status401Unauthorized,
                     title: "Authentication failed",
-                    detail: "The email or password is invalid.");
+                    detail: "The username or password is invalid.");
             }
 
             var principal = CreatePrincipal(administrator);
@@ -88,7 +88,7 @@ public static class AdministratorSessionEndpoints
     {
         return Results.Ok(new AdministratorSessionResponse(
             Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!),
-            user.FindFirstValue(ClaimTypes.Email)!,
+            user.FindFirstValue(StructaDocClaimTypes.Username)!,
             user.FindFirstValue(ClaimTypes.Name)!));
     }
 
@@ -105,12 +105,12 @@ public static class AdministratorSessionEndpoints
         return Results.NoContent();
     }
 
-    private static ClaimsPrincipal CreatePrincipal(AuthenticatedAdministrator administrator)
+    internal static ClaimsPrincipal CreatePrincipal(AuthenticatedAdministrator administrator)
     {
         var claims = new Claim[]
         {
             new(ClaimTypes.NameIdentifier, administrator.Id.ToString("D")),
-            new(ClaimTypes.Email, administrator.Email),
+            new(StructaDocClaimTypes.Username, administrator.Username),
             new(ClaimTypes.Name, administrator.DisplayName),
             new(StructaDocClaimTypes.SubjectType, SubjectTypes.Administrator),
             new(StructaDocClaimTypes.SecurityStamp, administrator.SecurityStamp.ToString("D")),
@@ -124,7 +124,7 @@ public static class AdministratorSessionEndpoints
     {
         return new AdministratorSessionResponse(
             administrator.Id,
-            administrator.Email,
+            administrator.Username,
             administrator.DisplayName);
     }
 

@@ -8,7 +8,7 @@ import { loadSession, safeReturnUrl, session } from '../session'
 
 const route = useRoute()
 const router = useRouter()
-const email = ref('')
+const username = ref('')
 const password = ref('')
 const busy = ref(false)
 const target = computed(() => safeReturnUrl(route.query.returnUrl, '/admin'))
@@ -17,7 +17,7 @@ const loginUrl = computed(() => `/api/v1/session/login?returnUrl=${encodeURIComp
 async function signIn() {
   busy.value = true
   try {
-    await mutate('/api/v1/admin/session', 'POST', { email: email.value, password: password.value })
+    await mutate('/api/v1/admin/session', 'POST', { username: username.value, password: password.value })
     resetAntiforgery()
     const current = await loadSession()
     if (!current.isAdministrator) { message('该账号没有管理员权限。', true); return }
@@ -39,7 +39,7 @@ async function signIn() {
       <a v-if="session?.oidcEnabled" class="primary button-link" :href="loginUrl">使用组织账号登录</a>
       <div v-if="session?.oidcEnabled" class="divider"><span>或使用本地应急管理员</span></div>
       <form @submit.prevent="signIn">
-        <label>管理员邮箱<input v-model="email" type="email" autocomplete="username" required></label>
+        <label>管理员用户名<input v-model="username" type="text" name="username" autocomplete="username" required></label>
         <label>密码<input v-model="password" type="password" autocomplete="current-password" required></label>
         <button class="secondary" :disabled="busy">{{ busy ? '登录中…' : '管理员登录' }}</button>
       </form>

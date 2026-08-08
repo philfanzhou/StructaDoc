@@ -112,7 +112,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
-      STRUCTADOC_E2E_ADMIN_EMAIL: admin@example.test
+      STRUCTADOC_E2E_ADMIN_USERNAME: structadoc-admin
       STRUCTADOC_E2E_ADMIN_PASSWORD: StructaDoc-${{ github.run_id }}-${{ github.run_attempt }}
       STRUCTADOC_E2E_BASE_URL: http://127.0.0.1:8080
     steps:
@@ -145,7 +145,7 @@ jobs:
             --cap-drop ALL \
             --tmpfs /tmp:size=256m,mode=1777 \
             --publish 127.0.0.1:8080:8080 \
-            --env Authentication__BootstrapAdministratorEmail="$STRUCTADOC_E2E_ADMIN_EMAIL" \
+            --env Authentication__BootstrapAdministratorUsername="$STRUCTADOC_E2E_ADMIN_USERNAME" \
             --env Authentication__BootstrapAdministratorPassword="$STRUCTADOC_E2E_ADMIN_PASSWORD" \
             --env Worker__ExecutionEnabled=false \
             structadoc:ci

@@ -44,7 +44,7 @@ The `official` mode is appropriate for reproducible CI and release builds. The d
 - `STRUCTADOC_CN_APT_MIRROR` — Ubuntu repository for amd64 and similar architectures;
 - `STRUCTADOC_CN_APT_PORTS_MIRROR` — Ubuntu Ports repository for arm64 and similar architectures.
 
-The default tag is `structadoc:local`. Bash accepts `STRUCTADOC_IMAGE_TAG`; PowerShell accepts `-ImageTag`. Compose also exposes `STRUCTADOC_NUGET_SOURCE`, `STRUCTADOC_APT_MIRROR`, and `STRUCTADOC_APT_PORTS_MIRROR` as explicit build arguments.
+The default tag is `structadoc:local`. Bash accepts `STRUCTADOC_IMAGE_TAG`; PowerShell accepts `-ImageTag`. Both scripts forward `DOTNET_REGISTRY`, `NUGET_SOURCE`, `APT_MIRROR`, and `APT_PORTS_MIRROR` to `docker build` as explicit build arguments.
 
 Docker resolves `FROM` before container commands run, so package-source probing cannot replace the base-image registry. Configure a trusted Docker registry mirror, or set `STRUCTADOC_DOTNET_REGISTRY` to an internal path that contains both `sdk` and `aspnet` repositories.
 
@@ -59,31 +59,49 @@ docker run --rm --entrypoint /usr/bin/libreoffice structadoc:local --headless --
 docker run --rm --entrypoint /bin/sh structadoc:local -c '! command -v python3 && ! command -v node && ! command -v dotnet-sdk'
 ```
 
-## SQLite Compose Start
+## SQLite Container Start
 
-`compose.yaml` starts one StructaDoc application container. SQLite, original files, generated resources, and the Data Protection key ring all live under `/data` on one named volume. No database server is included in the image.
-
-Set bootstrap credentials in the current shell:
+The image is the entire deployment unit. There is no orchestration file: one `docker run` starts the service. SQLite, original files, generated resources, and the Data Protection key ring all live under `/data`. No database server is included in the image.
 
 ```bash
-export STRUCTADOC_ADMIN_EMAIL='admin@example.com'
-export STRUCTADOC_ADMIN_PASSWORD='use-a-secret-manager-or-a-long-random-value'
-docker compose up --build --detach
+docker run --detach --name structadoc \
+  --read-only \
+  --security-opt no-new-privileges:true \
+  --cap-drop ALL \
+  --tmpfs /tmp:size=256m,mode=1777 \
+  --restart unless-stopped \
+  --publish 8080:8080 \
+  --volume /srv/structadoc/data:/data \
+  --env Authentication__BootstrapAdministratorUsername='structadoc-admin' \
+  --env Authentication__BootstrapAdministratorPassword='use-a-secret-manager-or-a-long-random-value' \
+  structadoc:local
 ```
 
 PowerShell:
 
 ```powershell
-$env:STRUCTADOC_ADMIN_EMAIL = 'admin@example.com'
-$env:STRUCTADOC_ADMIN_PASSWORD = 'use-a-secret-manager-or-a-long-random-value'
-docker compose up --build --detach
+docker run --detach --name structadoc `
+  --read-only `
+  --security-opt no-new-privileges:true `
+  --cap-drop ALL `
+  --tmpfs /tmp:size=256m,mode=1777 `
+  --restart unless-stopped `
+  --publish 8080:8080 `
+  --volume D:\StructaDoc\data:/data `
+  --env Authentication__BootstrapAdministratorUsername='structadoc-admin' `
+  --env Authentication__BootstrapAdministratorPassword='use-a-secret-manager-or-a-long-random-value' `
+  structadoc:local
 ```
 
-If a wrapper already built the image, use `docker compose up --detach --no-build` so Compose does not rebuild with different source settings.
+The security flags are part of the supported configuration, not decoration: a read-only root filesystem, dropped Linux capabilities, no privilege escalation, a bounded `/tmp` `tmpfs`, and the non-root UID from the official .NET image. Everything the service writes goes to `/data` or that `tmpfs`.
 
-The examples are placeholders, not default credentials. Production environments must inject real values through deployment secrets, not repository files, Compose files, or shared `.env` files. Remove bootstrap variables after confirming that the first administrator can sign in; the stored account remains.
+A host-directory bind mount is preferred over a named volume. `/data` is the entire recovery set, and a plain directory can be inspected and copied without Docker-specific tooling.
 
-The default mapping is `http://localhost:8080`, and readiness is `/health/ready`. One container serves the document workspace at `/`, the administration area at `/admin`, and the API under `/api/v1`, so a deployment needs one published port, one certificate, and one reverse-proxy upstream. See [User Workspace and OIDC](../development/user-workspace-oidc.md). Compose uses a read-only root filesystem, drops Linux capabilities, prevents privilege escalation, gives `/tmp` a bounded `tmpfs`, and runs as the non-root UID from the official .NET image.
+The bootstrap variables are optional. Without them the container starts with no administrator and the first visitor to `http://localhost:8080` is sent to `/setup` to create one; see [Authentication](../development/authentication.md) for what that exposes. Set them for unattended deployments, where an account must exist before the service accepts requests.
+
+The examples are placeholders, not default credentials. Production environments must inject real values through deployment secrets, not repository files or shared `.env` files. Remove bootstrap variables after confirming that the first administrator can sign in; the stored account remains.
+
+The default mapping is `http://localhost:8080`, and readiness is `/health/ready`. One container serves the document workspace at `/`, the administration area at `/admin`, and the API under `/api/v1`, so a deployment needs one published port, one certificate, and one reverse-proxy upstream. See [User Workspace and OIDC](../development/user-workspace-oidc.md).
 
 Real Parse Run execution remains disabled unless explicitly enabled:
 
@@ -97,7 +115,8 @@ Enabling it permits the Worker to send documents to the selected Provider and to
 
 The image declares `/data` and prepares:
 
-- `/data/structadoc.db` — SQLite database and sidecar files;
+- `/data/control.db` — control-plane database holding administrator accounts, always local SQLite;
+- `/data/structadoc.db` — SQLite business database and sidecar files;
 - `/data/storage` — originals, Provider archives, segments, Assets, and Artifacts;
 - `/data/keys` — the Data Protection key ring for cookies, antiforgery, Provider credentials, and submission checkpoints;
 - `/data/temp` — bounded temporary space for LibreOffice, ZIP intake, and normalization.

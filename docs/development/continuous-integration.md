@@ -51,7 +51,7 @@ $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
 dotnet test tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj
 ```
 
-Browser tests default to `http://127.0.0.1:8080`. Override it with `STRUCTADOC_E2E_BASE_URL`; inject the test administrator through `STRUCTADOC_E2E_ADMIN_EMAIL` and `STRUCTADOC_E2E_ADMIN_PASSWORD`.
+Browser tests default to `http://127.0.0.1:8080`. Override it with `STRUCTADOC_E2E_BASE_URL`; inject the test administrator through `STRUCTADOC_E2E_ADMIN_USERNAME` and `STRUCTADOC_E2E_ADMIN_PASSWORD`.
 
 ## Interpretation Rules
 

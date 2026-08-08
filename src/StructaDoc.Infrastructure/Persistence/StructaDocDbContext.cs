@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using StructaDoc.Infrastructure.Persistence.Entities;
 
 namespace StructaDoc.Infrastructure.Persistence;
@@ -7,8 +6,6 @@ namespace StructaDoc.Infrastructure.Persistence;
 public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> options)
     : DbContext(options)
 {
-    public DbSet<AdminUserEntity> AdminUsers => Set<AdminUserEntity>();
-
     public DbSet<ApiClientEntity> ApiClients => Set<ApiClientEntity>();
 
     public DbSet<DocumentEntity> Documents => Set<DocumentEntity>();
@@ -50,9 +47,15 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(StructaDocDbContext).Assembly);
+        // Control-plane entities live in the same assembly but belong to a separate SQLite database,
+        // so they must not be discovered into the business model.
+        modelBuilder.ApplyConfigurationsFromAssembly(
+            typeof(StructaDocDbContext).Assembly,
+            type => type.Namespace?.StartsWith(
+                "StructaDoc.Infrastructure.ControlPlane",
+                StringComparison.Ordinal) is not true);
         ConfigureMySqlOidcIdentityColumns(modelBuilder);
-        ConfigureUtcDateTimes(modelBuilder);
+        UtcDateTimeConventions.Apply(modelBuilder);
     }
 
     private void ConfigureMySqlOidcIdentityColumns(ModelBuilder modelBuilder)
@@ -117,37 +120,4 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
         }
     }
 
-    private static void ConfigureUtcDateTimes(ModelBuilder modelBuilder)
-    {
-        var dateTimeConverter = new ValueConverter<DateTime, DateTime>(
-            value => RequireUtc(value),
-            value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
-        var nullableDateTimeConverter = new ValueConverter<DateTime?, DateTime?>(
-            value => value.HasValue ? RequireUtc(value.Value) : value,
-            value => value.HasValue
-                ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
-                : value);
-
-        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
-        {
-            foreach (var property in entityType.GetProperties())
-            {
-                if (property.ClrType == typeof(DateTime))
-                {
-                    property.SetValueConverter(dateTimeConverter);
-                }
-                else if (property.ClrType == typeof(DateTime?))
-                {
-                    property.SetValueConverter(nullableDateTimeConverter);
-                }
-            }
-        }
-    }
-
-    private static DateTime RequireUtc(DateTime value)
-    {
-        return value.Kind == DateTimeKind.Utc
-            ? value
-            : throw new InvalidOperationException("Persisted DateTime values must use UTC.");
-    }
 }

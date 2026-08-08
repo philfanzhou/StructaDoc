@@ -1,11 +1,12 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 
 namespace StructaDoc.Host.Tests;
 
 public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Program>
 {
-    public const string AdministratorEmail = "admin@structadoc.test";
+    public const string AdministratorUsername = "structadoc-admin";
     public const string AdministratorPassword = "StructaDoc-Test-Password-2026!";
 
     private readonly string testDirectory = Path.Combine(
@@ -29,8 +30,8 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
             "Authentication:DataProtectionKeysPath",
             Path.Combine(testDirectory, "keys"));
         builder.UseSetting(
-            "Authentication:BootstrapAdministratorEmail",
-            AdministratorEmail);
+            "Authentication:BootstrapAdministratorUsername",
+            AdministratorUsername);
         builder.UseSetting(
             "Authentication:BootstrapAdministratorPassword",
             AdministratorPassword);
@@ -46,6 +47,9 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
             "Database:ConnectionString",
             $"Data Source={Path.Combine(testDirectory, "structadoc.db")};Pooling=False");
         builder.UseSetting("Database:ApplyMigrationsOnStartup", "true");
+        builder.UseSetting(
+            "ControlPlane:DatabasePath",
+            Path.Combine(testDirectory, "control.db"));
     }
 
     protected override void Dispose(bool disposing)
@@ -54,6 +58,10 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
 
         if (disposing && Directory.Exists(testDirectory))
         {
+            // The control-plane database keeps pooling enabled, so its file stays open until the
+            // pool is released. The business database opts out of pooling in its connection string.
+            SqliteConnection.ClearAllPools();
+
             Directory.Delete(testDirectory, recursive: true);
         }
     }
