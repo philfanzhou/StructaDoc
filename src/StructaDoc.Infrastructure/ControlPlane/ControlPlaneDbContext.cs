@@ -5,7 +5,8 @@ namespace StructaDoc.Infrastructure.ControlPlane;
 
 /// <summary>
 /// The control plane holds what the service needs in order to be administered at all: who may sign
-/// in, and how the first administrator came to exist. It is always a local SQLite file and never
+/// in, how the first administrator came to exist, and what an administrator has configured through
+/// the web interface. It is always a local SQLite file and never
 /// moves to the configured business database, because the business database is itself something an
 /// administrator configures. Keeping the two separate breaks that cycle, and keeps break-glass
 /// sign-in working while the business database is unreachable.
@@ -16,6 +17,8 @@ public sealed class ControlPlaneDbContext(DbContextOptions<ControlPlaneDbContext
     public DbSet<AdminUserEntity> AdminUsers => Set<AdminUserEntity>();
 
     public DbSet<SetupClaimEntity> SetupClaims => Set<SetupClaimEntity>();
+
+    public DbSet<SettingEntity> Settings => Set<SettingEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

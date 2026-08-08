@@ -103,13 +103,27 @@ The examples are placeholders, not default credentials. Production environments 
 
 The default mapping is `http://localhost:8080`, and readiness is `/health/ready`. One container serves the document workspace at `/`, the administration area at `/admin`, and the API under `/api/v1`, so a deployment needs one published port, one certificate, and one reverse-proxy upstream. See [User Workspace and OIDC](../development/user-workspace-oidc.md).
 
-Real Parse Run execution remains disabled unless explicitly enabled:
+Real Parse Run execution remains disabled until it is turned on. An administrator can do that under `/admin` without touching the container, and it takes effect immediately. Enabling it permits the Worker to send documents to the selected Provider and to start LibreOffice when conversion is required.
+
+Setting it in the deployment instead pins it, which removes it from the administration page:
 
 ```bash
 export STRUCTADOC_EXECUTION_ENABLED=true
 ```
 
-Enabling it permits the Worker to send documents to the selected Provider and to start LibreOffice when conversion is required.
+See [Service Settings](../development/service-settings.md) for what else is settable from the browser and what each change requires.
+
+## Restart Policy
+
+Some settings only take effect after a restart, and the administration page offers a button that stops the Host so its supervisor starts it again. The image cannot restart itself, so run the container with a restart policy or that button leaves the service down until it is started by hand:
+
+```bash
+docker run --restart unless-stopped ...
+```
+
+The Host exits cleanly, with status `0`. `unless-stopped` and `always` restart on that; `on-failure` does not, so it is not a working choice here.
+
+A deployment whose administrators are not expected to change settings can leave the policy off; the button then reports that the service will not come back on its own, both before and after it is used.
 
 ## Persistence and Permissions
 

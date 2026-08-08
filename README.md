@@ -30,7 +30,7 @@ StructaDoc is in early development, but the main end-to-end platform is implemen
 - stable result DTOs, authorized downloads, Markdown preview, and exports;
 - persistent cleanup jobs that complete object deletion before removing relational data.
 
-The production Docker image, PostgreSQL/MySQL/MariaDB contract suites, and Chromium workspace smoke test are exercised by GitHub Actions. Real parsing is disabled by default: a Worker sends documents to a configured Provider only when `Worker__ExecutionEnabled=true` is set explicitly.
+The production Docker image, PostgreSQL/MySQL/MariaDB contract suites, and Chromium workspace smoke test are exercised by GitHub Actions. Real parsing is disabled by default: a Worker sends documents to a configured Provider only after an administrator enables it under `/admin`, or `Worker__ExecutionEnabled=true` is set in the deployment.
 
 See the [documentation index](./docs/README.md) for architecture decisions, specifications, implementation notes, and deployment guidance.
 
@@ -225,7 +225,7 @@ Administrator endpoints manage local sessions, API clients, and Provider configu
 
 ## Key Configuration
 
-Configuration uses standard ASP.NET Core keys; environment variables replace `:` with `__`.
+Configuration uses standard ASP.NET Core keys; environment variables replace `:` with `__`. Some keys are also settable under `/admin`, where an environment variable, if present, wins and the setting is shown as managed by the deployment. See [Service Settings](./docs/development/service-settings.md).
 
 | Area | Important keys |
 |---|---|

@@ -5,6 +5,7 @@ namespace StructaDoc.Host.Workers;
 public sealed class ParseRunExecutionWorker(
     IServiceScopeFactory serviceScopeFactory,
     ParseRunWorkerOptions options,
+    ParseExecutionGate executionGate,
     TimeProvider timeProvider,
     ILogger<ParseRunExecutionWorker> logger) : BackgroundService
 {
@@ -12,7 +13,10 @@ public sealed class ParseRunExecutionWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!options.Enabled || !options.ExecutionEnabled)
+        // Worker:Enabled decides whether this Host runs Workers at all and is a deployment choice.
+        // Execution is a separate switch an administrator can flip while the service runs, so the
+        // slots start regardless and idle while the gate is closed.
+        if (!options.Enabled)
         {
             logger.LogInformation("Parse Run execution worker is disabled.");
             return;
@@ -70,6 +74,13 @@ public sealed class ParseRunExecutionWorker(
         string slotWorkerId,
         CancellationToken cancellationToken)
     {
+        // Checked per cycle rather than per start, so disabling execution stops claiming new work
+        // without waiting for a restart. Runs already claimed by this slot are not interrupted.
+        if (!executionGate.IsOpen)
+        {
+            return false;
+        }
+
         await using var scope = serviceScopeFactory.CreateAsyncScope();
         var leaseStore = scope.ServiceProvider.GetRequiredService<IParseRunLeaseStore>();
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;

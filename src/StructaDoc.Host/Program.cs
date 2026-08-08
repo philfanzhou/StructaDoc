@@ -4,12 +4,14 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.ProviderResults;
+using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.System;
 using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
 using StructaDoc.Host.ParseRuns;
 using StructaDoc.Host.Providers;
 using StructaDoc.Host.Resources;
+using StructaDoc.Host.Settings;
 using StructaDoc.Host.Setup;
 using StructaDoc.Host.Workers;
 using StructaDoc.Infrastructure.Authentication;
@@ -19,30 +21,45 @@ using StructaDoc.Infrastructure.Documents;
 using StructaDoc.Infrastructure.Persistence;
 using StructaDoc.Infrastructure.ProviderResults;
 using StructaDoc.Infrastructure.Providers;
+using StructaDoc.Infrastructure.Settings;
 using StructaDoc.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var databaseOptions = builder.Configuration
+var controlPlaneOptions = builder.Configuration
+    .GetSection(ControlPlaneOptions.SectionName)
+    .Get<ControlPlaneOptions>() ?? new ControlPlaneOptions();
+controlPlaneOptions.Validate();
+
+// Settings an administrator chose in the browser join configuration before anything is read from
+// it. Everything below binds against this rather than the raw builder configuration, or a stored
+// setting would be visible to the administration page and invisible to the service using it.
+var settingsConfiguration = StructaDocSettingsConfiguration.Create(
+    builder.Configuration,
+    controlPlaneOptions,
+    args);
+var configuration = settingsConfiguration.Effective;
+
+var databaseOptions = configuration
     .GetSection(DatabaseOptions.SectionName)
     .Get<DatabaseOptions>() ?? new DatabaseOptions();
-var workerOptions = builder.Configuration
+var workerOptions = configuration
     .GetSection(ParseRunWorkerOptions.SectionName)
     .Get<ParseRunWorkerOptions>() ?? new ParseRunWorkerOptions();
 workerOptions.Validate();
-var ingestionOptions = builder.Configuration
+var ingestionOptions = configuration
     .GetSection(DocumentIngestionOptions.SectionName)
     .Get<DocumentIngestionOptions>() ?? new DocumentIngestionOptions();
-var storageOptions = builder.Configuration
+var storageOptions = configuration
     .GetSection(FileStorageOptions.SectionName)
     .Get<FileStorageOptions>() ?? new FileStorageOptions();
-var providerResultOptions = builder.Configuration
+var providerResultOptions = configuration
     .GetSection(ProviderResultIntakeOptions.SectionName)
     .Get<ProviderResultIntakeOptions>() ?? new ProviderResultIntakeOptions();
-var providerResultNormalizationOptions = builder.Configuration
+var providerResultNormalizationOptions = configuration
     .GetSection(ProviderResultNormalizationOptions.SectionName)
     .Get<ProviderResultNormalizationOptions>() ?? new ProviderResultNormalizationOptions();
-var conversionOptions = builder.Configuration
+var conversionOptions = configuration
     .GetSection(LibreOfficeConversionOptions.SectionName)
     .Get<LibreOfficeConversionOptions>() ?? new LibreOfficeConversionOptions();
 ingestionOptions.Validate();
@@ -50,15 +67,11 @@ storageOptions.Validate();
 providerResultOptions.Validate();
 providerResultNormalizationOptions.Validate();
 conversionOptions.Validate();
-var authenticationOptions = builder.Configuration
+var authenticationOptions = configuration
     .GetSection(StructaDocAuthenticationOptions.SectionName)
     .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
 authenticationOptions.Validate();
-var controlPlaneOptions = builder.Configuration
-    .GetSection(ControlPlaneOptions.SectionName)
-    .Get<ControlPlaneOptions>() ?? new ControlPlaneOptions();
-controlPlaneOptions.Validate();
-var oidcOptions = builder.Configuration
+var oidcOptions = configuration
     .GetSection(OidcAuthenticationOptions.SectionName)
     .Get<OidcAuthenticationOptions>() ?? new OidcAuthenticationOptions();
 oidcOptions.Validate();
@@ -77,6 +90,11 @@ builder.Services.AddStructaDocProviderResults(
 builder.Services.AddStructaDocHostAuthentication(authenticationOptions, oidcOptions);
 builder.Services.AddSingleton(oidcOptions);
 builder.Services.AddSingleton(workerOptions);
+builder.Services.AddSingleton(settingsConfiguration);
+builder.Services.AddSingleton(new ParseExecutionGate(workerOptions.ExecutionEnabled));
+builder.Services.AddSingleton<ISettingChangeListener>(
+    services => services.GetRequiredService<ParseExecutionGate>());
+builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ParseRunLeaseHeartbeat>();
 builder.Services.AddScoped<ParseRunExecutor>();
@@ -150,6 +168,8 @@ app.MapInteractiveSessionEndpoints(oidcOptions);
 app.MapAdministratorAccountEndpoints(
     authenticationOptions.AdministratorSessionLifetime);
 app.MapApiClientAdministrationEndpoints();
+app.MapSettingsEndpoints();
+app.MapSystemControlEndpoints();
 app.MapProviderConfigAdministrationEndpoints();
 app.MapParseRunEndpoints();
 app.MapParseResultEndpoints();
