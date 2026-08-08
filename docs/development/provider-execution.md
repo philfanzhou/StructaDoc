@@ -52,7 +52,11 @@ If a conversion snapshot exists, recovery reuses its PDF. If an archive exists, 
 
 For a protocol without a durable submission checkpoint, an unknown submission outcome is not automatically resent; it fails with `provider-submission-outcome-unknown`. This deliberately favors avoiding duplicate external jobs over speculative resubmission.
 
-`Worker:ExecutionEnabled` must be explicitly enabled and defaults to `false`. One Host currently executes one Parse Run at a time. Multiple Hosts can parallelize through a server database; SQLite remains single-instance.
+`Worker:ExecutionEnabled` must be explicitly enabled and defaults to `false`.
+
+`Worker:MaxConcurrency` sets how many Parse Runs one Host executes at a time and defaults to `1`. Each slot claims under its own Worker ID, so slots never share a lease and one long-running Parse Run does not block the others. Raise it only within Provider rate limits and the independent `LibreOffice:MaxConcurrency` bound. Multiple Hosts can parallelize further through a server database; SQLite remains single-instance.
+
+`Worker:MaxExecutionDuration` bounds a single attempt end to end, including Provider polling, and defaults to one hour. Exceeding it ends that attempt as a retriable `parse-run-execution-timeout` and frees the slot. The deadline may be shorter or longer than `Worker:LeaseDuration`: shorter guarantees the lease is still valid when the timeout is recorded, and longer relies on the heartbeat that already renews ahead of expiry. `00:00:00` disables the bound.
 
 ## Result Intake and Normalization
 

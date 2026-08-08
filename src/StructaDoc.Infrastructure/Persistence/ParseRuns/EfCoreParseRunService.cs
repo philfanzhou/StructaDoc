@@ -8,6 +8,7 @@ namespace StructaDoc.Infrastructure.Persistence.ParseRuns;
 public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IParseRunService
 {
     private const string DefaultMarker = "default";
+    private const int CancellationAttempts = 3;
 
     public async Task<ParseRunCreationResult> CreateAsync(
         ParseRunCreateRequest request,
@@ -93,6 +94,57 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
 
     public Task<ParseRunRecord?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
         QueryRecords(id).SingleOrDefaultAsync(cancellationToken);
+
+    public async Task<ParseRunCancellationResult> RequestCancellationAsync(
+        Guid id,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (nowUtc.Kind != DateTimeKind.Utc)
+        {
+            throw new ArgumentException("Parse Run timestamps must use UTC.", nameof(nowUtc));
+        }
+
+        // One conditional update decides the race against a Worker transition: whichever statement
+        // commits first wins, and a run that already reached a final state is never reopened. The
+        // lease is deliberately left in place so the owning Worker can observe the request and
+        // finalize without waiting for its lease to lapse.
+        var cancellable = ParseRunStatuses.Cancellable;
+
+        for (var attempt = 0; attempt < CancellationAttempts; attempt++)
+        {
+            var affectedRows = await dbContext.ParseRuns
+                .Where(entity => entity.Id == id && cancellable.Contains(entity.Status))
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(entity => entity.Status, ParseRunStatuses.CancelRequested)
+                        .SetProperty(
+                            entity => entity.ConcurrencyVersion,
+                            entity => entity.ConcurrencyVersion + 1),
+                    cancellationToken);
+
+            var parseRun = await GetAsync(id, cancellationToken);
+            if (affectedRows == 1)
+            {
+                return new(ParseRunCancellationStatus.Requested, parseRun);
+            }
+
+            switch (parseRun)
+            {
+                case null:
+                    return new(ParseRunCancellationStatus.NotFound);
+                case { Status: ParseRunStatuses.CancelRequested }:
+                    return new(ParseRunCancellationStatus.AlreadyRequested, parseRun);
+                case not null when ParseRunStatuses.IsFinal(parseRun.Status):
+                    return new(ParseRunCancellationStatus.AlreadyFinal, parseRun);
+            }
+
+            // The run re-entered a cancellable state between the update and the read, so the
+            // request has not taken effect yet. Retry rather than report a misleading outcome.
+        }
+
+        return new(ParseRunCancellationStatus.Conflict, await GetAsync(id, cancellationToken));
+    }
 
     private async Task<ParseRunRecord?> FindReplayAsync(
         ParseRunCreateRequest request,

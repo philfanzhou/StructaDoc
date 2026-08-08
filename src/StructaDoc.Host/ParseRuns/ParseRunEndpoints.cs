@@ -6,6 +6,7 @@ using Microsoft.Extensions.Primitives;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Contracts.ParseRuns;
+using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Authentication;
 
 namespace StructaDoc.Host.ParseRuns;
@@ -34,8 +35,91 @@ public static class ParseRunEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
         endpoints.MapGet("/api/v1/documents/{documentId:guid}/parse-runs", ListForDocumentAsync)
             .RequireAuthorization(AuthorizationPolicies.ParsesRead);
+        endpoints.MapPost("/api/v1/parse-runs/{id:guid}/cancel", CancelAsync)
+            .RequireAuthorization(AuthorizationPolicies.ParsesWrite)
+            .Produces<ParseRunResponse>(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         return endpoints;
     }
+
+    private static async Task<IResult> CancelAsync(
+        Guid id,
+        HttpContext context,
+        IAntiforgery antiforgery,
+        IParseRunService service,
+        IParseResultReadService readService,
+        StructaDoc.Application.Documents.IDocumentAuthorizationService authorizationService,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        if (!context.User.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.ApiClient))
+        {
+            try
+            {
+                await antiforgery.ValidateRequestAsync(context);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                return Results.Problem(
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "Antiforgery validation failed",
+                    detail: "A valid antiforgery token is required for administrator requests.");
+            }
+        }
+
+        var access = ResourceAccessContextFactory.Create(context.User);
+        var parseRun = await readService.GetAsync(id, access, cancellationToken);
+        if (parseRun is null
+            || !await authorizationService.HasPermissionAsync(
+                parseRun.DocumentId,
+                access,
+                StructaDoc.Application.Authentication.DocumentPermissions.Parse,
+                cancellationToken))
+        {
+            return NotFound(id);
+        }
+
+        var result = await service.RequestCancellationAsync(
+            id,
+            timeProvider.GetUtcNow().UtcDateTime,
+            cancellationToken);
+
+        if (result.Status == ParseRunCancellationStatus.NotFound || result.ParseRun is null)
+        {
+            return NotFound(id);
+        }
+
+        // Cancellation can complete before this response is built, so an already cancelled run
+        // satisfies the caller's intent and stays idempotent. Only a run that reached a different
+        // final state is a genuine conflict.
+        if (result.ParseRun.Status == ParseRunStatuses.Cancelled)
+        {
+            return Results.Accepted($"/api/v1/parse-runs/{id:D}", ToResponse(result.ParseRun));
+        }
+
+        return result.Status switch
+        {
+            ParseRunCancellationStatus.Requested or ParseRunCancellationStatus.AlreadyRequested =>
+                Results.Accepted(
+                    $"/api/v1/parse-runs/{id:D}",
+                    ToResponse(result.ParseRun)),
+            ParseRunCancellationStatus.AlreadyFinal => Results.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Parse Run is already final",
+                detail: $"Parse Run '{id:D}' has status '{result.ParseRun.Status}' and cannot be cancelled."),
+            _ => Results.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Parse Run cannot be cancelled",
+                detail: "The Parse Run changed concurrently. Retry the cancellation."),
+        };
+    }
+
+    private static IResult NotFound(Guid id) => Results.Problem(
+        statusCode: StatusCodes.Status404NotFound,
+        title: "Parse Run not found",
+        detail: $"Parse Run '{id:D}' does not exist or is not accessible.");
 
     private static async Task<IResult> CreateAsync(
         Guid documentId,

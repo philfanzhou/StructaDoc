@@ -305,6 +305,21 @@ public sealed class ParseRunExecutor(
             stoppingToken.IsCancellationRequested
             || session.ExecutionCancellationToken.IsCancellationRequested)
         {
+            // Host shutdown and a lost lease both resume from durable state, but an execution
+            // deadline is this attempt's own failure and must be recorded as one.
+            if (session.IsExecutionTimedOut)
+            {
+                logger.LogWarning(
+                    "Parse Run {ParseRunId} exceeded the execution deadline of {MaxExecutionDuration}.",
+                    lease.ParseRunId,
+                    options.MaxExecutionDuration);
+                await RecordFailureAsync(
+                    session,
+                    "parse-run-execution-timeout",
+                    "The Parse Run exceeded the configured maximum execution duration.",
+                    retryable: true,
+                    stoppingToken);
+            }
         }
         catch (ExecutionFailureException exception)
         {
@@ -347,6 +362,46 @@ public sealed class ParseRunExecutor(
                 "The Parse Run failed due to an unexpected execution error.",
                 retryable: true,
                 stoppingToken);
+        }
+        finally
+        {
+            await TryFinalizeCancellationAsync(session, lease, stoppingToken);
+        }
+    }
+
+    private async Task TryFinalizeCancellationAsync(
+        ParseRunLeaseSession session,
+        ParseRunLease lease,
+        CancellationToken stoppingToken)
+    {
+        // A cancellation request invalidates lease renewal, so the session reports a lost lease.
+        // Only that path can be a cancellation this Worker still owns; anything else matches no row.
+        if (!session.IsLeaseLost || stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await session.TryFinalizeOwnedCancellationAsync(stoppingToken))
+            {
+                logger.LogInformation(
+                    "Parse Run {ParseRunId} was cancelled on worker {WorkerId}.",
+                    lease.ParseRunId,
+                    lease.WorkerId);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            // Maintenance finalizes the run once its lease lapses, so this is not fatal.
+            logger.LogWarning(
+                "Parse Run {ParseRunId} could not complete cancellation on worker {WorkerId} with exception type {ExceptionType}.",
+                lease.ParseRunId,
+                lease.WorkerId,
+                exception.GetType().FullName);
         }
     }
 

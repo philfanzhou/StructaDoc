@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
+using StructaDoc.Infrastructure.Persistence.Entities;
 
 namespace StructaDoc.Infrastructure.Persistence.ParseRuns;
 
@@ -234,6 +236,78 @@ public sealed class EfCoreParseRunStateStore(StructaDocDbContext dbContext)
 
         return queuedCount;
     }
+
+    public async Task<int> FinalizeAbandonedCancellationsAsync(
+        DateTime nowUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUtc(nowUtc, nameof(nowUtc));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
+
+        var candidates = await dbContext.ParseRuns
+            .AsNoTracking()
+            .Where(parseRun =>
+                parseRun.Status == ParseRunStatuses.CancelRequested
+                && (parseRun.LeaseExpiresAtUtc == null || parseRun.LeaseExpiresAtUtc <= nowUtc))
+            .OrderBy(parseRun => parseRun.CreatedAtUtc)
+            .ThenBy(parseRun => parseRun.Id)
+            .Select(parseRun => new
+            {
+                parseRun.Id,
+                parseRun.ConcurrencyVersion,
+            })
+            .Take(maxCount)
+            .ToListAsync(cancellationToken);
+
+        var cancelledCount = 0;
+
+        foreach (var candidate in candidates)
+        {
+            cancelledCount += await dbContext.ParseRuns
+                .Where(parseRun =>
+                    parseRun.Id == candidate.Id
+                    && parseRun.Status == ParseRunStatuses.CancelRequested
+                    && (parseRun.LeaseExpiresAtUtc == null || parseRun.LeaseExpiresAtUtc <= nowUtc)
+                    && parseRun.ConcurrencyVersion == candidate.ConcurrencyVersion)
+                .ExecuteUpdateAsync(CancellationSetters(nowUtc), cancellationToken);
+        }
+
+        return cancelledCount;
+    }
+
+    public async Task<bool> TryFinalizeOwnedCancellationAsync(
+        Guid parseRunId,
+        string workerId,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUtc(nowUtc, nameof(nowUtc));
+        ArgumentException.ThrowIfNullOrWhiteSpace(workerId);
+
+        // The cancellation request advanced the concurrency version, so the Worker's cached version
+        // is stale by design. Claim ownership plus the requested status are the guard instead.
+        var affectedRows = await dbContext.ParseRuns
+            .Where(parseRun =>
+                parseRun.Id == parseRunId
+                && parseRun.Status == ParseRunStatuses.CancelRequested
+                && parseRun.ClaimedBy == workerId)
+            .ExecuteUpdateAsync(CancellationSetters(nowUtc), cancellationToken);
+
+        return affectedRows == 1;
+    }
+
+    private static Action<UpdateSettersBuilder<ParseRunEntity>> CancellationSetters(DateTime nowUtc) =>
+        setters => setters
+            .SetProperty(parseRun => parseRun.Status, ParseRunStatuses.Cancelled)
+            .SetProperty(parseRun => parseRun.Stage, (string?)null)
+            .SetProperty(parseRun => parseRun.ClaimedBy, (string?)null)
+            .SetProperty(parseRun => parseRun.LeaseExpiresAtUtc, (DateTime?)null)
+            .SetProperty(parseRun => parseRun.ProtectedSubmissionContinuation, (string?)null)
+            .SetProperty(parseRun => parseRun.CompletedAtUtc, nowUtc)
+            .SetProperty(
+                parseRun => parseRun.ConcurrencyVersion,
+                parseRun => parseRun.ConcurrencyVersion + 1);
 
     private static void ValidateLease(ParseRunLease currentLease, DateTime nowUtc)
     {

@@ -271,6 +271,67 @@ internal static class ParseRunLeaseContract
                     nowUtc.AddSeconds(7))).Status);
         }
 
+        var ownedCancellationLease = successfulClaims[7]!;
+        var abandonedCancellationLease = successfulClaims[8]!;
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var service = new EfCoreParseRunService(dbContext);
+            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+
+            // A final run is never reopened.
+            var finalResult = await service.RequestCancellationAsync(
+                resultLease.ParseRunId,
+                nowUtc.AddSeconds(8));
+            Assert.Equal(ParseRunCancellationStatus.AlreadyFinal, finalResult.Status);
+            Assert.Equal(ParseRunStatuses.Succeeded, finalResult.ParseRun!.Status);
+
+            var requested = await service.RequestCancellationAsync(
+                ownedCancellationLease.ParseRunId,
+                nowUtc.AddSeconds(9));
+            Assert.Equal(ParseRunCancellationStatus.Requested, requested.Status);
+            Assert.Equal(ParseRunStatuses.CancelRequested, requested.ParseRun!.Status);
+            Assert.Equal(
+                ParseRunCancellationStatus.AlreadyRequested,
+                (await service.RequestCancellationAsync(
+                    ownedCancellationLease.ParseRunId,
+                    nowUtc.AddSeconds(10))).Status);
+
+            // The request must stop lease renewal so the executing Worker cannot continue.
+            Assert.Null(await leaseStore.TryRenewLeaseAsync(
+                ownedCancellationLease,
+                nowUtc.AddSeconds(11),
+                TimeSpan.FromMinutes(1)));
+
+            // A live lease belongs to its Worker, so only that Worker completes it early.
+            Assert.Equal(0, await stateStore.FinalizeAbandonedCancellationsAsync(
+                nowUtc.AddSeconds(12),
+                maxCount: ParseRunCount));
+            Assert.False(await stateStore.TryFinalizeOwnedCancellationAsync(
+                ownedCancellationLease.ParseRunId,
+                "other-worker",
+                nowUtc.AddSeconds(13)));
+            Assert.True(await stateStore.TryFinalizeOwnedCancellationAsync(
+                ownedCancellationLease.ParseRunId,
+                ownedCancellationLease.WorkerId,
+                nowUtc.AddSeconds(14)));
+
+            Assert.Equal(
+                ParseRunCancellationStatus.Requested,
+                (await service.RequestCancellationAsync(
+                    abandonedCancellationLease.ParseRunId,
+                    nowUtc.AddSeconds(15))).Status);
+            await dbContext.ParseRuns
+                .Where(parseRun => parseRun.Id == abandonedCancellationLease.ParseRunId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(
+                        parseRun => parseRun.LeaseExpiresAtUtc,
+                        nowUtc.AddSeconds(-1)));
+            Assert.Equal(1, await stateStore.FinalizeAbandonedCancellationsAsync(
+                nowUtc.AddSeconds(16),
+                maxCount: ParseRunCount));
+        }
+
         await using var verificationContext = new StructaDocDbContext(options);
         Assert.Empty(await verificationContext.Database.GetPendingMigrationsAsync());
 
@@ -279,8 +340,15 @@ internal static class ParseRunLeaseContract
             .ToListAsync();
         Assert.Equal(ParseRunCount, persistedRuns.Count);
         Assert.Equal(
-            ParseRunCount - 6,
+            ParseRunCount - 8,
             persistedRuns.Count(parseRun => parseRun.Status == ParseRunStatuses.Claimed));
+        Assert.Equal(2, persistedRuns.Count(parseRun =>
+            parseRun.Status == ParseRunStatuses.Cancelled
+            && parseRun.Stage == null
+            && parseRun.ClaimedBy == null
+            && parseRun.LeaseExpiresAtUtc == null
+            && parseRun.ProtectedSubmissionContinuation == null
+            && parseRun.CompletedAtUtc != null));
         Assert.Equal(3, persistedRuns.Count(parseRun =>
             parseRun.Status == ParseRunStatuses.Queued
             && parseRun.ClaimedBy == null

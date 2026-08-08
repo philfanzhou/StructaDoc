@@ -46,6 +46,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
     private readonly SemaphoreSlim mutationGate = new(1, 1);
     private readonly CancellationTokenSource stopSource = new();
     private readonly CancellationTokenSource leaseLostSource = new();
+    private readonly CancellationTokenSource? deadlineSource;
     private readonly CancellationTokenSource executionSource;
     private readonly Task heartbeatTask;
     private ParseRunLease currentLease;
@@ -65,10 +66,19 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         this.timeProvider = timeProvider;
         this.logger = logger;
         this.currentLease = currentLease;
-        executionSource = CancellationTokenSource.CreateLinkedTokenSource(
-            stoppingToken,
-            stopSource.Token,
-            leaseLostSource.Token);
+        deadlineSource = options.HasExecutionDeadline
+            ? new CancellationTokenSource(options.MaxExecutionDuration, timeProvider)
+            : null;
+        executionSource = deadlineSource is null
+            ? CancellationTokenSource.CreateLinkedTokenSource(
+                stoppingToken,
+                stopSource.Token,
+                leaseLostSource.Token)
+            : CancellationTokenSource.CreateLinkedTokenSource(
+                stoppingToken,
+                stopSource.Token,
+                leaseLostSource.Token,
+                deadlineSource.Token);
         heartbeatTask = RunHeartbeatAsync(executionSource.Token);
     }
 
@@ -77,6 +87,15 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
     public CancellationToken ExecutionCancellationToken => executionSource.Token;
 
     public bool IsLeaseLost => Volatile.Read(ref leaseLost) != 0;
+
+    /// <summary>
+    /// True when the configured execution deadline ended this attempt. The lease is still owned, so
+    /// unlike a lost lease this state can still record a terminal or retriable failure.
+    /// </summary>
+    public bool IsExecutionTimedOut =>
+        deadlineSource is not null
+        && deadlineSource.IsCancellationRequested
+        && !IsLeaseLost;
 
     public Task<ParseRunLease?> TryStartAsync(
         string initialStage,
@@ -211,9 +230,13 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(retryDelay, TimeSpan.Zero);
         ThrowIfDisposed();
 
-        using var operationSource = CancellationTokenSource.CreateLinkedTokenSource(
-            executionSource.Token,
-            cancellationToken);
+        // A deadline cancels the execution token, so linking it here would cancel the very write
+        // that records the timeout. The lease is still owned, so the caller's token is enough.
+        using var operationSource = IsExecutionTimedOut
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : CancellationTokenSource.CreateLinkedTokenSource(
+                executionSource.Token,
+                cancellationToken);
         await mutationGate.WaitAsync(operationSource.Token);
 
         try
@@ -312,6 +335,26 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Completes a cancellation this Worker still owns. A cancellation request breaks lease renewal
+    /// by design, so the session observes it as a lost lease; this converts that observation into
+    /// the final <c>cancelled</c> state instead of leaving the run for lease expiry.
+    /// </summary>
+    public async Task<bool> TryFinalizeOwnedCancellationAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        var lease = CurrentLease;
+        await using var scope = serviceScopeFactory.CreateAsyncScope();
+        return await scope.ServiceProvider
+            .GetRequiredService<IParseRunStateStore>()
+            .TryFinalizeOwnedCancellationAsync(
+                lease.ParseRunId,
+                lease.WorkerId,
+                timeProvider.GetUtcNow().UtcDateTime,
+                cancellationToken);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref disposed, 1) != 0)
@@ -330,6 +373,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         }
 
         executionSource.Dispose();
+        deadlineSource?.Dispose();
         leaseLostSource.Dispose();
         stopSource.Dispose();
         mutationGate.Dispose();

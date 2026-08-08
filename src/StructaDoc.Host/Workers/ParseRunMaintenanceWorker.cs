@@ -56,18 +56,24 @@ public sealed class ParseRunMaintenanceWorker(
                 nowUtc,
                 options.RecoveryBatchSize,
                 cancellationToken);
+            var cancelledRuns = await stateStore.FinalizeAbandonedCancellationsAsync(
+                nowUtc,
+                options.RecoveryBatchSize,
+                cancellationToken);
 
             if (recoveredClaims > 0
                 || recoveredRuns.RequeuedCount > 0
                 || recoveredRuns.FailedUnknownSubmissionCount > 0
-                || queuedRetries > 0)
+                || queuedRetries > 0
+                || cancelledRuns > 0)
             {
                 logger.LogInformation(
-                    "Parse Run maintenance recovered {RecoveredClaims} claims, requeued {RequeuedRuns} pre-submission runs, failed {UnknownSubmissions} unknown submissions, and queued {QueuedRetries} retries.",
+                    "Parse Run maintenance recovered {RecoveredClaims} claims, requeued {RequeuedRuns} pre-submission runs, failed {UnknownSubmissions} unknown submissions, queued {QueuedRetries} retries, and cancelled {CancelledRuns} runs.",
                     recoveredClaims,
                     recoveredRuns.RequeuedCount,
                     recoveredRuns.FailedUnknownSubmissionCount,
-                    queuedRetries);
+                    queuedRetries,
+                    cancelledRuns);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

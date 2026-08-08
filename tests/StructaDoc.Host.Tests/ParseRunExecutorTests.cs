@@ -103,13 +103,44 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         Assert.True(result.HasConversionArtifact);
     }
 
+    [Fact]
+    public async Task Executor_ends_an_unresponsive_provider_attempt_at_the_execution_deadline()
+    {
+        var provider = new TestParseProvider(failSubmission: false, stayRunning: true);
+
+        var result = await ExecuteAsync(
+            provider,
+            workerSettings: new Dictionary<string, string>
+            {
+                ["Worker:LeaseDuration"] = "00:00:05",
+                ["Worker:HeartbeatInterval"] = "00:00:00.100",
+                ["Worker:MaxExecutionDuration"] = "00:00:02",
+                ["Worker:MinimumPollDelay"] = "00:00:00.200",
+                ["Worker:MaximumPollDelay"] = "00:00:00.200",
+            });
+
+        // Without a deadline this attempt would poll forever, holding its slot and blocking its
+        // Document from ever being deleted.
+        Assert.Equal(ParseRunStatuses.RetryWait, result.Status);
+        Assert.Equal("parse-run-execution-timeout", result.ErrorCode);
+        Assert.Equal("local-task-1", result.ExternalTaskId);
+        Assert.True(provider.StatusCount > 1);
+    }
+
     private async Task<ExecutionResult> ExecuteAsync(
         TestParseProvider provider,
         string sourceMediaType = "application/pdf",
         IDocumentConverter? converter = null,
-        bool seedConversion = false)
+        bool seedConversion = false,
+        IReadOnlyDictionary<string, string>? workerSettings = null)
     {
         using var application = factory.WithWebHostBuilder(builder =>
+        {
+            foreach (var setting in workerSettings ?? new Dictionary<string, string>())
+            {
+                builder.UseSetting(setting.Key, setting.Value);
+            }
+
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IParseProvider>();
@@ -119,7 +150,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                     services.RemoveAll<IDocumentConverter>();
                     services.AddSingleton(converter);
                 }
-            }));
+            });
+        });
         using var client = application.CreateClient();
         var parseRunId = Guid.NewGuid();
         var sourceExtension = sourceMediaType == "application/pdf" ? ".pdf" : ".xlsx";
@@ -251,7 +283,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
 
     private sealed class TestParseProvider(
         bool failSubmission,
-        bool useCheckpoint = false) : IParseProvider
+        bool useCheckpoint = false,
+        bool stayRunning = false) : IParseProvider
     {
         public string ProviderType => useCheckpoint
             ? ProviderTypes.MinerUCloud
@@ -322,7 +355,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             CancellationToken cancellationToken = default)
         {
             StatusCount++;
-            return Task.FromResult(new ProviderTaskStatus(ProviderTaskState.Succeeded));
+            return Task.FromResult(new ProviderTaskStatus(
+                stayRunning ? ProviderTaskState.Running : ProviderTaskState.Succeeded));
         }
 
         public Task<ProviderResultContent> OpenResultAsync(

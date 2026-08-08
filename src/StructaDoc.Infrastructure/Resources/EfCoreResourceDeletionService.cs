@@ -11,7 +11,7 @@ namespace StructaDoc.Infrastructure.Resources;
 
 public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext) : IResourceDeletionService
 {
-    private static readonly string[] FinalStatuses = [ParseRunStatuses.Succeeded, ParseRunStatuses.Failed, ParseRunStatuses.Cancelled];
+    private static readonly string[] FinalStatuses = ParseRunStatuses.Final;
 
     public async Task<ResourceDeletionResult> RequestDocumentDeletionAsync(Guid documentId, ResourceAccessContext access, DateTime nowUtc, CancellationToken cancellationToken = default)
     {

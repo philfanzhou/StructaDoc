@@ -8,9 +8,9 @@
 
 This specification defines persistent Parse Run statuses, diagnostic stages, atomic claims, leases, retries, cancellation, and crash recovery.
 
-The implementation covers creation and idempotent replay, immutable Provider snapshots, status reads, atomic claim/renewal, recovery of expired unstarted claims, `claimed → running`, retry/failure transitions, due-retry requeueing, execution snapshots restricted by a live lease, conditional stage and external-ID persistence, encrypted Cloud submission checkpoints, adoption of running external jobs, serialized heartbeat sessions, capability-driven LibreOffice fallback, bounded Provider result intake, deterministic MinerU normalization, idempotent canonical success transactions, large-PDF segment recovery, and durable cleanup jobs.
+The implementation covers creation and idempotent replay, immutable Provider snapshots, status reads, atomic claim/renewal, recovery of expired unstarted claims, `claimed → running`, retry/failure transitions, due-retry requeueing, execution snapshots restricted by a live lease, conditional stage and external-ID persistence, encrypted Cloud submission checkpoints, adoption of running external jobs, serialized heartbeat sessions, capability-driven LibreOffice fallback, bounded Provider result intake, deterministic MinerU normalization, idempotent canonical success transactions, large-PDF segment recovery, local cancellation, and durable cleanup jobs.
 
-Real execution remains disabled by default with `Worker:ExecutionEnabled=false`. Upstream cancellation and richer attempt-history records remain incomplete.
+Real execution remains disabled by default with `Worker:ExecutionEnabled=false`. Upstream cancellation propagation and richer attempt-history records remain incomplete.
 
 ## 2. Authority
 
@@ -135,6 +135,7 @@ For a two-step protocol, persist the external allocation plus encrypted continua
 ## 10. Polling and Result Retrieval
 
 - Bound polling by configured minimum/maximum intervals and Provider recommendations; never busy-poll without limit.
+- Bound the attempt as a whole with `Worker:MaxExecutionDuration`, so an unresponsive Provider cannot poll forever. Exceeding it ends the attempt with retriable `parse-run-execution-timeout` rather than holding an execution slot, and its Document, indefinitely. Setting it to `00:00:00` disables the bound and restores unbounded polling.
 - Treat `429`, temporary network failure, and recoverable `5xx` according to retry policy.
 - Download promptly when the Provider reports completion; do not depend on long Provider retention.
 - Stream ZIP, JSON, images, and Markdown into bounded temporary or object storage.
@@ -164,6 +165,7 @@ Large PDFs use deterministic segment identities and stored per-segment stages/ch
 - Provider `429`;
 - recoverable Provider or storage `5xx`;
 - recoverable state after a lost lease;
+- an attempt that exceeded `Worker:MaxExecutionDuration`;
 - transient final database transaction failure.
 
 ### Permanent by Default
@@ -193,7 +195,18 @@ Cancellation is best-effort:
 
 Final statuses never transition. A success/cancellation race uses conditional updates: whichever transition commits first wins, and neither path overwrites an existing final state.
 
-The complete upstream cancellation path remains an implementation gap because the current MinerU protocols do not expose a stable single-task cancellation contract.
+`POST /api/v1/parse-runs/{parseRunId}/cancel` requests cancellation. It requires the same authorization as creating a Parse Run for the Document, and Cookie callers supply an antiforgery token. A request against a `queued`, `claimed`, `running`, or `retry-wait` run returns `202` with the updated record. The call is idempotent through completion: repeating it, including after the run reaches `cancelled`, also returns `202`. A run that already reached `succeeded` or `failed` returns `409`, and an unknown or inaccessible run returns `404`.
+
+Callers must not depend on observing `cancel-requested`. A run with no live lease has nothing to wait out, so cancellation may already be complete when the response is written; only `status` finality is contractual.
+
+The request deliberately leaves any live lease in place. Lease renewal requires `claimed` or `running`, so the request itself stops renewal, which cancels the executing Worker's operation token and prevents further local steps. Completion to `cancelled` then happens on whichever path applies:
+
+- the owning Worker completes it immediately after stopping, guarded by its claim rather than by its now-stale concurrency version;
+- Parse Run maintenance completes any `cancel-requested` run whose lease is absent or lapsed, which covers `queued` and `retry-wait` runs and any Worker that crashed mid-cancellation.
+
+Completion clears the stage, claim, lease, and encrypted submission continuation, and sets `completedAt`. Because maintenance runs independently of `Worker:ExecutionEnabled`, cancellation completes even when execution is disabled. Error facts from the last attempt are retained for diagnosis; `status` remains the only authority on finality.
+
+The complete upstream cancellation path remains an implementation gap because the current MinerU protocols do not expose a stable single-task cancellation contract. Until then, a run submitted to an online Provider may continue consuming remote resources after StructaDoc reports `cancelled`, and the user-facing workspace states this explicitly.
 
 ## 14. Deletion Interaction
 
@@ -220,7 +233,7 @@ Never log Provider tokens, OIDC tokens, storage credentials, presigned URL queri
 
 ## 16. Evolution Work
 
-- upstream cancellation integration when a stable contract exists;
+- upstream cancellation propagation when a stable Provider contract exists;
 - independently queryable attempt history;
 - webhook contracts;
 - bulk administrator operations;

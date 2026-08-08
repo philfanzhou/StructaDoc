@@ -39,10 +39,14 @@ Callers may send one visible-ASCII `Idempotency-Key` up to 256 characters. Scope
 
 `GET /api/v1/parse-runs/{id}` requires corresponding resource access or `parses:read`. It returns stable status/stage, configuration snapshot facts, sanitized options, media types, attempt count, sanitized errors, and timestamps. It excludes leases, concurrency tokens, internal callers, credentials, checkpoints, and external task IDs.
 
+## Cancellation
+
+`POST /api/v1/parse-runs/{parseRunId}/cancel` requires the same authorization as creating a Parse Run for the Document, and Cookie callers supply an antiforgery token. It moves a `queued`, `claimed`, `running`, or `retry-wait` run to `cancel-requested` with one conditional update, returns `202` with the updated record, stays idempotent through completion, returns `409` for a run that already reached `succeeded` or `failed`, and returns `404` for an unknown or inaccessible run. A run with no live lease may already be `cancelled` when the response is written, so callers depend on `status` finality rather than on observing `cancel-requested`. Completion to `cancelled` is durable and happens on the owning Worker or through Parse Run maintenance. See [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) section 13.
+
 ## Current Gaps
 
 - administrator Provider connectivity testing;
-- richer execution-attempt history and cancellation propagation;
+- richer execution-attempt history and upstream cancellation propagation;
 - deployment-specific trust policy for configurable Cloud/Local base URLs;
 - broader production MinerU and LibreOffice sample coverage.
 

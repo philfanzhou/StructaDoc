@@ -22,7 +22,7 @@ StructaDoc is in early development, but the main end-to-end platform is implemen
 - Local and S3-compatible storage;
 - SQLite, PostgreSQL, MySQL, and MariaDB persistence;
 - immutable Provider configuration versions and durable Parse Runs;
-- atomic claims, leases, heartbeats, retries, and crash recovery;
+- atomic claims, leases, heartbeats, retries, cancellation, and crash recovery;
 - MinerU Cloud signed upload and MinerU Local multipart adapters;
 - constrained LibreOffice Office-to-PDF fallback;
 - resumable large-PDF segmentation and deterministic result merging;
@@ -197,6 +197,7 @@ DELETE /api/v1/documents/{documentId}
 POST   /api/v1/documents/{documentId}/parse-runs
 GET    /api/v1/documents/{documentId}/parse-runs
 GET    /api/v1/parse-runs/{parseRunId}
+POST   /api/v1/parse-runs/{parseRunId}/cancel
 GET    /api/v1/parse-runs/{parseRunId}/pages
 GET    /api/v1/parse-runs/{parseRunId}/blocks
 GET    /api/v1/parse-runs/{parseRunId}/assets
@@ -207,6 +208,8 @@ GET    /api/v1/parse-runs/{parseRunId}/exports/{format}
 
 Content is retrieved through authorized endpoints; internal `storageRef` values never appear in public DTOs. Parse Run creation supports `Idempotency-Key`. Block listing uses stable sequence pagination. Deletion returns an accepted lifecycle transition and is completed by a durable cleanup job.
 
+Cancellation is best-effort and idempotent: it stops local processing and durably completes as `cancelled`, which is also how a Document is released for deletion when its Parse Run will never finish on its own. Because the current MinerU protocols expose no single-task cancellation contract, work already submitted to an online Provider may keep consuming remote resources.
+
 Administrator endpoints manage local sessions, API clients, and Provider configurations under `/api/v1/admin`. Cookie-authenticated writes require an antiforgery token; API-key requests do not use browser cookies and are authorized by scope.
 
 ## Key Configuration
@@ -216,7 +219,7 @@ Configuration uses standard ASP.NET Core keys; environment variables replace `:`
 | Area | Important keys |
 |---|---|
 | Database | `Database__Provider`, `Database__ConnectionString`, `Database__ServerVersion`, `Database__ApplyMigrationsOnStartup` |
-| Worker | `Worker__Enabled`, `Worker__ExecutionEnabled`, lease, heartbeat, retry, and polling limits |
+| Worker | `Worker__Enabled`, `Worker__ExecutionEnabled`, `Worker__MaxConcurrency`, `Worker__MaxExecutionDuration`, lease, heartbeat, retry, and polling limits |
 | Storage | `Storage__Provider`, `Storage__RootPath`, S3 endpoint, bucket, prefix, region, and credential settings |
 | Documents | `Documents__UploadApiEnabled`, `Documents__MaxUploadBytes` |
 | OIDC | `Oidc__Enabled`, `Oidc__Authority`, `Oidc__ClientId`, `Oidc__ClientSecret`, scopes and role mapping |

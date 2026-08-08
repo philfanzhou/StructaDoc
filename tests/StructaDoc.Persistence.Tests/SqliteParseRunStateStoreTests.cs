@@ -333,6 +333,126 @@ public sealed class SqliteParseRunStateStoreTests
         Assert.Null(persistedRun.LeaseExpiresAtUtc);
     }
 
+    [Fact]
+    public async Task Cancelling_an_unleased_run_is_completed_by_maintenance()
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var parseRunId = await dbContext.ParseRuns.AsNoTracking().Select(run => run.Id).SingleAsync();
+        var service = new EfCoreParseRunService(dbContext);
+        var store = new EfCoreParseRunStateStore(dbContext);
+
+        var requested = await service.RequestCancellationAsync(parseRunId, nowUtc);
+        Assert.Equal(ParseRunCancellationStatus.Requested, requested.Status);
+        Assert.Equal(ParseRunStatuses.CancelRequested, requested.ParseRun!.Status);
+
+        var replay = await service.RequestCancellationAsync(parseRunId, nowUtc.AddSeconds(1));
+        Assert.Equal(ParseRunCancellationStatus.AlreadyRequested, replay.Status);
+
+        var cancelledCount = await store.FinalizeAbandonedCancellationsAsync(nowUtc.AddSeconds(2), 10);
+        Assert.Equal(1, cancelledCount);
+
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        Assert.Equal(ParseRunStatuses.Cancelled, persistedRun.Status);
+        Assert.Equal(nowUtc.AddSeconds(2), persistedRun.CompletedAtUtc);
+        Assert.Null(persistedRun.ClaimedBy);
+        Assert.Null(persistedRun.LeaseExpiresAtUtc);
+        Assert.Null(persistedRun.Stage);
+    }
+
+    [Fact]
+    public async Task Cancelling_a_leased_run_stops_renewal_and_only_its_worker_completes_it()
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var service = new EfCoreParseRunService(dbContext);
+        var store = new EfCoreParseRunStateStore(dbContext);
+        var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+
+        var requested = await service.RequestCancellationAsync(runningLease.ParseRunId, nowUtc.AddSeconds(2));
+        Assert.Equal(ParseRunCancellationStatus.Requested, requested.Status);
+
+        // The lease deliberately survives the request so the owning Worker can observe it, but
+        // renewal must fail so execution stops instead of continuing against a cancelled run.
+        var renewedLease = await leaseStore.TryRenewLeaseAsync(
+            runningLease,
+            nowUtc.AddSeconds(3),
+            TimeSpan.FromMinutes(5));
+        Assert.Null(renewedLease);
+
+        // A live lease belongs to its Worker, so maintenance must not finalize it yet.
+        Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(nowUtc.AddSeconds(4), 10));
+        Assert.False(await store.TryFinalizeOwnedCancellationAsync(
+            runningLease.ParseRunId,
+            "another-worker",
+            nowUtc.AddSeconds(5)));
+
+        Assert.True(await store.TryFinalizeOwnedCancellationAsync(
+            runningLease.ParseRunId,
+            runningLease.WorkerId,
+            nowUtc.AddSeconds(6)));
+
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        Assert.Equal(ParseRunStatuses.Cancelled, persistedRun.Status);
+        Assert.Null(persistedRun.ClaimedBy);
+        Assert.Null(persistedRun.LeaseExpiresAtUtc);
+        Assert.Null(persistedRun.ProtectedSubmissionContinuation);
+    }
+
+    [Fact]
+    public async Task Abandoned_cancellation_is_completed_after_the_lease_lapses()
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        await new EfCoreParseRunService(dbContext).RequestCancellationAsync(
+            runningLease.ParseRunId,
+            nowUtc.AddSeconds(2));
+        var store = new EfCoreParseRunStateStore(dbContext);
+
+        Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(nowUtc.AddSeconds(3), 10));
+        Assert.Equal(1, await store.FinalizeAbandonedCancellationsAsync(
+            runningLease.LeaseExpiresAtUtc.AddSeconds(1),
+            10));
+
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        Assert.Equal(ParseRunStatuses.Cancelled, persistedRun.Status);
+    }
+
+    [Fact]
+    public async Task Cancellation_never_reopens_a_final_run()
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 1);
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var store = new EfCoreParseRunStateStore(dbContext);
+        var failure = await store.TryRecordFailureAsync(
+            runningLease,
+            "provider-task-failed",
+            "The Provider task failed.",
+            retryable: false,
+            nowUtc.AddSeconds(30),
+            nowUtc.AddSeconds(2));
+        Assert.Equal(ParseRunStatuses.Failed, Assert.IsType<ParseRunFailureTransition>(failure).Status);
+
+        var result = await new EfCoreParseRunService(dbContext).RequestCancellationAsync(
+            runningLease.ParseRunId,
+            nowUtc.AddSeconds(3));
+
+        Assert.Equal(ParseRunCancellationStatus.AlreadyFinal, result.Status);
+        Assert.Equal(ParseRunStatuses.Failed, result.ParseRun!.Status);
+        Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(nowUtc.AddSeconds(4), 10));
+    }
+
     private sealed class StateTestDatabase : IAsyncDisposable
     {
         private StateTestDatabase(

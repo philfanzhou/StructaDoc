@@ -27,8 +27,10 @@ const newClient = ref({ name: '', scopes: ['documents:read', 'documents:write', 
 const issuedCredential = ref('')
 const share = ref({ issuer: '', subject: '', permissions: ['read', 'parse', 'export'] })
 
-const statusText: Record<string, string> = { queued: '排队中', claimed: '已领取', running: '解析中', 'retry-wait': '等待重试', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
+const statusText: Record<string, string> = { queued: '排队中', claimed: '已领取', running: '解析中', 'retry-wait': '等待重试', 'cancel-requested': '正在取消', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
+const finalStatuses = ['succeeded', 'failed', 'cancelled']
 const canAdmin = computed(() => session.value?.isAdministrator)
+const canCancelRun = computed(() => selectedRun.value !== undefined && !finalStatuses.includes(selectedRun.value.status))
 
 function message(value: string, failure = false) { if (failure) error.value = value; else notice.value = value; window.setTimeout(() => failure ? error.value = '' : notice.value = '', 5000) }
 function prettyBytes(bytes: number) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1048576).toFixed(1)} MB` }
@@ -94,6 +96,26 @@ async function openRun(run: ParseRun) {
     const response = await fetch(`/api/v1/parse-runs/${run.id}/markdown`, { credentials: 'same-origin' })
     if (response.ok) markdown.value = await response.text()
   } catch (e) { message((e as Error).message, true) }
+}
+
+async function cancelRun(run: ParseRun) {
+  if (!confirm('确认取消这次解析？StructaDoc 会停止本地处理，随后该记录进入“已取消”。')) return
+  busy.value = true
+  try {
+    await mutate(`/api/v1/parse-runs/${run.id}/cancel`, 'POST')
+    message('取消请求已受理')
+    await refreshRuns(run.id)
+    // Completion is a durable transition, so re-read once more after the maintenance cycle.
+    window.setTimeout(() => refreshRuns(run.id).catch(() => undefined), 2000)
+  }
+  catch (e) { message((e as Error).message, true) } finally { busy.value = false }
+}
+
+async function refreshRuns(keepSelectedId?: string) {
+  if (!selectedDocument.value) return
+  runs.value = await get(`/api/v1/documents/${selectedDocument.value.id}/parse-runs`)
+  if (keepSelectedId) selectedRun.value = runs.value.find(item => item.id === keepSelectedId) ?? selectedRun.value
+  await loadDocuments()
 }
 
 async function deleteCurrent() {
@@ -200,6 +222,7 @@ onMounted(() => initialize().catch(e => message(e.message, true)))
             <div class="run-list"><h3>解析记录</h3><button v-for="run in runs" :key="run.id" :class="{ selected: selectedRun?.id === run.id }" @click="openRun(run)"><span><strong>{{ run.providerType }}</strong><small>{{ prettyDate(run.createdAt) }} · 第 {{ run.attemptCount }}/{{ run.maxAttempts }} 次尝试</small></span><span class="status" :class="run.status">{{ statusText[run.status] || run.status }}</span></button><p v-if="!runs.length" class="muted">尚未创建解析任务。</p></div>
             <template v-if="selectedRun">
               <div v-if="selectedRun.errorMessage" class="inline-error">{{ selectedRun.errorCode }}：{{ selectedRun.errorMessage }}</div>
+              <div v-if="canCancelRun" class="run-actions"><button class="secondary" :disabled="busy" @click="cancelRun(selectedRun)">取消解析</button><span>取消是尽力而为的：StructaDoc 会停止本地处理，但已提交给在线解析提供方的任务可能仍在上游继续消耗资源。</span></div>
               <div class="export-row"><span>导出</span><a v-for="format in ['markdown','html','zip','pdf']" :key="format" :href="`/api/v1/parse-runs/${selectedRun.id}/exports/${format}`">{{ format.toUpperCase() }}</a></div>
               <div class="result-tabs"><div class="result-title"><h3>结构化内容</h3><span>{{ pages.length }} 页</span><span>{{ blocks.length }} 块</span><span>{{ assets.length }} 资源</span><span>{{ artifacts.length }} 制品</span></div><div v-if="markdown" class="markdown-preview"><pre>{{ markdown }}</pre></div><div v-else class="block-list"><article v-for="block in blocks" :key="block.id"><span>#{{ block.sequence }} · {{ block.type }}<template v-if="block.pageNumber"> · P{{ block.pageNumber }}</template></span><p>{{ block.content || '（无文本内容）' }}</p></article><p v-if="!blocks.length" class="muted">结果尚未生成或不含文本块。</p></div><details v-if="assets.length || artifacts.length" class="resource-list"><summary>资源与制品下载</summary><a v-for="asset in assets" :key="asset.id" :href="`/api/v1/parse-runs/${selectedRun.id}/assets/${asset.id}/content`">{{ asset.name }} · {{ prettyBytes(asset.sizeBytes) }}</a><a v-for="artifact in artifacts" :key="artifact.id" :href="`/api/v1/parse-runs/${selectedRun.id}/artifacts/${artifact.id}/content`">{{ artifact.type }} · {{ artifact.name }}</a></details></div>
             </template>
@@ -220,5 +243,5 @@ onMounted(() => initialize().catch(e => message(e.message, true)))
 </template>
 
 <style scoped>
-.result-title,.row-actions{display:flex;align-items:center;gap:8px}.result-title h3{margin-right:auto}.result-title span{font-size:10px;color:#57816e;background:#e7eee9;padding:4px 7px;border-radius:20px}.resource-list{border-top:1px solid #d8ded9;padding-top:12px;margin-top:14px}.resource-list summary{font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px}.resource-list a{display:block;color:#123c2b;font-size:12px;padding:8px 0;border-bottom:1px solid #e8ebe8;text-decoration:none}.row-actions button{border:0;background:transparent;color:#37664f;font-size:11px;padding:3px}.row-actions .danger-link{color:#a23b36}.share-box fieldset{border:0;padding:8px 0 14px;display:flex;flex-wrap:wrap;gap:8px 14px}.share-box legend{font-size:12px;font-weight:700}.share-box fieldset label{display:flex;align-items:center;gap:5px;font-size:11px}.share-box fieldset input{width:auto}
+.run-actions{display:flex;align-items:center;gap:10px;margin:12px 0}.run-actions span{font-size:11px;color:#5c6b62;line-height:1.5}.result-title,.row-actions{display:flex;align-items:center;gap:8px}.result-title h3{margin-right:auto}.result-title span{font-size:10px;color:#57816e;background:#e7eee9;padding:4px 7px;border-radius:20px}.resource-list{border-top:1px solid #d8ded9;padding-top:12px;margin-top:14px}.resource-list summary{font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px}.resource-list a{display:block;color:#123c2b;font-size:12px;padding:8px 0;border-bottom:1px solid #e8ebe8;text-decoration:none}.row-actions button{border:0;background:transparent;color:#37664f;font-size:11px;padding:3px}.row-actions .danger-link{color:#a23b36}.share-box fieldset{border:0;padding:8px 0 14px;display:flex;flex-wrap:wrap;gap:8px 14px}.share-box legend{font-size:12px;font-weight:700}.share-box fieldset label{display:flex;align-items:center;gap:5px;font-size:11px}.share-box fieldset input{width:auto}
 </style>

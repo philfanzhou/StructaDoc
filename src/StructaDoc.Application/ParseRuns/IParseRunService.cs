@@ -9,6 +9,11 @@ public interface IParseRunService
     Task<ParseRunRecord?> GetAsync(
         Guid id,
         CancellationToken cancellationToken = default);
+
+    Task<ParseRunCancellationResult> RequestCancellationAsync(
+        Guid id,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record ParseRunCreateRequest(
@@ -52,4 +57,17 @@ public enum ParseRunCreationStatus
 
 public sealed record ParseRunCreationResult(
     ParseRunCreationStatus Status,
+    ParseRunRecord? ParseRun = null);
+
+public enum ParseRunCancellationStatus
+{
+    Requested,
+    AlreadyRequested,
+    AlreadyFinal,
+    NotFound,
+    Conflict,
+}
+
+public sealed record ParseRunCancellationResult(
+    ParseRunCancellationStatus Status,
     ParseRunRecord? ParseRun = null);

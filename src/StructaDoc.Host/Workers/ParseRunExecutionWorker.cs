@@ -18,12 +18,27 @@ public sealed class ParseRunExecutionWorker(
             return;
         }
 
-        logger.LogInformation("Parse Run execution worker {WorkerId} started.", workerId);
+        logger.LogInformation(
+            "Parse Run execution worker {WorkerId} started with {MaxConcurrency} slots.",
+            workerId,
+            options.MaxConcurrency);
+
+        // Each slot claims independently under its own Worker ID, so one long-running Parse Run
+        // cannot hold up the others on this Host.
+        await Task.WhenAll(Enumerable
+            .Range(0, options.MaxConcurrency)
+            .Select(slot => RunSlotAsync($"{workerId}:{slot}", stoppingToken)));
+    }
+
+    private async Task RunSlotAsync(string slotWorkerId, CancellationToken stoppingToken)
+    {
+        await Task.Yield();
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                if (!await TryExecuteOneAsync(stoppingToken))
+                if (!await TryExecuteOneAsync(slotWorkerId, stoppingToken))
                 {
                     await Task.Delay(options.MaintenanceInterval, timeProvider, stoppingToken);
                 }
@@ -35,26 +50,37 @@ public sealed class ParseRunExecutionWorker(
             catch (Exception exception)
             {
                 logger.LogError(
-                    "Parse Run execution cycle failed with exception type {ExceptionType}.",
+                    "Parse Run execution cycle failed on {WorkerId} with exception type {ExceptionType}.",
+                    slotWorkerId,
                     exception.GetType().FullName);
-                await Task.Delay(options.MaintenanceInterval, timeProvider, stoppingToken);
+
+                try
+                {
+                    await Task.Delay(options.MaintenanceInterval, timeProvider, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
             }
         }
     }
 
-    private async Task<bool> TryExecuteOneAsync(CancellationToken cancellationToken)
+    private async Task<bool> TryExecuteOneAsync(
+        string slotWorkerId,
+        CancellationToken cancellationToken)
     {
         await using var scope = serviceScopeFactory.CreateAsyncScope();
         var leaseStore = scope.ServiceProvider.GetRequiredService<IParseRunLeaseStore>();
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
         var lease = await leaseStore.TryRecoverNextRunningAsync(
-            workerId,
+            slotWorkerId,
             nowUtc,
             options.LeaseDuration,
             cancellationToken);
         var alreadyRunning = lease is not null;
         lease ??= await leaseStore.TryClaimNextAsync(
-            workerId,
+            slotWorkerId,
             nowUtc,
             options.LeaseDuration,
             cancellationToken);

@@ -206,6 +206,83 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
     }
 
     [Fact]
+    public async Task Cancelling_a_queued_parse_run_releases_its_document_for_deletion()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+        using var providerCreate = await client.PostAsJsonAsync(
+            "/api/v1/admin/provider-configs",
+            new ProviderConfigRequest(
+                "Cancellation provider",
+                "mineru-local",
+                "http://mineru-local.test/",
+                IsDefault: true));
+        providerCreate.EnsureSuccessStatusCode();
+
+        var document = await UploadDocumentAsync(client);
+        using var createParse = await CreateParseRunAsync(
+            client,
+            document.Id,
+            new StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest(),
+            $"cancel-{Guid.NewGuid():N}");
+        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>();
+        Assert.Equal(HttpStatusCode.Created, createParse.StatusCode);
+        Assert.Equal("queued", parseRun!.Status);
+
+        // Execution is disabled by default, so without cancellation this run — and its Document —
+        // would stay non-final forever.
+        using var blockedDelete = await client.DeleteAsync($"/api/v1/documents/{document.Id:D}");
+        Assert.Equal(HttpStatusCode.Conflict, blockedDelete.StatusCode);
+
+        using var cancel = await client.PostAsync($"/api/v1/parse-runs/{parseRun.Id:D}/cancel", null);
+        var cancelling = await cancel.Content.ReadFromJsonAsync<ParseRunResponse>();
+        Assert.Equal(HttpStatusCode.Accepted, cancel.StatusCode);
+        // An unleased run carries no lease to wait out, so maintenance may already have completed
+        // the cancellation. Only finality is promised, never the intermediate status.
+        Assert.Contains(cancelling!.Status, new[] { "cancel-requested", "cancelled" });
+
+        // Cancellation is idempotent through completion.
+        using var replayCancel = await client.PostAsync($"/api/v1/parse-runs/{parseRun.Id:D}/cancel", null);
+        Assert.Equal(HttpStatusCode.Accepted, replayCancel.StatusCode);
+
+        var cancelled = await WaitForStatusAsync(client, parseRun.Id, "cancelled");
+        Assert.NotNull(cancelled.CompletedAt);
+
+        using var repeatAfterCancelled = await client.PostAsync(
+            $"/api/v1/parse-runs/{parseRun.Id:D}/cancel",
+            null);
+        Assert.Equal(HttpStatusCode.Accepted, repeatAfterCancelled.StatusCode);
+
+        using var acceptedDelete = await client.DeleteAsync($"/api/v1/documents/{document.Id:D}");
+        Assert.Equal(HttpStatusCode.Accepted, acceptedDelete.StatusCode);
+    }
+
+    [Fact]
+    public async Task Cancelling_an_unknown_parse_run_is_not_distinguishable_from_no_access()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+
+        using var response = await client.PostAsync(
+            $"/api/v1/parse-runs/{Guid.NewGuid():D}/cancel",
+            null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Parse_run_cancellation_requires_authentication()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsync(
+            $"/api/v1/parse-runs/{Guid.NewGuid():D}/cancel",
+            null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Parse_options_reject_credential_fields()
     {
         using var client = factory.CreateClient();
@@ -216,6 +293,31 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
                 Options: JsonSerializer.Deserialize<JsonElement>("{\"nested\":{\"apiKey\":\"do-not-store\"}}")));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    private static async Task<ParseRunResponse> WaitForStatusAsync(
+        HttpClient client,
+        Guid parseRunId,
+        string expectedStatus)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        ParseRunResponse? parseRun = null;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            using var response = await client.GetAsync($"/api/v1/parse-runs/{parseRunId:D}");
+            response.EnsureSuccessStatusCode();
+            parseRun = await response.Content.ReadFromJsonAsync<ParseRunResponse>();
+            if (parseRun?.Status == expectedStatus)
+            {
+                return parseRun;
+            }
+
+            await Task.Delay(50);
+        }
+
+        throw new InvalidOperationException(
+            $"Parse Run '{parseRunId:D}' did not reach '{expectedStatus}'; last status was '{parseRun?.Status}'.");
     }
 
     private static async Task<DocumentResponse> UploadDocumentAsync(HttpClient client)
