@@ -1,6 +1,24 @@
 # User Workspace and OIDC
 
-StructaDoc's web interface is a user-facing product, not only an administrator console. Signed-in users can upload and filter their own documents, create Parse Runs, inspect normalized results, download originals, export results, and share document permissions. Administrators see additional Provider configuration and API-client management areas in the same application.
+StructaDoc's web interface is a user-facing product, not only an administrator console. Signed-in users can upload and filter their own documents, create Parse Runs, inspect normalized results, download originals, export results, and share document permissions. Administrators additionally configure Providers and manage API clients.
+
+## Route Layout
+
+One Host serves both audiences and the API on a single address, as required by [ADR-0003](../adr/0003-technology-and-single-image-deployment.md):
+
+```text
+/               the document workspace
+/signin         workspace sign-in
+/admin          the administration area
+/admin/signin   administrator sign-in, including local break-glass access
+/api/v1/...     the service API
+```
+
+A path prefix is not an access boundary. The web application is public static content that any visitor can download, so `/admin` protects nothing by itself; every administrative route is enforced by the administrator policy on the server. The split exists so the two audiences get their own entry point and so the administration bundle is a lazily loaded chunk that a workspace-only visitor never downloads.
+
+Local administrator credentials are entered only at `/admin/signin`. The workspace sign-in page offers OIDC alone, and points administrators at the administration entry point when OIDC is disabled.
+
+Because the workspace and administration areas are client-side routes, the Host returns the application shell for unmatched navigation paths. `/api` and `/health` paths are excluded from that fallback so a mistyped route fails as an API call instead of answering `200` with HTML.
 
 ## Identity Boundary
 

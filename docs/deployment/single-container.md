@@ -83,7 +83,7 @@ If a wrapper already built the image, use `docker compose up --detach --no-build
 
 The examples are placeholders, not default credentials. Production environments must inject real values through deployment secrets, not repository files, Compose files, or shared `.env` files. Remove bootstrap variables after confirming that the first administrator can sign in; the stored account remains.
 
-The default mapping is `http://localhost:8080`, and readiness is `/health/ready`. Compose uses a read-only root filesystem, drops Linux capabilities, prevents privilege escalation, gives `/tmp` a bounded `tmpfs`, and runs as the non-root UID from the official .NET image.
+The default mapping is `http://localhost:8080`, and readiness is `/health/ready`. One container serves the document workspace at `/`, the administration area at `/admin`, and the API under `/api/v1`, so a deployment needs one published port, one certificate, and one reverse-proxy upstream. See [User Workspace and OIDC](../development/user-workspace-oidc.md). Compose uses a read-only root filesystem, drops Linux capabilities, prevents privilege escalation, gives `/tmp` a bounded `tmpfs`, and runs as the non-root UID from the official .NET image.
 
 Real Parse Run execution remains disabled unless explicitly enabled:
 

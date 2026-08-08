@@ -74,7 +74,13 @@ dotnet test StructaDoc.slnx --no-build --no-restore
 dotnet run --project src/StructaDoc.Host
 ```
 
-The Host serves the compiled web application and API. Useful unauthenticated endpoints are:
+The Host serves the compiled web application and API on one address:
+
+- `/` — the document workspace for signed-in users;
+- `/admin` — the administration area, restricted to administrators;
+- `/api/v1/...` — the service API.
+
+Useful unauthenticated endpoints are:
 
 - `GET /api/v1/system/info` — service identity and version;
 - `GET /health/live` — process liveness;
@@ -102,7 +108,7 @@ $env:STRUCTADOC_ADMIN_PASSWORD = 'use-a-secret-manager-or-a-long-random-value'
 docker compose up --build --detach
 ```
 
-The default address is `http://localhost:8080`. The example values show the required shape and are not default credentials. Inject production secrets through the deployment platform and remove bootstrap credentials after the first administrator exists.
+The default address is `http://localhost:8080`, with the workspace at `/` and the administration area at `/admin`. The example values show the required shape and are not default credentials. Inject production secrets through the deployment platform and remove bootstrap credentials after the first administrator exists.
 
 For restricted networks, the repository includes explicit `official`, `china`, and connectivity-based `auto` build modes:
 

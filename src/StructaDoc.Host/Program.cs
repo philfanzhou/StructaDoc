@@ -96,6 +96,26 @@ app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// The workspace and administration areas are client-side routes of one SPA, so the Host answers
+// unmatched navigation paths with the application shell. Service paths must be excluded, or a
+// mistyped route answers 200 with HTML instead of failing as an API call. This rejects the
+// selected fallback rather than mapping a competing endpoint, so a path that exists under
+// another HTTP method still resolves to 405 instead of 404.
+app.Use(async (context, next) =>
+{
+    if (context.GetEndpoint()?.Metadata.GetMetadata<ClientRouteFallbackMarker>() is not null
+        && (context.Request.Path.StartsWithSegments("/api")
+            || context.Request.Path.StartsWithSegments("/health")))
+    {
+        await Results
+            .Problem(statusCode: StatusCodes.Status404NotFound, title: "Endpoint not found")
+            .ExecuteAsync(context);
+        return;
+    }
+
+    await next(context);
+});
+
 var serviceVersion = Assembly
     .GetExecutingAssembly()
     .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
@@ -132,8 +152,11 @@ app.MapHealthChecks(
 
 app.MapHealthChecks("/health/ready");
 
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html")
+    .WithMetadata(new ClientRouteFallbackMarker());
 
 app.Run();
+
+internal sealed class ClientRouteFallbackMarker;
 
 public partial class Program;
