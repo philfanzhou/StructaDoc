@@ -23,7 +23,7 @@ Only database versions exercised by contract tests are declared supported.
 ### 2. Code boundary
 
 - Domain, Application, Contracts, and public APIs do not reference database Provider types or dialects.
-- Platform uses EF Core for the shared model and ordinary CRUD.
+- Adapters use EF Core for the shared model and ordinary CRUD.
 - Configuration selects the Provider explicitly; never infer it from a connection string.
 - Atomic claims and other operations that cannot be generalized reliably live behind internal dialect boundaries.
 - Database differences never appear as different public status values, DTO fields, or business behavior.

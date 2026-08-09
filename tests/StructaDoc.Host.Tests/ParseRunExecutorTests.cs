@@ -8,9 +8,9 @@ using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Workers;
-using StructaDoc.Platform.Persistence;
-using StructaDoc.Platform.Persistence.Entities;
-using StructaDoc.Platform.Persistence.ParseRuns;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Adapters.Persistence.ParseRuns;
 
 namespace StructaDoc.Host.Tests;
 

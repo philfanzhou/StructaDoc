@@ -25,16 +25,16 @@ public sealed class LayerDependencyTests
     }
 
     [Fact]
-    public void Platform_only_references_inner_layers()
+    public void Adapters_only_reference_inner_layers()
     {
         AssertReferencesOnly(
-            Platform.AssemblyReference.Assembly,
+            Adapters.AssemblyReference.Assembly,
             "StructaDoc.Application",
             "StructaDoc.Domain");
     }
 
     [Fact]
-    public void Migration_assemblies_only_reference_the_platform_layer()
+    public void Migration_assemblies_only_reference_the_adapters_layer()
     {
         var migrationAssemblies = new[]
         {
@@ -46,7 +46,7 @@ public sealed class LayerDependencyTests
 
         foreach (var migrationAssembly in migrationAssemblies)
         {
-            AssertReferencesOnly(migrationAssembly, "StructaDoc.Platform");
+            AssertReferencesOnly(migrationAssembly, "StructaDoc.Adapters");
         }
     }
 

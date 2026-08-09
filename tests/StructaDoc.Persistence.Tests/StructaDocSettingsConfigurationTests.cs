@@ -1,7 +1,7 @@
 ﻿using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using StructaDoc.Application.Settings;
-using StructaDoc.Platform.ControlPlane;
+using StructaDoc.Adapters.ControlPlane;
 
 namespace StructaDoc.Persistence.Tests;
 

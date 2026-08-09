@@ -1,5 +1,5 @@
 using StructaDoc.Application.Conversion;
-using StructaDoc.Platform.Conversion;
+using StructaDoc.Adapters.Conversion;
 
 namespace StructaDoc.Persistence.Tests;
 

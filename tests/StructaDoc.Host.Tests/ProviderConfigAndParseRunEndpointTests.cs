@@ -9,7 +9,7 @@ using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.Documents;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Contracts.Providers;
-using StructaDoc.Platform.Persistence;
+using StructaDoc.Adapters.Persistence;
 
 namespace StructaDoc.Host.Tests;
 

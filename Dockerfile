@@ -15,11 +15,11 @@ ARG NUGET_SOURCE=https://api.nuget.org/v3/index.json
 WORKDIR /source
 
 COPY Directory.Build.props Directory.Packages.props global.json ./
+COPY src/StructaDoc.Adapters/StructaDoc.Adapters.csproj src/StructaDoc.Adapters/
 COPY src/StructaDoc.Application/StructaDoc.Application.csproj src/StructaDoc.Application/
 COPY src/StructaDoc.Contracts/StructaDoc.Contracts.csproj src/StructaDoc.Contracts/
 COPY src/StructaDoc.Domain/StructaDoc.Domain.csproj src/StructaDoc.Domain/
 COPY src/StructaDoc.Host/StructaDoc.Host.csproj src/StructaDoc.Host/
-COPY src/StructaDoc.Platform/StructaDoc.Platform.csproj src/StructaDoc.Platform/
 COPY src/StructaDoc.Migrations.MariaDb/StructaDoc.Migrations.MariaDb.csproj src/StructaDoc.Migrations.MariaDb/
 COPY src/StructaDoc.Migrations.MySql/StructaDoc.Migrations.MySql.csproj src/StructaDoc.Migrations.MySql/
 COPY src/StructaDoc.Migrations.PostgreSql/StructaDoc.Migrations.PostgreSql.csproj src/StructaDoc.Migrations.PostgreSql/

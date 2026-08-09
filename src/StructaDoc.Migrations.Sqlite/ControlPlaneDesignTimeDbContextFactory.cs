@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using StructaDoc.Platform.ControlPlane;
+using StructaDoc.Adapters.ControlPlane;
 
 namespace StructaDoc.Migrations.Sqlite;
 

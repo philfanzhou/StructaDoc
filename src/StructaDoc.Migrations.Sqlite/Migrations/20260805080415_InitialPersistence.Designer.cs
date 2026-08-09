@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using StructaDoc.Platform.Persistence;
+using StructaDoc.Adapters.Persistence;
 
 #nullable disable
 
@@ -20,7 +20,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -82,7 +82,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("documents", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseRunEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -219,9 +219,9 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("parse_runs", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseRunEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Platform.Persistence.Entities.DocumentEntity", "Document")
+                    b.HasOne("StructaDoc.Adapters.Persistence.Entities.DocumentEntity", "Document")
                         .WithMany("ParseRuns")
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -230,7 +230,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("Document");
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Navigation("ParseRuns");
                 });

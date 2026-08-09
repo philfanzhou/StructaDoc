@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Contracts.Authentication;
-using StructaDoc.Platform.Authentication;
+using StructaDoc.Adapters.Authentication;
 
 namespace StructaDoc.Host.Authentication;
 

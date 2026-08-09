@@ -8,7 +8,7 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Providers;
-using StructaDoc.Platform.Authentication;
+using StructaDoc.Adapters.Authentication;
 
 namespace StructaDoc.Host.Authentication;
 

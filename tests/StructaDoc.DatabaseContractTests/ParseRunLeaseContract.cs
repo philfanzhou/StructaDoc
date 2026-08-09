@@ -9,11 +9,11 @@ using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
-using StructaDoc.Platform.Authentication;
-using StructaDoc.Platform.Documents;
-using StructaDoc.Platform.Persistence;
-using StructaDoc.Platform.Persistence.Entities;
-using StructaDoc.Platform.Persistence.ParseRuns;
+using StructaDoc.Adapters.Authentication;
+using StructaDoc.Adapters.Documents;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Adapters.Persistence.ParseRuns;
 
 namespace StructaDoc.DatabaseContractTests;
 

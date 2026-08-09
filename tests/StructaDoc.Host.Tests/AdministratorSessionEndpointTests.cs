@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Contracts.Authentication;
-using StructaDoc.Platform.ControlPlane;
+using StructaDoc.Adapters.ControlPlane;
 
 namespace StructaDoc.Host.Tests;
 

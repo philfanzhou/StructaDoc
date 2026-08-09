@@ -1,4 +1,4 @@
-using StructaDoc.Platform.Persistence;
+using StructaDoc.Adapters.Persistence;
 
 namespace StructaDoc.DatabaseContractTests;
 

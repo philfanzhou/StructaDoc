@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using StructaDoc.Platform.Persistence;
+using StructaDoc.Adapters.Persistence;
 
 namespace StructaDoc.Migrations.PostgreSql;
 

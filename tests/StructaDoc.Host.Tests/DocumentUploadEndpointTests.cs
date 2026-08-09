@@ -7,9 +7,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Contracts.Documents;
-using StructaDoc.Platform.Authentication;
-using StructaDoc.Platform.Persistence;
-using StructaDoc.Platform.Persistence.Entities;
+using StructaDoc.Adapters.Authentication;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Host.Tests;
 

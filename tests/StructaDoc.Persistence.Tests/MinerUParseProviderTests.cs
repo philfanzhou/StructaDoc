@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Application.Providers;
-using StructaDoc.Platform.Providers;
+using StructaDoc.Adapters.Providers;
 
 namespace StructaDoc.Persistence.Tests;
 

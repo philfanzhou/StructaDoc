@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using StructaDoc.Application.Authentication;
-using StructaDoc.Platform.ControlPlane;
+using StructaDoc.Adapters.ControlPlane;
 
 namespace StructaDoc.Host.Authentication;
 

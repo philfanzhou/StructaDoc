@@ -1,6 +1,6 @@
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.Settings;
-using StructaDoc.Platform.Authentication;
+using StructaDoc.Adapters.Authentication;
 
 namespace StructaDoc.ArchitectureTests;
 

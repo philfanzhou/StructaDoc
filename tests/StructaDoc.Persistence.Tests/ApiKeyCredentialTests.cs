@@ -1,5 +1,5 @@
 using System.Security.Cryptography;
-using StructaDoc.Platform.Authentication;
+using StructaDoc.Adapters.Authentication;
 
 namespace StructaDoc.Persistence.Tests;
 

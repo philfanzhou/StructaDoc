@@ -1,5 +1,5 @@
 using System.IO.Compression;
-using StructaDoc.Platform.Documents;
+using StructaDoc.Adapters.Documents;
 
 namespace StructaDoc.Persistence.Tests;
 

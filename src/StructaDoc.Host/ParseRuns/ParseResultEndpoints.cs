@@ -2,7 +2,7 @@ using Microsoft.Net.Http.Headers;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Host.Authentication;
-using StructaDoc.Platform.Persistence.ParseRuns;
+using StructaDoc.Adapters.Persistence.ParseRuns;
 
 namespace StructaDoc.Host.ParseRuns;
 

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using StructaDoc.Application.Settings;
-using StructaDoc.Platform.Authentication;
-using StructaDoc.Platform.ControlPlane;
+using StructaDoc.Adapters.Authentication;
+using StructaDoc.Adapters.ControlPlane;
 
 namespace StructaDoc.Host.Authentication;
 

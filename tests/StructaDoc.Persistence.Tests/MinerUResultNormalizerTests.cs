@@ -4,8 +4,8 @@ using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
-using StructaDoc.Platform.ProviderResults;
-using StructaDoc.Platform.Storage;
+using StructaDoc.Adapters.ProviderResults;
+using StructaDoc.Adapters.Storage;
 
 namespace StructaDoc.Persistence.Tests;
 

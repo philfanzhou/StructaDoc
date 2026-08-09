@@ -3,10 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
-using StructaDoc.Platform.Persistence;
-using StructaDoc.Platform.Persistence.Entities;
-using StructaDoc.Platform.Persistence.ParseRuns;
-using StructaDoc.Platform.Storage;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Adapters.Persistence.ParseRuns;
+using StructaDoc.Adapters.Storage;
 using StructaDoc.Migrations.Sqlite;
 
 namespace StructaDoc.Persistence.Tests;

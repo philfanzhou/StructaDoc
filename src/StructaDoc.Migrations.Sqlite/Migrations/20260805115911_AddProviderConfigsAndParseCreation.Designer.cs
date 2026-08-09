@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using StructaDoc.Platform.Persistence;
+using StructaDoc.Adapters.Persistence;
 
 #nullable disable
 
@@ -20,7 +20,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.AdminUserEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.AdminUserEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -76,7 +76,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("admin_users", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ApiClientEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ApiClientEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -124,7 +124,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("api_clients", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -189,7 +189,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("documents", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseRunEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -331,7 +331,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("parse_runs", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ProviderConfigEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -389,7 +389,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("provider_configs", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigVersionEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ProviderConfigVersionEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -437,9 +437,9 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("provider_config_versions", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseRunEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Platform.Persistence.Entities.DocumentEntity", "Document")
+                    b.HasOne("StructaDoc.Adapters.Persistence.Entities.DocumentEntity", "Document")
                         .WithMany("ParseRuns")
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -448,9 +448,9 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("Document");
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigVersionEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ProviderConfigVersionEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Platform.Persistence.Entities.ProviderConfigEntity", "ProviderConfig")
+                    b.HasOne("StructaDoc.Adapters.Persistence.Entities.ProviderConfigEntity", "ProviderConfig")
                         .WithMany("Versions")
                         .HasForeignKey("ProviderConfigId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -459,12 +459,12 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("ProviderConfig");
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Navigation("ParseRuns");
                 });
 
-            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigEntity", b =>
+            modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ProviderConfigEntity", b =>
                 {
                     b.Navigation("Versions");
                 });
