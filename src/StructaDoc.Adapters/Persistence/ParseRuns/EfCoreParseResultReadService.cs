@@ -17,7 +17,10 @@ public sealed class EfCoreParseResultReadService(
     public async Task<IReadOnlyList<ParseRunRecord>> ListForDocumentAsync(Guid documentId, ResourceAccessContext access, CancellationToken cancellationToken = default)
     {
         if (!await CanReadDocumentAsync(documentId, access, cancellationToken)) return [];
-        return await QueryRuns().Where(run => run.DocumentId == documentId).OrderByDescending(run => run.CreatedAtUtc).ToListAsync(cancellationToken);
+        // Narrowed and ordered on the entity rather than on the projection. A database cannot filter
+        // by a property of a record it never constructs, so the same conditions placed after the
+        // Select below fail to translate and the endpoint answers 500.
+        return await QueryRuns(forDocumentId: documentId).ToListAsync(cancellationToken);
     }
 
     public async Task<ParseRunRecord?> GetAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
@@ -117,10 +120,13 @@ public sealed class EfCoreParseResultReadService(
             ? query.Where(document => document.OwnerIssuer == access.Issuer && document.OwnerSubject == access.Subject || document.AccessGrants.Any(grant => grant.PrincipalIssuer == access.Issuer && grant.PrincipalSubject == access.Subject && (grant.Permissions & (int)DocumentPermissions.Read) != 0))
             : query.Where(_ => false);
 
-    private IQueryable<ParseRunRecord> QueryRuns(Guid? id = null)
+    private IQueryable<ParseRunRecord> QueryRuns(Guid? id = null, Guid? forDocumentId = null)
     {
         var query = dbContext.ParseRuns.AsNoTracking().Where(run => run.LifecycleState == ResourceLifecycleStates.Active);
         if (id.HasValue) query = query.Where(run => run.Id == id.Value);
+        // Newest first, then by ID: two Parse Runs created in the same tick would otherwise come back
+        // in whatever order the database chose that time.
+        if (forDocumentId.HasValue) query = query.Where(run => run.DocumentId == forDocumentId.Value).OrderByDescending(run => run.CreatedAtUtc).ThenByDescending(run => run.Id);
         return query.Select(run => new ParseRunRecord(run.Id, run.DocumentId, run.Status, run.Stage, run.ProviderType, run.ProviderConfigId, run.ProviderConfigVersion, run.OptionsJson, run.SourceMediaType, run.SubmittedMediaType, run.AttemptCount, run.MaxAttempts, run.NextAttemptAtUtc, run.ErrorCode, run.ErrorMessage, run.CreatedAtUtc, run.StartedAtUtc, run.CompletedAtUtc));
     }
 
