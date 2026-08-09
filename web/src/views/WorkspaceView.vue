@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { get, mutate, upload, type DocumentItem, type ParseBlock, type ParseRun } from '../api'
 import { message } from '../messages'
 import { session } from '../session'
@@ -23,15 +23,26 @@ const finalStatuses = ['succeeded', 'failed', 'cancelled']
 const canAdmin = computed(() => session.value?.isAdministrator === true)
 const canCancelRun = computed(() => selectedRun.value !== undefined && !finalStatuses.includes(selectedRun.value.status))
 
+// Parsing runs on the service and finishes without telling the browser, so anything unfinished on
+// screen has to be read again. Polling is tied to what is actually unfinished rather than left
+// running: a workspace showing only completed work makes no requests at all.
+const pollIntervalMs = 3000
+function isUnfinished(status?: string | null) { return !!status && !finalStatuses.includes(status) }
+const hasUnfinishedWork = computed(() =>
+  runs.value.some(run => isUnfinished(run.status))
+  || documents.value.some(document => isUnfinished(document.latestParseStatus)))
+
 function prettyBytes(bytes: number) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1048576).toFixed(1)} MB` }
 function prettyDate(value: string) { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 
-async function loadDocuments() {
+// `quiet` is what a background refresh passes. A poll that fails while the user is reading a result
+// must not take over the screen with a toast; a refresh the user asked for still reports.
+async function loadDocuments(quiet = false) {
   const query = new URLSearchParams({ limit: '100' })
   if (fileNameFilter.value.trim()) query.set('fileName', fileNameFilter.value.trim())
   if (statusFilter.value) query.set('parseStatus', statusFilter.value)
   try { documents.value = (await get<{ items: DocumentItem[] }>(`/api/v1/documents?${query}`)).items }
-  catch (e) { message((e as Error).message, true) }
+  catch (e) { if (!quiet) message((e as Error).message, true) }
 }
 
 async function onFiles(files: FileList | null) {
@@ -74,20 +85,45 @@ async function cancelRun(run: ParseRun) {
   busy.value = true
   try {
     await mutate(`/api/v1/parse-runs/${run.id}/cancel`, 'POST')
+    // Cancellation completes as a durable transition some cycles later. The record is still
+    // unfinished at this point, which is what keeps the poll below running until it settles.
     message('取消请求已受理')
     await refreshRuns(run.id)
-    // Completion is a durable transition, so re-read once more after the maintenance cycle.
-    window.setTimeout(() => refreshRuns(run.id).catch(() => undefined), 2000)
   }
   catch (e) { message((e as Error).message, true) } finally { busy.value = false }
 }
 
-async function refreshRuns(keepSelectedId?: string) {
+async function refreshRuns(keepSelectedId?: string, quiet = false) {
   if (!selectedDocument.value) return
   runs.value = await get(`/api/v1/documents/${selectedDocument.value.id}/parse-runs`)
   if (keepSelectedId) selectedRun.value = runs.value.find(item => item.id === keepSelectedId) ?? selectedRun.value
-  await loadDocuments()
+  await loadDocuments(quiet)
 }
+
+// A background pass keeps the selection where the user left it and stays silent on failure, so a
+// service that is briefly unreachable does not clear the screen or interrupt reading.
+async function pollProgress() {
+  const previous = selectedRun.value
+  await refreshRuns(previous?.id, true)
+  const current = selectedRun.value
+  // Pages, blocks, assets, and the Markdown rendering only exist once a run reaches a final
+  // status, so they are read at that transition rather than on every tick.
+  if (previous && current && isUnfinished(previous.status) && !isUnfinished(current.status)) {
+    await openRun(current)
+  }
+}
+
+let pollHandle: number | undefined
+function stopPolling() {
+  if (pollHandle !== undefined) { window.clearInterval(pollHandle); pollHandle = undefined }
+}
+
+watch(hasUnfinishedWork, unfinished => {
+  stopPolling()
+  if (unfinished) pollHandle = window.setInterval(() => { pollProgress().catch(() => undefined) }, pollIntervalMs)
+})
+
+onUnmounted(stopPolling)
 
 async function deleteCurrent() {
   if (!selectedDocument.value || !confirm(`确认删除“${selectedDocument.value.originalFileName}”？对象与关系数据将由可恢复清理任务处理。`)) return
@@ -111,7 +147,7 @@ onMounted(() => loadDocuments())
     <div><strong>把文档拖到这里</strong><span>PDF、Word、PowerPoint、Excel；支持多文件</span></div>
     <label class="primary file-button">选择文件<input type="file" multiple hidden @change="onFiles(($event.target as HTMLInputElement).files)"></label>
   </section>
-  <section class="toolbar"><input v-model="fileNameFilter" placeholder="按文件名筛选" @keyup.enter="loadDocuments"><select v-model="statusFilter" @change="loadDocuments"><option value="">全部状态</option><option value="unparsed">未解析</option><option value="queued">排队中</option><option value="running">解析中</option><option value="succeeded">已完成</option><option value="failed">失败</option></select><button class="ghost" @click="loadDocuments">刷新</button></section>
+  <section class="toolbar"><input v-model="fileNameFilter" placeholder="按文件名筛选" @keyup.enter="loadDocuments()"><select v-model="statusFilter" @change="loadDocuments()"><option value="">全部状态</option><option value="unparsed">未解析</option><option value="queued">排队中</option><option value="running">解析中</option><option value="succeeded">已完成</option><option value="failed">失败</option></select><button class="ghost" @click="loadDocuments()">刷新</button><span v-if="hasUnfinishedWork" class="auto-refresh">解析进行中，状态每 {{ pollIntervalMs / 1000 }} 秒自动刷新</span></section>
   <div class="workspace-grid">
     <section class="panel document-list">
       <button v-for="document in documents" :key="document.id" class="document-row" :class="{ selected: selectedDocument?.id === document.id }" @click="openDocument(document)">
@@ -136,5 +172,5 @@ onMounted(() => loadDocuments())
 </template>
 
 <style scoped>
-.run-actions{display:flex;align-items:center;gap:10px;margin:12px 0}.run-actions span{font-size:11px;color:#5c6b62;line-height:1.5}.result-title{display:flex;align-items:center;gap:8px}.result-title h3{margin-right:auto}.result-title span{font-size:10px;color:#57816e;background:#e7eee9;padding:4px 7px;border-radius:20px}.resource-list{border-top:1px solid #d8ded9;padding-top:12px;margin-top:14px}.resource-list summary{font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px}.resource-list a{display:block;color:#123c2b;font-size:12px;padding:8px 0;border-bottom:1px solid #e8ebe8;text-decoration:none}.share-box fieldset{border:0;padding:8px 0 14px;display:flex;flex-wrap:wrap;gap:8px 14px}.share-box legend{font-size:12px;font-weight:700}.share-box fieldset label{display:flex;align-items:center;gap:5px;font-size:11px}.share-box fieldset input{width:auto}
+.auto-refresh{display:flex;align-items:center;font-size:11px;color:#57816e}.run-actions{display:flex;align-items:center;gap:10px;margin:12px 0}.run-actions span{font-size:11px;color:#5c6b62;line-height:1.5}.result-title{display:flex;align-items:center;gap:8px}.result-title h3{margin-right:auto}.result-title span{font-size:10px;color:#57816e;background:#e7eee9;padding:4px 7px;border-radius:20px}.resource-list{border-top:1px solid #d8ded9;padding-top:12px;margin-top:14px}.resource-list summary{font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px}.resource-list a{display:block;color:#123c2b;font-size:12px;padding:8px 0;border-bottom:1px solid #e8ebe8;text-decoration:none}.share-box fieldset{border:0;padding:8px 0 14px;display:flex;flex-wrap:wrap;gap:8px 14px}.share-box legend{font-size:12px;font-weight:700}.share-box fieldset label{display:flex;align-items:center;gap:5px;font-size:11px}.share-box fieldset input{width:auto}
 </style>

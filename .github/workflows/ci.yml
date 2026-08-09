@@ -147,7 +147,7 @@ jobs:
             --publish 127.0.0.1:8080:8080 \
             --env Authentication__BootstrapAdministratorUsername="$STRUCTADOC_E2E_ADMIN_USERNAME" \
             --env Authentication__BootstrapAdministratorPassword="$STRUCTADOC_E2E_ADMIN_PASSWORD" \
-            --env Worker__ExecutionEnabled=false \
+            --env Worker__ExecutionEnabled=true \
             structadoc:ci
 
           for attempt in {1..60}; do

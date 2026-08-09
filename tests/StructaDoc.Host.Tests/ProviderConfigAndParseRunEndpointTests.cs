@@ -108,6 +108,15 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         Assert.Equal(updated.CurrentVersionId, second!.ProviderConfigVersionId);
         Assert.Equal(config.CurrentVersionId, first.ProviderConfigVersionId);
 
+        // The workspace re-reads this list every time a document is opened, which makes it the
+        // busiest read in the product. It is also the one where a condition applied to the projected
+        // record rather than to the entity fails only at run time, as a 500.
+        var documentRuns = await client.GetFromJsonAsync<ParseRunResponse[]>(
+            $"/api/v1/documents/{document.Id:D}/parse-runs");
+        Assert.Equal(2, documentRuns!.Length);
+        Assert.Equal(second.Id, documentRuns[0].Id);
+        Assert.Equal(first.Id, documentRuns[1].Id);
+
         using var getResponse = await client.GetAsync($"/api/v1/parse-runs/{first.Id:D}");
         var fetched = await getResponse.Content.ReadFromJsonAsync<ParseRunResponse>();
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
@@ -163,6 +172,150 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
 
         Assert.Equal(HttpStatusCode.BadRequest, unsafeEndpoint.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, conflictingCredential.StatusCode);
+    }
+
+    [Fact]
+    public async Task Administrator_can_correct_a_provider_config_and_erase_its_stored_credential()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+
+        using var createResponse = await client.PostAsJsonAsync(
+            "/api/v1/admin/provider-configs",
+            new ProviderConfigRequest(
+                "Mistyped MinerU",
+                "mineru-local",
+                "http://wrong-host.test:8000/",
+                Credential: "typed-by-mistake"));
+        var created = await createResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        Assert.True(created!.HasCredential);
+
+        // Correcting an address and adding the settings the create form leaves out is the whole
+        // point of an editable configuration: neither can be reached any other way from a browser.
+        using var correctResponse = await client.PutAsJsonAsync(
+            $"/api/v1/admin/provider-configs/{created.Id:D}",
+            new ProviderConfigRequest(
+                "Corrected MinerU",
+                "mineru-local",
+                "http://right-host.test:8000/",
+                Model: "pipeline",
+                Backend: "vlm-http-client"));
+        var corrected = await correctResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, correctResponse.StatusCode);
+        Assert.Equal("Corrected MinerU", corrected!.Name);
+        Assert.Equal("http://right-host.test:8000/", corrected.BaseUrl);
+        Assert.Equal("pipeline", corrected.Model);
+        Assert.Equal("vlm-http-client", corrected.Backend);
+        // An omitted credential keeps the stored one, or every edit would silently erase it.
+        Assert.True(corrected.HasCredential);
+
+        using var clearResponse = await client.PutAsJsonAsync(
+            $"/api/v1/admin/provider-configs/{created.Id:D}",
+            new ProviderConfigRequest(
+                "Corrected MinerU",
+                "mineru-local",
+                "http://right-host.test:8000/",
+                Model: "pipeline",
+                Backend: "vlm-http-client",
+                ClearCredential: true));
+        var cleared = await clearResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, clearResponse.StatusCode);
+        Assert.False(cleared!.HasCredential);
+        Assert.Equal(3, cleared.VersionNumber);
+    }
+
+    [Fact]
+    public async Task Provider_config_deletion_is_refused_while_a_parse_run_records_it()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+
+        using var createResponse = await client.PostAsJsonAsync(
+            "/api/v1/admin/provider-configs",
+            new ProviderConfigRequest(
+                "Deletable MinerU",
+                "mineru-local",
+                "http://deletable.test:8000/",
+                IsDefault: true));
+        var config = await createResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var document = await UploadDocumentAsync(client);
+        using var createParse = await CreateParseRunAsync(
+            client,
+            document.Id,
+            new StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest(),
+            $"delete-guard-{Guid.NewGuid():N}");
+        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>();
+        Assert.Equal(HttpStatusCode.Created, createParse.StatusCode);
+
+        // A Parse Run reads its Provider configuration version while it executes, so removing the
+        // configuration under it would break a run already under way.
+        using var deleteWhileActive = await client.DeleteAsync(
+            $"/api/v1/admin/provider-configs/{config!.Id:D}");
+        Assert.Equal(HttpStatusCode.Conflict, deleteWhileActive.StatusCode);
+
+        using var cancel = await client.PostAsync($"/api/v1/parse-runs/{parseRun!.Id:D}/cancel", null);
+        Assert.Equal(HttpStatusCode.Accepted, cancel.StatusCode);
+        await WaitForStatusAsync(client, parseRun.Id, "cancelled");
+
+        // Finishing does not release it: the run keeps the configuration version as the record of
+        // how it was produced, and deleting the rows would erase that rather than free anything.
+        using var deleteWithHistory = await client.DeleteAsync(
+            $"/api/v1/admin/provider-configs/{config.Id:D}");
+        Assert.Equal(HttpStatusCode.Conflict, deleteWithHistory.StatusCode);
+
+        using var stillListed = await client.GetAsync("/api/v1/admin/provider-configs");
+        var configs = await stillListed.Content.ReadFromJsonAsync<ProviderConfigResponse[]>();
+        Assert.Contains(configs!, listed => listed.Id == config.Id);
+    }
+
+    [Fact]
+    public async Task An_unused_provider_config_is_deleted_with_every_version_of_it()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+
+        using var createResponse = await client.PostAsJsonAsync(
+            "/api/v1/admin/provider-configs",
+            new ProviderConfigRequest("Unused MinerU", "mineru-local", "http://unused.test:8000/"));
+        var config = await createResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        using var updateResponse = await client.PutAsJsonAsync(
+            $"/api/v1/admin/provider-configs/{config!.Id:D}",
+            new ProviderConfigRequest("Unused MinerU", "mineru-local", "http://unused.test:9000/"));
+        updateResponse.EnsureSuccessStatusCode();
+
+        using var deleteResponse = await client.DeleteAsync(
+            $"/api/v1/admin/provider-configs/{config.Id:D}");
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        using var repeatResponse = await client.DeleteAsync(
+            $"/api/v1/admin/provider-configs/{config.Id:D}");
+        Assert.Equal(HttpStatusCode.NotFound, repeatResponse.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+        Assert.False(await dbContext.ProviderConfigs.AnyAsync(item => item.Id == config.Id));
+        // Both versions go with it. A version row left behind would keep a credential alive under a
+        // configuration the administrator believes is gone.
+        Assert.False(await dbContext.ProviderConfigVersions.AnyAsync(
+            version => version.ProviderConfigId == config.Id));
+    }
+
+    [Fact]
+    public async Task Provider_config_deletion_requires_an_administrator()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.DeleteAsync(
+            $"/api/v1/admin/provider-configs/{Guid.NewGuid():D}");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]

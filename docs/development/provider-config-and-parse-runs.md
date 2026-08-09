@@ -24,6 +24,11 @@ Administrator Cookie endpoints require antiforgery validation for writes:
 | `GET` | `/api/v1/admin/provider-configs` | Lists each logical configuration's current version without credentials |
 | `POST` | `/api/v1/admin/provider-configs` | Creates a logical configuration and version 1 |
 | `PUT` | `/api/v1/admin/provider-configs/{id}` | Creates and selects a new immutable version |
+| `DELETE` | `/api/v1/admin/provider-configs/{id}` | Removes a logical configuration and every version of it, or refuses |
+
+Deletion exists because a configuration created by mistake would otherwise stay in the list forever. It removes rows rather than hiding them, so it only applies while nothing points at one. A Parse Run that has not reached a final status still reads its configuration version as it executes, and a finished one keeps that version as the record of how its result was produced; both refuse with `409` and separate detail text, because one clears on its own and the other never does. Disabling is how a configuration that has been used is retired.
+
+A Parse Run records its configuration by ID rather than through a foreign key, so nothing in the schema would stop a run created while an administrator is deciding. The check and the delete therefore share one transaction.
 
 ## Parse Run Creation
 
@@ -42,6 +47,14 @@ Callers may send one visible-ASCII `Idempotency-Key` up to 256 characters. Scope
 ## Cancellation
 
 `POST /api/v1/parse-runs/{parseRunId}/cancel` requires the same authorization as creating a Parse Run for the Document, and Cookie callers supply an antiforgery token. It moves a `queued`, `claimed`, `running`, or `retry-wait` run to `cancel-requested` with one conditional update, returns `202` with the updated record, stays idempotent through completion, returns `409` for a run that already reached `succeeded` or `failed`, and returns `404` for an unknown or inaccessible run. A run with no live lease may already be `cancelled` when the response is written, so callers depend on `status` finality rather than on observing `cancel-requested`. Completion to `cancelled` is durable and happens on the owning Worker or through Parse Run maintenance. See [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) section 13.
+
+## Administration Area
+
+Every field the API accepts is reachable from `/admin`: name, type, base URL, model, backend, credential, enabled, and default. The type is a fixed choice rather than typed text, because the service accepts a closed set and a typo could only ever come back as a validation error. Editing an existing configuration leaves the type read-only, matching the service's refusal to change it.
+
+The credential field starts empty on an edit, because the service never sends a stored credential back. An empty field means the stored value is kept; erasing one is a separate checkbox that sends `clearCredential`.
+
+Disabling the default configuration clears its default marker in the same write, since the service refuses a configuration that is disabled and default at once. The area also reports when no enabled default exists at all: the workspace starts a parse without naming a Provider, so that deployment has a button that can only fail.
 
 ## Current Gaps
 

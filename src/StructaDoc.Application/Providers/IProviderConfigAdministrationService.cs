@@ -15,4 +15,8 @@ public interface IProviderConfigAdministrationService
         ProviderConfigDefinition definition,
         DateTime nowUtc,
         CancellationToken cancellationToken = default);
+
+    Task<ProviderConfigDeletionStatus> DeleteAsync(
+        Guid id,
+        CancellationToken cancellationToken = default);
 }

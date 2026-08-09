@@ -49,6 +49,14 @@ An OIDC-created document records its owner. Owners have full document permission
 
 Every document, Parse Run, Page, Block, Asset, Artifact, Markdown view, export, share operation, and deletion performs resource-level authorization. Administrators and scoped service clients retain their separate global service policies.
 
+## Watching Work in Progress
+
+Parsing is asynchronous and finishes on the service without telling the browser, so the workspace re-reads what is unfinished on a three-second timer. The timer is driven by the visible state rather than left running: it starts when a Parse Run or a document in the list holds a non-final status and stops when everything in view is `succeeded`, `failed`, or `cancelled`, so a workspace showing only finished work makes no requests at all. The workspace says while it is polling, so a screen that is not changing is distinguishable from one that has stopped watching.
+
+A background pass keeps the selected document and Parse Run and stays silent when it fails, because a service that is briefly unreachable should not clear the screen or interrupt someone reading a result. A refresh the user asked for still reports its failure. Pages, Blocks, Assets, and the Markdown view only exist once a run reaches a final status, so they are read at that transition rather than on every pass.
+
+This is polling rather than a push channel. It costs one list request per interval per open workspace, against a stream that would have to survive a reverse proxy, a restart, and a lost connection to be worth the exchange at this scale.
+
 ## Configuration
 
 Sign-in through an identity provider is configured under `/admin`, because it is the only way an end user reaches the workspace: a deployment that could not configure it from the browser would have no users at all. The keys are ordinary settings and follow the precedence in [Service Settings](./service-settings.md), so a deployment that prefers to pin them keeps doing that and the web interface reports them as managed externally.

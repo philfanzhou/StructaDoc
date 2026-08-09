@@ -25,6 +25,11 @@ public static class ProviderConfigAdministrationEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
+        group.MapDelete("/{id:guid}", DeleteAsync)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
     }
@@ -98,6 +103,42 @@ public static class ProviderConfigAdministrationEndpoints
                 title: "Provider Config not found",
                 detail: $"Provider Config '{id:D}' does not exist."),
             _ => Conflict(),
+        };
+    }
+
+    private static async Task<IResult> DeleteAsync(
+        Guid id,
+        HttpContext context,
+        IAntiforgery antiforgery,
+        IProviderConfigAdministrationService service,
+        CancellationToken cancellationToken)
+    {
+        var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
+        if (antiforgeryFailure is not null)
+        {
+            return antiforgeryFailure;
+        }
+
+        var status = await service.DeleteAsync(id, cancellationToken);
+        context.Response.Headers.CacheControl = "no-store";
+        return status switch
+        {
+            ProviderConfigDeletionStatus.Deleted => Results.NoContent(),
+
+            ProviderConfigDeletionStatus.NotFound => Results.Problem(
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Provider Config not found",
+                detail: $"Provider Config '{id:D}' does not exist."),
+
+            ProviderConfigDeletionStatus.ReferencedByActiveParseRun => Results.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Provider Config is in use",
+                detail: "A Parse Run that has not finished still uses this Provider Config. Wait for it to finish or cancel it, then delete the Provider Config."),
+
+            _ => Results.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Provider Config has parse history",
+                detail: "Finished Parse Runs record the configuration version they were produced with, so this Provider Config cannot be removed. Disable it instead to stop new Parse Runs from using it."),
         };
     }
 
