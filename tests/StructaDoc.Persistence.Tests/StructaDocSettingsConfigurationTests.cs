@@ -126,8 +126,9 @@ public sealed class StructaDocSettingsConfigurationTests : IDisposable
         // unexplained sign-in failure into something an administrator can act on.
         Assert.Null(configuration.Effective[SettingCatalog.OidcClientSecret]);
         Assert.True(fault.HasFault);
-        Assert.Equal(SettingCatalog.OidcSection, fault.Section);
-        Assert.Contains(SettingCatalog.OidcClientSecret, fault.Detail!, StringComparison.Ordinal);
+        var detail = fault.DetailFor(SettingCatalog.OidcSection);
+        Assert.NotNull(detail);
+        Assert.Contains(SettingCatalog.OidcClientSecret, detail, StringComparison.Ordinal);
     }
 
     [Fact]

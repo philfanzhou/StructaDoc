@@ -113,6 +113,16 @@ export STRUCTADOC_EXECUTION_ENABLED=true
 
 Sign-in through an identity provider is configured the same way, under `/admin`. Until it is, only administrators can use the deployment: the workspace has no other way in. See [User Workspace and OIDC](../development/user-workspace-oidc.md) for what to register at the provider, and [Service Settings](../development/service-settings.md) for what else is settable from the browser and what each change requires.
 
+A parsing Provider is configured there too, and one of them has to be marked default: the workspace starts a parse without naming a Provider, so a deployment with configuration but no enabled default has a button that can only fail. The administration area says so when that is the case.
+
+## Where /data Comes From
+
+The image's `/data` layout is a configuration file inside the image, `appsettings.Container.json`, rather than environment variables. The difference matters: an environment variable pins a setting, so the web interface reports it as unchangeable and refuses to write it. Storage and the business database are meant to be moved from the browser, so they ship as defaults a stored setting can be layered over.
+
+Setting `Storage__*` or `Database__*` on `docker run` still works and still pins them, which is what an operator managing configuration from outside the container wants. What is genuinely fixed by the image stays an environment variable: the control-plane database path, the Data Protection key ring, and whether migrations are applied at startup are not settable from a browser at all.
+
+Moving either is a migration, not a switch. A new database is created empty at the next start and a new storage location starts empty; nothing copies existing documents, objects, or Parse Runs across. Test the new location with the button beside it first — the storage test writes and removes a probe object, and the database test connects and reads migration history without creating anything.
+
 ## Restart Policy
 
 Some settings only take effect after a restart, and the administration page offers a button that stops the Host so its supervisor starts it again. The image cannot restart itself, so run the container with a restart policy or that button leaves the service down until it is started by hand:

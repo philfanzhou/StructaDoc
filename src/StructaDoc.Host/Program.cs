@@ -26,6 +26,8 @@ using StructaDoc.Adapters.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Configuration.AddContainerDefaults();
+
 var controlPlaneOptions = builder.Configuration
     .GetSection(ControlPlaneOptions.SectionName)
     .Get<ControlPlaneOptions>() ?? new ControlPlaneOptions();
@@ -55,9 +57,18 @@ var settingsConfiguration = StructaDocSettingsConfiguration.Create(
     settingsStartupFault);
 var configuration = settingsConfiguration.Effective;
 
-var databaseOptions = configuration
-    .GetSection(DatabaseOptions.SectionName)
-    .Get<DatabaseOptions>() ?? new DatabaseOptions();
+// Where business data and documents live are the two settings whose wrong value leaves nothing
+// working, and both are reachable from the browser, so both are bound as recoverable sections: a
+// stored value the service cannot use is dropped and reported rather than allowed to stop startup.
+// What survives is the control plane, which is what the administration area runs on.
+var databaseOptions = RecoverableConfigurationBinder.Bind(
+    settingsConfiguration,
+    settingsStartupFault,
+    SettingCatalog.DatabaseSection,
+    "business-database configuration",
+    source => source.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>()
+        ?? new DatabaseOptions(),
+    options => options.Validate());
 var workerOptions = configuration
     .GetSection(ParseRunWorkerOptions.SectionName)
     .Get<ParseRunWorkerOptions>() ?? new ParseRunWorkerOptions();
@@ -65,9 +76,14 @@ workerOptions.Validate();
 var ingestionOptions = configuration
     .GetSection(DocumentIngestionOptions.SectionName)
     .Get<DocumentIngestionOptions>() ?? new DocumentIngestionOptions();
-var storageOptions = configuration
-    .GetSection(FileStorageOptions.SectionName)
-    .Get<FileStorageOptions>() ?? new FileStorageOptions();
+var storageOptions = RecoverableConfigurationBinder.Bind(
+    settingsConfiguration,
+    settingsStartupFault,
+    SettingCatalog.StorageSection,
+    "storage configuration",
+    source => source.GetSection(FileStorageOptions.SectionName).Get<FileStorageOptions>()
+        ?? new FileStorageOptions(),
+    options => options.Validate());
 var providerResultOptions = configuration
     .GetSection(ProviderResultIntakeOptions.SectionName)
     .Get<ProviderResultIntakeOptions>() ?? new ProviderResultIntakeOptions();
@@ -78,7 +94,6 @@ var conversionOptions = configuration
     .GetSection(LibreOfficeConversionOptions.SectionName)
     .Get<LibreOfficeConversionOptions>() ?? new LibreOfficeConversionOptions();
 ingestionOptions.Validate();
-storageOptions.Validate();
 providerResultOptions.Validate();
 providerResultNormalizationOptions.Validate();
 conversionOptions.Validate();
@@ -102,6 +117,8 @@ builder.Services.AddSingleton(settingsConfiguration);
 builder.Services.AddSingleton(settingsStartupFault);
 builder.Services.AddSingleton<ISettingSecretProtector>(settingSecretProtector);
 builder.Services.AddSingleton<OidcDiscoveryProbe>();
+builder.Services.AddSingleton<StorageConnectionProbe>();
+builder.Services.AddSingleton<DatabaseConnectionProbe>();
 builder.Services.AddSingleton(new ParseExecutionGate(workerOptions.ExecutionEnabled));
 builder.Services.AddSingleton<ISettingChangeListener>(
     services => services.GetRequiredService<ParseExecutionGate>());
@@ -122,20 +139,41 @@ var app = builder.Build();
 // Dropping a stored setting is decided before logging exists, so it is reported here. An operator
 // reading the container log is the one person who would otherwise see a service that started
 // cleanly with a feature quietly switched off.
-if (settingsStartupFault.HasFault)
+foreach (var (section, detail) in settingsStartupFault.Faults)
 {
     app.Logger.LogWarning(
         "Stored configuration in section {Section} was not applied. {Detail}",
-        settingsStartupFault.Section,
-        settingsStartupFault.Detail);
+        section,
+        detail);
 }
 
 // The control plane is migrated first and unconditionally: administration must be reachable even
 // when the configured business database is not, and it is what an administrator uses to fix that.
 await app.Services.ApplyStructaDocControlPlaneMigrationsAsync(app.Lifetime.ApplicationStopping);
-await app.Services.ApplyStructaDocMigrationsAsync(
-    databaseOptions,
-    app.Lifetime.ApplicationStopping);
+// A business database an administrator pointed at from the browser can be absent, refuse the
+// credentials, or be a server this build cannot migrate, and none of that is visible until the
+// service starts. Stopping here would take away the administration area, which is the only place it
+// can be corrected from, so a stored configuration that cannot be prepared is recorded and the
+// service starts without a usable business database. Readiness still fails, so nothing routes real
+// traffic to it, and a database the deployment pinned still stops startup as before.
+try
+{
+    await app.Services.ApplyStructaDocMigrationsAsync(
+        databaseOptions,
+        app.Lifetime.ApplicationStopping);
+}
+catch (Exception error) when (
+    error is not OperationCanceledException
+    && settingsConfiguration.IsStoredSection(SettingCatalog.DatabaseSection))
+{
+    settingsStartupFault.Record(
+        SettingCatalog.DatabaseSection,
+        "The configured business database could not be prepared, so documents and parsing are unavailable. "
+            + DatabaseConnectionProbe.SanitizeMessage(error, databaseOptions.ConnectionString));
+    app.Logger.LogError(
+        error,
+        "The configured business database could not be prepared. The administration area remains available so the configuration can be corrected.");
+}
 await app.Services.BootstrapStructaDocAdministratorAsync(
     authenticationOptions,
     app.Lifetime.ApplicationStopping);
@@ -192,6 +230,7 @@ app.MapAdministratorAccountEndpoints(
 app.MapApiClientAdministrationEndpoints();
 app.MapSettingsEndpoints();
 app.MapOidcSettingsEndpoints();
+app.MapInfrastructureSettingsEndpoints();
 app.MapSystemControlEndpoints();
 app.MapProviderConfigAdministrationEndpoints();
 app.MapParseRunEndpoints();

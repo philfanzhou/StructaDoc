@@ -1,6 +1,8 @@
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.Settings;
 using StructaDoc.Adapters.Authentication;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Storage;
 
 namespace StructaDoc.ArchitectureTests;
 
@@ -41,6 +43,62 @@ public sealed class SettingCatalogContractTests
         Assert.Equal(
             options.AdministratorRole,
             Definition(SettingCatalog.OidcAdministratorRole).Default);
+    }
+
+    [Fact]
+    public void Storage_defaults_match_the_options_they_describe()
+    {
+        var options = new FileStorageOptions();
+
+        Assert.Equal(options.Provider, Definition(SettingCatalog.StorageProvider).Default);
+        Assert.Equal(options.RootPath, Definition(SettingCatalog.StorageRootPath).Default);
+        Assert.Equal(options.Prefix, Definition(SettingCatalog.StoragePrefix).Default);
+        Assert.Equal(
+            options.ForcePathStyle ? "true" : "false",
+            Definition(SettingCatalog.StorageForcePathStyle).Default);
+    }
+
+    [Fact]
+    public void Database_defaults_match_the_options_they_describe()
+    {
+        var options = new DatabaseOptions();
+
+        Assert.Equal(
+            options.Provider.ToString(),
+            Definition(SettingCatalog.DatabaseProvider).Default);
+
+        // The connection string is the one default that is deliberately not restated. It is a secret,
+        // so the catalog default would be a credential compiled into the image, and its real value
+        // comes from the configuration the build ships rather than from this table.
+        Assert.Equal(string.Empty, Definition(SettingCatalog.DatabaseConnectionString).Default);
+    }
+
+    [Fact]
+    public void Every_closed_set_lists_exactly_what_its_options_class_accepts()
+    {
+        // A choice the web interface offers that the options class then refuses would be a value an
+        // administrator can save and never start again with.
+        Assert.Equal(
+            Enum.GetNames<DatabaseProvider>(),
+            Definition(SettingCatalog.DatabaseProvider).AllowedValues);
+
+        foreach (var provider in Definition(SettingCatalog.StorageProvider).AllowedValues!)
+        {
+            new FileStorageOptions { Provider = provider, Bucket = "probe" }.Validate();
+        }
+    }
+
+    [Fact]
+    public void Every_recoverable_section_is_one_the_catalog_can_write_to()
+    {
+        // A section listed as recoverable but not settable would describe a rescue for a value no
+        // browser can produce, which is the only case that needs rescuing.
+        foreach (var section in SettingCatalog.RecoverableSections)
+        {
+            Assert.Contains(
+                SettingCatalog.All,
+                definition => definition.Key.StartsWith(section + ":", StringComparison.Ordinal));
+        }
     }
 
     [Fact]

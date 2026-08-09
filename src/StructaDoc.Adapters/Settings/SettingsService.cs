@@ -60,7 +60,8 @@ public sealed class SettingsService(
             IsPendingRestart: definition.RequiresRestart
                 && !string.Equals(inForce, running, StringComparison.Ordinal),
             definition.Minimum,
-            definition.Maximum);
+            definition.Maximum,
+            definition.AllowedValues ?? []);
     }
 
     private static string Normalize(SettingDefinition definition, IConfiguration source)

@@ -20,7 +20,8 @@ public sealed record SettingState(
     bool IsStored,
     bool IsPendingRestart,
     long Minimum,
-    long Maximum);
+    long Maximum,
+    IReadOnlyList<string> AllowedValues);
 
 public enum SettingWriteStatus
 {

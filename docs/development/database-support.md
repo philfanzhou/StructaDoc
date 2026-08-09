@@ -1,7 +1,7 @@
 # Database Support
 
 - Status: Implementation note
-- Last updated: 2026-08-07
+- Last updated: 2026-08-10
 
 ## Purpose
 
@@ -35,9 +35,17 @@ That dependency is confined to Adapters and migrations. It can be replaced with 
 | `Database:ServerVersion` | MySQL / MariaDB | Explicit server version; the Host does not infer it by connecting |
 | `Database:ApplyMigrationsOnStartup` | Yes | Whether the Host applies the selected migration set before serving requests |
 
-Inject production credentials through environment variables or deployment secrets. Repository settings contain only a credential-free SQLite development default.
+`Database:Provider`, `Database:ConnectionString`, and `Database:ServerVersion` are also settable from `/admin` and follow the precedence in [Service Settings](./service-settings.md), so a deployment can move from the bundled SQLite file to an existing server without being recreated. The connection string is stored encrypted and never sent back to a browser, because it usually carries a password. `Database:ApplyMigrationsOnStartup` is not settable: it is a deployment choice about whether the service is allowed to change a schema, not a value an administrator adjusts.
 
-Keep SQLite on a local persistent volume. Multiple containers must not share the file, and it must not live on a network filesystem. A server-database connection or migration failure prevents readiness.
+Injecting production credentials through environment variables or deployment secrets remains supported and takes precedence; a key pinned that way is reported as managed externally and cannot be written from the browser. Repository settings contain only a credential-free SQLite development default.
+
+`POST /api/v1/admin/settings/database/test` opens a candidate database and reads its migration history before anything is saved. It creates nothing, so a connection string pointing at the wrong database does not leave StructaDoc tables behind in it, and it separates a database that is current from one that answers but still needs migrating.
+
+Changing the database does not move anything into it. A new database is migrated at the next start and begins empty; existing documents and Parse Runs stay in the old one.
+
+Keep SQLite on a local persistent volume. Multiple containers must not share the file, and it must not live on a network filesystem.
+
+A connection or migration failure prevents readiness. Whether it also prevents startup depends on where the configuration came from. A database the deployment pinned still stops the service, because whoever set it has a command line and is better served by failing at once. One an administrator chose in the browser does not: the service starts, records the fault, and reports it under `/admin`, which is the only place that mistake can be corrected from. Administrator accounts and settings live in the separate control-plane database, so signing in and fixing the connection string both keep working while the business database is unreachable.
 
 ## Durable Job Stores
 

@@ -81,6 +81,14 @@ RUN if [ -n "${APT_MIRROR}" ]; then \
 WORKDIR /app
 COPY --from=build /app/publish/ ./
 
+# The image's own defaults for where /data is. Copied as a configuration file rather than set as
+# environment variables on purpose: an environment variable pins a setting, and the web interface
+# then reports it as unchangeable. Storage and the business database are meant to be moved from the
+# browser, so they ship as defaults a stored setting can be layered over. Passing Storage__* or
+# Database__* to `docker run` still pins them, which is what an operator managing configuration from
+# outside the container wants.
+COPY src/StructaDoc.Host/appsettings.Container.json ./
+
 RUN install -d -o "${APP_UID}" -g "${APP_UID}" \
         /data \
         /data/keys \
@@ -90,16 +98,15 @@ RUN install -d -o "${APP_UID}" -g "${APP_UID}" \
         /data/temp/provider-normalization \
         /data/temp/provider-results
 
+# Only what a browser must never move belongs here: the control-plane database, the key ring that
+# decrypts every stored secret, and whether the service may change a schema. Storage and the business
+# database are deliberately absent; see the configuration file copied above.
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_EnableDiagnostics=0 \
     HOME=/tmp \
     XDG_CACHE_HOME=/tmp/.cache \
-    Database__Provider=Sqlite \
-    Database__ConnectionString="Data Source=/data/structadoc.db" \
     ControlPlane__DatabasePath=/data/control.db \
     Database__ApplyMigrationsOnStartup=true \
-    Storage__Provider=Local \
-    Storage__RootPath=/data/storage \
     Authentication__DataProtectionKeysPath=/data/keys \
     LibreOffice__ExecutablePath=/usr/bin/libreoffice \
     LibreOffice__TemporaryPath=/data/temp/libreoffice \

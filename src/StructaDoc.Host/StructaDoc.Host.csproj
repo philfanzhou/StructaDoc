@@ -15,4 +15,14 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      Kept out of the build output on purpose. These are the container image's defaults, and the
+      Dockerfile copies the file in itself; letting the SDK publish it with everything else would
+      point an ordinary `dotnet run` and every test at the image's /data volume.
+    -->
+    <Content Remove="appsettings.Container.json" />
+    <None Include="appsettings.Container.json" />
+  </ItemGroup>
+
 </Project>

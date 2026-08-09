@@ -1,7 +1,7 @@
 # Service Settings
 
 - Status: Implementation note
-- Last updated: 2026-08-09
+- Last updated: 2026-08-10
 
 ## Purpose
 
@@ -35,6 +35,21 @@ A pinned setting is reported as managed externally and cannot be written through
 | `Oidc:ClientSecret` | secret | Restart |
 | `Oidc:RequireHttpsMetadata` | boolean | Restart |
 | `Oidc:NameClaim`, `Oidc:EmailClaim`, `Oidc:RoleClaim`, `Oidc:AdministratorRole` | text | Restart |
+| `Storage:Provider` | `Local` or `S3` | Restart |
+| `Storage:RootPath` | text | Restart |
+| `Storage:ServiceUrl` | address | Restart |
+| `Storage:Region`, `Storage:Bucket`, `Storage:Prefix` | text | Restart |
+| `Storage:AccessKey`, `Storage:SecretKey` | secret | Restart |
+| `Storage:ForcePathStyle` | boolean | Restart |
+| `Database:Provider` | `Sqlite`, `PostgreSql`, `MySql`, or `MariaDb` | Restart |
+| `Database:ConnectionString` | secret | Restart |
+| `Database:ServerVersion` | text | Restart |
+
+`Storage:Provider` and `Database:Provider` are closed sets. A value outside one is refused by the write rather than at the next start, which is the only moment an administrator is still looking at what they typed. The list of accepted spellings is reported with the setting, so the web interface offers a choice instead of asking anyone to guess, and an architecture test holds it against what the options classes accept.
+
+`Storage:AccessKey` is a secret alongside `Storage:SecretKey`. An access key identifies a credential rather than being the whole of it, but storage credentials do not go to browsers here, and whether one is set is all an administrator needs to manage it.
+
+`Database:ConnectionString` is a secret because it usually carries a password. It is the one setting whose catalog default is deliberately empty rather than restated: a default here would be a credential compiled into the image, and what actually applies with no stored row comes from the configuration the build ships.
 
 Settings are an allowlist. A key that could reach the store without appearing in the catalog would change behaviour no test covers, and would let one compromised administrator session reach configuration that was never meant to be writable from a browser, including paths and credentials. Unknown keys answer `404`.
 
@@ -60,7 +75,13 @@ A value written from a browser can be wrong in ways a configuration file cannot,
 
 Refusing to start on that would take away the only surface such a deployment could be fixed from. A stored section that fails validation is dropped instead, the service starts without it, and `GET /api/v1/admin/settings/oidc` reports what was rejected. The whole section goes rather than the failing key alone: half a configuration is harder to reason about than none. The stored values are still reported so an administrator can see what they wrote; the fault is what says they are not in effect.
 
-The distinction is the source of the value, not the error. Anything the deployment pins still stops the service, because whoever set it has a command line. This applies to the `Oidc` section today; nothing else settable can fail this way yet.
+The distinction is the source of the value, not the error. Anything the deployment pins still stops the service, because whoever set it has a command line.
+
+`Oidc`, `Storage`, and `Database` are the recoverable sections. Each is dropped to the shipped default when a stored value fails to bind or validate, and each records why. An architecture test holds that every recoverable section is one the catalog can write to, since a section no browser can produce is not one that needs rescuing. More than one can be wrong at once — moving a deployment to object storage and an external database in the same sitting is an ordinary way to do that — so faults are kept per section rather than one at a time.
+
+The business database goes further, because a wrong value there is not always a value that fails to validate. A connection string can be perfectly well formed and point at a server that is not there, credentials that are refused, or a database this build cannot migrate, and none of that is visible until the service starts. Refusing to start on it would take away the administration area, which is the only place it can be corrected from, so a startup migration that fails against a *stored* configuration is recorded and the service starts without a usable business database. Administrator sign-in, settings, storage, and the database panel all still work, because they run on the control plane. Readiness still fails, so nothing routes real traffic to a service that cannot store a document. A database the deployment pinned still stops startup exactly as before.
+
+The administration page loads its panels independently rather than together for the same reason: Providers and API clients live in the business database, and if one failed read blanked the page, the settings needed to repair it would go with it.
 
 ## Taking Effect
 
@@ -82,12 +103,26 @@ The Host exits cleanly, with status `0`, so `on-failure` does not restart it. `u
 | `PUT` | `/api/v1/admin/settings` | Set or clear one key |
 | `GET` | `/api/v1/admin/settings/oidc` | What sign-in is running, what was rejected at startup, and the addresses to register |
 | `POST` | `/api/v1/admin/settings/oidc/test` | Fetch an authority's discovery document and check it |
+| `GET` | `/api/v1/admin/settings/storage` | Which storage the running service uses, and what was rejected at startup |
+| `POST` | `/api/v1/admin/settings/storage/test` | Write and remove one probe object at a candidate location |
+| `GET` | `/api/v1/admin/settings/database` | Which database the running service uses, whether it answers, and whether it needs migrating |
+| `POST` | `/api/v1/admin/settings/database/test` | Open a candidate database and read its migration history |
 | `POST` | `/api/v1/admin/system/restart` | Stop the Host so its supervisor restarts it |
 
-All are administrator-only, and the writes require antiforgery validation. The discovery test counts as a write for that purpose: it makes the service fetch an address the caller chose. See [User Workspace and OIDC](./user-workspace-oidc.md) for what the test does and does not establish.
+All are administrator-only, and the writes require antiforgery validation. A connection test counts as a write for that purpose: it makes the service reach an address the caller chose.
+
+## Testing Before Committing
+
+Storage and the database each take effect only after a restart, so a wrong value is discovered by a service that does not come back. Both can therefore be tried first, and both tests take the same shape: every field is optional and an omitted one falls back to what is in force. An administrator can check a bucket name without retyping a Secret Key the service never sends back, or test exactly what is already saved.
+
+The storage probe writes a small object under the configured prefix and removes it again. Listing is not enough: a bucket that lists but refuses writes accepts every upload attempt and fails each one, and a local path that exists inside a read-only container looks fine until the first document arrives. The client is built the same way the running service builds its own, so a probe that passes describes the deployment that would actually run.
+
+The database probe connects and reads migration history. It creates nothing, because a connection string pointing at the wrong database must not leave StructaDoc tables behind in it. It separates a database that is current from one that answers but has not been migrated yet, since the second is fine and the first restart fixes it.
+
+Both report a stable code the web interface translates, plus a bounded detail. A driver's message is the useful part of a failed connection, but it is written by something that was handed a credential and may quote it back, so any message containing the submitted connection string or storage key is dropped rather than repeated to a browser.
 
 ## Remaining Work
 
-- Storage and business-database settings, which need a connection test of their own and a recovery path that keeps `/admin` usable while the business database is unreachable;
 - change listeners for the remaining keys, so fewer settings need a restart at all;
-- rate limiting on the discovery test, which is the one settings endpoint that makes an outbound request.
+- rate limiting on the connection tests, which are the settings endpoints that make outbound requests;
+- moving existing objects and rows when storage or the database changes, which today is left where it belongs — with whoever is doing the migration.

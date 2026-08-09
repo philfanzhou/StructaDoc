@@ -28,10 +28,20 @@ internal sealed class SettingsTestDeployment : IDisposable
 
     public string ControlPlanePath => Path.Combine(directory, "control.db");
 
-    public WebApplicationFactory<Program> CreateFactory(Action<IWebHostBuilder>? configure = null)
+    /// <param name="pinBusinessDatabase">
+    /// The test host passes every <c>UseSetting</c> value to the entry point as a command-line
+    /// argument, which is a pin, so a key set that way beats anything stored. Leaving the connection
+    /// string out is how a test reaches the case a real deployment is in: one an administrator chose
+    /// from the browser.
+    /// </param>
+    public WebApplicationFactory<Program> CreateFactory(
+        Action<IWebHostBuilder>? configure = null,
+        bool pinBusinessDatabase = true)
     {
-        return new SettingsTestFactory(directory, configure);
+        return new SettingsTestFactory(directory, configure, pinBusinessDatabase);
     }
+
+    public string BusinessDatabasePath => Path.Combine(directory, "structadoc.db");
 
     public static async Task<HttpClient> SignedInClientAsync(WebApplicationFactory<Program> factory)
     {
@@ -60,7 +70,10 @@ internal sealed class SettingsTestDeployment : IDisposable
         }
     }
 
-    private sealed class SettingsTestFactory(string directory, Action<IWebHostBuilder>? configure)
+    private sealed class SettingsTestFactory(
+        string directory,
+        Action<IWebHostBuilder>? configure,
+        bool pinBusinessDatabase = true)
         : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -74,9 +87,12 @@ internal sealed class SettingsTestDeployment : IDisposable
             builder.UseSetting("Storage:Provider", "Local");
             builder.UseSetting("Storage:RootPath", Path.Combine(directory, "storage"));
             builder.UseSetting("Database:Provider", "Sqlite");
-            builder.UseSetting(
-                "Database:ConnectionString",
-                $"Data Source={Path.Combine(directory, "structadoc.db")};Pooling=False");
+            if (pinBusinessDatabase)
+            {
+                builder.UseSetting(
+                    "Database:ConnectionString",
+                    $"Data Source={Path.Combine(directory, "structadoc.db")};Pooling=False");
+            }
             builder.UseSetting("ControlPlane:DatabasePath", Path.Combine(directory, "control.db"));
             configure?.Invoke(builder);
         }

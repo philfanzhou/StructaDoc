@@ -32,6 +32,10 @@ public enum SettingKind
 ///
 /// <paramref name="Minimum"/> and <paramref name="Maximum"/> bound an integer. For text kinds only
 /// <paramref name="Maximum"/> applies, as a length limit.
+///
+/// <paramref name="AllowedValues"/> closes a text setting to a fixed set. A key whose wrong value
+/// would stop the service is better refused at the moment it is written, while the administrator is
+/// still looking at it, than at the next restart.
 /// </summary>
 public sealed record SettingDefinition(
     string Key,
@@ -39,7 +43,8 @@ public sealed record SettingDefinition(
     bool RequiresRestart,
     string Default,
     long Minimum = 0,
-    long Maximum = 0);
+    long Maximum = 0,
+    IReadOnlyList<string>? AllowedValues = null);
 
 /// <summary>
 /// Settings are an allowlist rather than free-form configuration writes. An administrator is already
@@ -64,6 +69,20 @@ public static class SettingCatalog
     public const string OidcRoleClaim = "Oidc:RoleClaim";
     public const string OidcAdministratorRole = "Oidc:AdministratorRole";
 
+    public const string StorageProvider = "Storage:Provider";
+    public const string StorageRootPath = "Storage:RootPath";
+    public const string StorageServiceUrl = "Storage:ServiceUrl";
+    public const string StorageRegion = "Storage:Region";
+    public const string StorageBucket = "Storage:Bucket";
+    public const string StoragePrefix = "Storage:Prefix";
+    public const string StorageAccessKey = "Storage:AccessKey";
+    public const string StorageSecretKey = "Storage:SecretKey";
+    public const string StorageForcePathStyle = "Storage:ForcePathStyle";
+
+    public const string DatabaseProvider = "Database:Provider";
+    public const string DatabaseConnectionString = "Database:ConnectionString";
+    public const string DatabaseServerVersion = "Database:ServerVersion";
+
     /// <summary>
     /// The section every setting that configures sign-in through an identity provider belongs to.
     /// A bad value here can only be corrected from the browser, so these keys are treated as
@@ -71,7 +90,26 @@ public static class SettingCatalog
     /// </summary>
     public const string OidcSection = "Oidc";
 
+    /// <summary>
+    /// Where documents and results are kept. A wrong value here is recoverable in the same way as
+    /// sign-in: the section is dropped at startup and the service runs on its shipped default, which
+    /// keeps the administration area reachable to correct it from.
+    /// </summary>
+    public const string StorageSection = "Storage";
+
+    /// <summary>
+    /// The business database. It is recoverable for a stronger reason than the others: a deployment
+    /// pointed at a database that is not there has nothing working except the control plane, and the
+    /// control plane is exactly what the administration area runs on.
+    /// </summary>
+    public const string DatabaseSection = "Database";
+
+    /// <summary>Sections a stored value may be dropped from rather than stopping the service.</summary>
+    public static IReadOnlyList<string> RecoverableSections { get; } =
+        [OidcSection, StorageSection, DatabaseSection];
+
     private const int ClaimNameMaximumLength = 255;
+    private const int PathMaximumLength = 1024;
 
     public static IReadOnlyList<SettingDefinition> All { get; } =
     [
@@ -127,6 +165,60 @@ public static class SettingCatalog
             RequiresRestart: true,
             Default: "structadoc-admin",
             Maximum: ClaimNameMaximumLength),
+
+        // Where uploads, results, and exports are kept. Moving a deployment to object storage
+        // otherwise means recreating the container, which is the one thing this product's operator
+        // is not expected to be able to do.
+        new(
+            StorageProvider,
+            SettingKind.String,
+            RequiresRestart: true,
+            Default: "Local",
+            Maximum: 16,
+            AllowedValues: ["Local", "S3"]),
+        new(
+            StorageRootPath,
+            SettingKind.String,
+            RequiresRestart: true,
+            Default: "./data/storage",
+            Maximum: PathMaximumLength),
+        new(StorageServiceUrl, SettingKind.Uri, RequiresRestart: true, Default: "", Maximum: 2048),
+        new(StorageRegion, SettingKind.String, RequiresRestart: true, Default: "", Maximum: 64),
+        new(StorageBucket, SettingKind.String, RequiresRestart: true, Default: "", Maximum: 255),
+        new(
+            StoragePrefix,
+            SettingKind.String,
+            RequiresRestart: true,
+            Default: "structadoc",
+            Maximum: 255),
+        // Both halves are secrets. An access key identifies the credential rather than being the
+        // whole of it, but sending storage credentials to a browser is a line this product does not
+        // cross, and reporting whether one is set is all an administrator needs to manage it.
+        new(StorageAccessKey, SettingKind.Secret, RequiresRestart: true, Default: "", Maximum: 512),
+        new(StorageSecretKey, SettingKind.Secret, RequiresRestart: true, Default: "", Maximum: 512),
+        new(StorageForcePathStyle, SettingKind.Boolean, RequiresRestart: true, Default: "true"),
+
+        // The business database. Its connection string is a secret because it usually carries a
+        // password, so it is written and never read back, exactly like a client secret.
+        new(
+            DatabaseProvider,
+            SettingKind.String,
+            RequiresRestart: true,
+            Default: "Sqlite",
+            Maximum: 16,
+            AllowedValues: ["Sqlite", "PostgreSql", "MySql", "MariaDb"]),
+        new(
+            DatabaseConnectionString,
+            SettingKind.Secret,
+            RequiresRestart: true,
+            Default: "",
+            Maximum: 2048),
+        new(
+            DatabaseServerVersion,
+            SettingKind.String,
+            RequiresRestart: true,
+            Default: "",
+            Maximum: 32),
     ];
 
     /// <summary>
@@ -182,7 +274,17 @@ public static class SettingCatalog
 
             case SettingKind.String:
             case SettingKind.Secret:
-                return IsAcceptableText(trimmed, definition.Maximum) ? trimmed : null;
+                if (!IsAcceptableText(trimmed, definition.Maximum))
+                {
+                    return null;
+                }
+
+                // A closed set answers in its own spelling, so what is stored is what the options
+                // class parses rather than whatever casing was typed.
+                return definition.AllowedValues is null
+                    ? trimmed
+                    : definition.AllowedValues.FirstOrDefault(
+                        allowed => string.Equals(allowed, trimmed, StringComparison.OrdinalIgnoreCase));
 
             case SettingKind.Uri:
                 if (!IsAcceptableText(trimmed, definition.Maximum))

@@ -28,7 +28,7 @@ public static class OidcSettingsEndpoints
     {
         return Results.Ok(new OidcStatusResponse(
             options.Enabled,
-            fault.Section == SettingCatalog.OidcSection ? fault.Detail : null,
+            fault.DetailFor(SettingCatalog.OidcSection),
             options.CallbackPath,
             options.SignedOutCallbackPath,
             options.Scopes));

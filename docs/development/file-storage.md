@@ -1,7 +1,7 @@
 # File Storage
 
 - Status: Implementation note
-- Last updated: 2026-08-07
+- Last updated: 2026-08-10
 
 ## Storage Boundary
 
@@ -58,10 +58,17 @@ The endpoint requires an administrator, an authorized OIDC user, or an API clien
 | `Storage:ServiceUrl` | `null` | Optional S3-compatible endpoint |
 | `Storage:Region` | Provider default | S3 region |
 | `Storage:Bucket` | Required for S3 | Object bucket |
-| `Storage:Prefix` | Empty | Deployment key prefix |
+| `Storage:Prefix` | `structadoc` | Deployment key prefix |
+| `Storage:AccessKey`, `Storage:SecretKey` | Unset | S3 credentials, supplied together |
 | `Storage:ForcePathStyle` | Provider-specific | Enables path-style S3 access, commonly for MinIO |
 
-Explicit S3 access and secret keys must be provided together through deployment secrets. When omitted, the AWS SDK default credential chain applies. Readiness probes local staging write/delete or S3 bucket accessibility as appropriate.
+Every `Storage` key is also settable from `/admin` and follows the precedence in [Service Settings](./service-settings.md), so a deployment can move from a container volume to object storage without being recreated. Both halves of the credential are secrets: they are written and never sent back, and only whether they are set is reported. They are written and cleared together, because a configuration with one and not the other is refused.
+
+Explicit S3 access and secret keys must be provided together. Providing them through deployment secrets remains supported and takes precedence; a key pinned that way is reported as managed externally and cannot be written from the browser. When both are omitted, the AWS SDK default credential chain applies.
+
+Readiness probes local staging write/delete or S3 bucket accessibility as appropriate. `POST /api/v1/admin/settings/storage/test` probes a candidate configuration before it is saved by writing and removing one small object under the configured prefix. It writes rather than lists because a bucket that lists but refuses writes accepts every upload attempt and fails each one, and a local path that exists inside a read-only container looks fine until the first document arrives.
+
+Changing storage does not move anything. Objects already written stay where they are, and their `storageRef` values still point into the location they were written to, so a change is a migration to plan rather than a switch to flip.
 
 ## Deletion
 

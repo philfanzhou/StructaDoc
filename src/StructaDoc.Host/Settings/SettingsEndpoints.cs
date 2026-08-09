@@ -88,6 +88,7 @@ public static class SettingsEndpoints
             state.IsStored,
             state.IsPendingRestart,
             state.Minimum,
-            state.Maximum);
+            state.Maximum,
+            state.AllowedValues);
     }
 }

@@ -42,13 +42,13 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | [File Storage](./development/file-storage.md) | Local/S3 persistence, upload validation, and conflict-safe writes |
 | [MinerU HTTP Providers](./development/mineru-http-providers.md) | Cloud signed upload, Local multipart, polling, result streaming, and SSRF boundaries |
 | [Office Conversion](./development/office-conversion.md) | Constrained LibreOffice execution, snapshots, and recovery |
-| [Provider Config and Parse Runs](./development/provider-config-and-parse-runs.md) | Immutable Provider configuration and Parse Run creation |
+| [Provider Config and Parse Runs](./development/provider-config-and-parse-runs.md) | Immutable Provider configuration, browser administration, and Parse Run creation |
 | [Provider Execution](./development/provider-execution.md) | Provider capabilities, execution snapshots, heartbeats, and resumable orchestration |
 | [Provider Result Intake](./development/provider-result-intake.md) | Idempotent ZIP storage and bounded archive validation |
 | [Provider Result Normalization](./development/provider-result-normalization.md) | MinerU entry discovery, deterministic identity, and canonical mapping |
 | [Result API and Resource Lifecycle](./development/result-api-and-resource-lifecycle.md) | Stable DTOs, downloads, exports, and durable deletion |
 | [S3 and Large PDFs](./development/s3-and-large-pdf.md) | S3-compatible storage and resumable PDF segmentation |
-| [Service Settings](./development/service-settings.md) | Browser-managed configuration, precedence against the deployment, encrypted secrets, restart, and recovery from a value that will not start |
+| [Service Settings](./development/service-settings.md) | Browser-managed configuration including storage and the business database, precedence against the deployment, encrypted secrets, connection tests, restart, and recovery from a value that will not start |
 | [User Workspace and OIDC](./development/user-workspace-oidc.md) | User-facing workspace, generic external identity, ownership, and sharing |
 
 ## Deployment

@@ -222,10 +222,14 @@ public sealed class SettingsEndpointTests
         using var client = await SignedInClientAsync(factory);
 
         // Settings are an allowlist. A key that could reach the store without appearing in the
-        // catalog would let one session steer configuration no test covers.
+        // catalog would let one session steer configuration no test covers. This one is refused for
+        // a second reason as well: the key ring it locates is read before the store is opened, so a
+        // stored value would be read too early to have any effect.
         using var response = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest("Database:ConnectionString", "Data Source=elsewhere.db"));
+            new SettingUpdateRequest(
+                "Authentication:DataProtectionKeysPath",
+                "/tmp/somewhere-else"));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
