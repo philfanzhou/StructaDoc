@@ -4,11 +4,11 @@
     <Project Path="src/StructaDoc.Contracts/StructaDoc.Contracts.csproj" />
     <Project Path="src/StructaDoc.Domain/StructaDoc.Domain.csproj" />
     <Project Path="src/StructaDoc.Host/StructaDoc.Host.csproj" />
-    <Project Path="src/StructaDoc.Infrastructure/StructaDoc.Infrastructure.csproj" />
     <Project Path="src/StructaDoc.Migrations.MariaDb/StructaDoc.Migrations.MariaDb.csproj" />
     <Project Path="src/StructaDoc.Migrations.MySql/StructaDoc.Migrations.MySql.csproj" />
     <Project Path="src/StructaDoc.Migrations.PostgreSql/StructaDoc.Migrations.PostgreSql.csproj" />
     <Project Path="src/StructaDoc.Migrations.Sqlite/StructaDoc.Migrations.Sqlite.csproj" />
+    <Project Path="src/StructaDoc.Platform/StructaDoc.Platform.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/StructaDoc.ArchitectureTests/StructaDoc.ArchitectureTests.csproj" />

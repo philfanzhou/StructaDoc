@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Platform.Persistence;
 
 namespace StructaDoc.Persistence.Tests;
 

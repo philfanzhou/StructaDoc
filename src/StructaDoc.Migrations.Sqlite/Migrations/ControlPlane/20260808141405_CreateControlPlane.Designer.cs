@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using StructaDoc.Infrastructure.ControlPlane;
+using StructaDoc.Platform.ControlPlane;
 
 #nullable disable
 
@@ -20,7 +20,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations.ControlPlane
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.ControlPlane.Entities.AdminUserEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.ControlPlane.Entities.AdminUserEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -78,7 +78,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations.ControlPlane
                     b.ToTable("admin_users", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.ControlPlane.Entities.SetupClaimEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.ControlPlane.Entities.SetupClaimEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")

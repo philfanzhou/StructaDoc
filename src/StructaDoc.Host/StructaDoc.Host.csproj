@@ -3,7 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\StructaDoc.Contracts\StructaDoc.Contracts.csproj" />
     <ProjectReference Include="..\StructaDoc.Application\StructaDoc.Application.csproj" />
-    <ProjectReference Include="..\StructaDoc.Infrastructure\StructaDoc.Infrastructure.csproj" />
+    <ProjectReference Include="..\StructaDoc.Platform\StructaDoc.Platform.csproj" />
     <ProjectReference Include="..\StructaDoc.Migrations.Sqlite\StructaDoc.Migrations.Sqlite.csproj" />
     <ProjectReference Include="..\StructaDoc.Migrations.PostgreSql\StructaDoc.Migrations.PostgreSql.csproj" />
     <ProjectReference Include="..\StructaDoc.Migrations.MySql\StructaDoc.Migrations.MySql.csproj" />

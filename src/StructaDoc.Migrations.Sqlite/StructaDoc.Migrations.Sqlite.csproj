@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\StructaDoc.Infrastructure\StructaDoc.Infrastructure.csproj" />
+    <ProjectReference Include="..\StructaDoc.Platform\StructaDoc.Platform.csproj" />
   </ItemGroup>
 
   <ItemGroup>

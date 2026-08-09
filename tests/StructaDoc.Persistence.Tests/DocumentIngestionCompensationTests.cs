@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using StructaDoc.Application.Documents;
-using StructaDoc.Infrastructure.Documents;
-using StructaDoc.Infrastructure.Persistence;
-using StructaDoc.Infrastructure.Storage;
+using StructaDoc.Platform.Documents;
+using StructaDoc.Platform.Persistence;
+using StructaDoc.Platform.Storage;
 
 namespace StructaDoc.Persistence.Tests;
 

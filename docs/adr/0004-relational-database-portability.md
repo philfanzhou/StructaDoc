@@ -23,7 +23,7 @@ Only database versions exercised by contract tests are declared supported.
 ### 2. Code boundary
 
 - Domain, Application, Contracts, and public APIs do not reference database Provider types or dialects.
-- Infrastructure uses EF Core for the shared model and ordinary CRUD.
+- Platform uses EF Core for the shared model and ordinary CRUD.
 - Configuration selects the Provider explicitly; never infer it from a connection string.
 - Atomic claims and other operations that cannot be generalized reliably live behind internal dialect boundaries.
 - Database differences never appear as different public status values, DTO fields, or business behavior.
@@ -74,7 +74,7 @@ SQLite tests use temporary file databases rather than `:memory:` when file locki
 ### Positive
 
 - Small deployments need only one application container and volume.
-- Operators can reuse existing PostgreSQL, MySQL, or MariaDB infrastructure.
+- Operators can reuse existing PostgreSQL, MySQL, or MariaDB deployments.
 - Domain and public contracts do not depend on one database.
 - “Supported” includes reliable job behavior, not only CRUD.
 

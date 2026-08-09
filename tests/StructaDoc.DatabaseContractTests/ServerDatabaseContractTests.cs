@@ -1,4 +1,4 @@
-using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Platform.Persistence;
 using Testcontainers.MariaDb;
 using Testcontainers.MySql;
 using Testcontainers.PostgreSql;

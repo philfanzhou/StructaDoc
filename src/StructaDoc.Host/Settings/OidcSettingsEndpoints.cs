@@ -3,7 +3,7 @@ using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Settings;
 using StructaDoc.Host.Authentication;
-using StructaDoc.Infrastructure.Authentication;
+using StructaDoc.Platform.Authentication;
 
 namespace StructaDoc.Host.Settings;
 

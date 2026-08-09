@@ -4,8 +4,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
-using StructaDoc.Infrastructure.Persistence;
-using StructaDoc.Infrastructure.Persistence.Entities;
+using StructaDoc.Platform.Persistence;
+using StructaDoc.Platform.Persistence.Entities;
 
 namespace StructaDoc.Host.Tests;
 

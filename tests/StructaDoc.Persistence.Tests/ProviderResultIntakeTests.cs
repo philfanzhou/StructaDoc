@@ -2,8 +2,8 @@ using System.IO.Compression;
 using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
-using StructaDoc.Infrastructure.ProviderResults;
-using StructaDoc.Infrastructure.Storage;
+using StructaDoc.Platform.ProviderResults;
+using StructaDoc.Platform.Storage;
 
 namespace StructaDoc.Persistence.Tests;
 

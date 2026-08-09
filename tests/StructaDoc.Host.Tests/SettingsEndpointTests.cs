@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.Settings;
-using StructaDoc.Infrastructure.ControlPlane;
+using StructaDoc.Platform.ControlPlane;
 
 namespace StructaDoc.Host.Tests;
 

@@ -4,8 +4,8 @@ using Microsoft.Extensions.Hosting;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Workers;
-using StructaDoc.Infrastructure.Persistence;
-using StructaDoc.Infrastructure.Persistence.Entities;
+using StructaDoc.Platform.Persistence;
+using StructaDoc.Platform.Persistence.Entities;
 
 namespace StructaDoc.Host.Tests;
 

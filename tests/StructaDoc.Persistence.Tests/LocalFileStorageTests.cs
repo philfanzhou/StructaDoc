@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using StructaDoc.Application.Storage;
-using StructaDoc.Infrastructure.Storage;
+using StructaDoc.Platform.Storage;
 
 namespace StructaDoc.Persistence.Tests;
 

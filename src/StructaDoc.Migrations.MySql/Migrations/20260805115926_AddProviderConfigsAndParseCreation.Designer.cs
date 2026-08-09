@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Platform.Persistence;
 
 #nullable disable
 
@@ -25,7 +25,7 @@ namespace StructaDoc.Migrations.MySql.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.AdminUserEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.AdminUserEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
@@ -81,7 +81,7 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("admin_users", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ApiClientEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ApiClientEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
@@ -129,7 +129,7 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("api_clients", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
@@ -194,7 +194,7 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("documents", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
@@ -336,7 +336,7 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("parse_runs", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
@@ -394,7 +394,7 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("provider_configs", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigVersionEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigVersionEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
@@ -442,9 +442,9 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("provider_config_versions", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", "Document")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.DocumentEntity", "Document")
                         .WithMany("ParseRuns")
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -453,9 +453,9 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.Navigation("Document");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigVersionEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigVersionEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", "ProviderConfig")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.ProviderConfigEntity", "ProviderConfig")
                         .WithMany("Versions")
                         .HasForeignKey("ProviderConfigId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -464,12 +464,12 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.Navigation("ProviderConfig");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Navigation("ParseRuns");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigEntity", b =>
                 {
                     b.Navigation("Versions");
                 });

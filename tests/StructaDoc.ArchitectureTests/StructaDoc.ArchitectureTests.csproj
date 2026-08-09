@@ -25,7 +25,7 @@
     <ProjectReference Include="..\..\src\StructaDoc.Contracts\StructaDoc.Contracts.csproj" />
     <ProjectReference Include="..\..\src\StructaDoc.Domain\StructaDoc.Domain.csproj" />
     <ProjectReference Include="..\..\src\StructaDoc.Application\StructaDoc.Application.csproj" />
-    <ProjectReference Include="..\..\src\StructaDoc.Infrastructure\StructaDoc.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\StructaDoc.Platform\StructaDoc.Platform.csproj" />
     <ProjectReference Include="..\..\src\StructaDoc.Migrations.MariaDb\StructaDoc.Migrations.MariaDb.csproj" />
     <ProjectReference Include="..\..\src\StructaDoc.Migrations.MySql\StructaDoc.Migrations.MySql.csproj" />
     <ProjectReference Include="..\..\src\StructaDoc.Migrations.PostgreSql\StructaDoc.Migrations.PostgreSql.csproj" />

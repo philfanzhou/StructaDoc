@@ -14,15 +14,15 @@ using StructaDoc.Host.Resources;
 using StructaDoc.Host.Settings;
 using StructaDoc.Host.Setup;
 using StructaDoc.Host.Workers;
-using StructaDoc.Infrastructure.Authentication;
-using StructaDoc.Infrastructure.ControlPlane;
-using StructaDoc.Infrastructure.Conversion;
-using StructaDoc.Infrastructure.Documents;
-using StructaDoc.Infrastructure.Persistence;
-using StructaDoc.Infrastructure.ProviderResults;
-using StructaDoc.Infrastructure.Providers;
-using StructaDoc.Infrastructure.Settings;
-using StructaDoc.Infrastructure.Storage;
+using StructaDoc.Platform.Authentication;
+using StructaDoc.Platform.ControlPlane;
+using StructaDoc.Platform.Conversion;
+using StructaDoc.Platform.Documents;
+using StructaDoc.Platform.Persistence;
+using StructaDoc.Platform.ProviderResults;
+using StructaDoc.Platform.Providers;
+using StructaDoc.Platform.Settings;
+using StructaDoc.Platform.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 

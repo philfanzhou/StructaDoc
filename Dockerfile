@@ -19,7 +19,7 @@ COPY src/StructaDoc.Application/StructaDoc.Application.csproj src/StructaDoc.App
 COPY src/StructaDoc.Contracts/StructaDoc.Contracts.csproj src/StructaDoc.Contracts/
 COPY src/StructaDoc.Domain/StructaDoc.Domain.csproj src/StructaDoc.Domain/
 COPY src/StructaDoc.Host/StructaDoc.Host.csproj src/StructaDoc.Host/
-COPY src/StructaDoc.Infrastructure/StructaDoc.Infrastructure.csproj src/StructaDoc.Infrastructure/
+COPY src/StructaDoc.Platform/StructaDoc.Platform.csproj src/StructaDoc.Platform/
 COPY src/StructaDoc.Migrations.MariaDb/StructaDoc.Migrations.MariaDb.csproj src/StructaDoc.Migrations.MariaDb/
 COPY src/StructaDoc.Migrations.MySql/StructaDoc.Migrations.MySql.csproj src/StructaDoc.Migrations.MySql/
 COPY src/StructaDoc.Migrations.PostgreSql/StructaDoc.Migrations.PostgreSql.csproj src/StructaDoc.Migrations.PostgreSql/

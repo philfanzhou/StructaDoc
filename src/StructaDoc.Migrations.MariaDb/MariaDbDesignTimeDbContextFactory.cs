@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Platform.Persistence;
 
 namespace StructaDoc.Migrations.MariaDb;
 

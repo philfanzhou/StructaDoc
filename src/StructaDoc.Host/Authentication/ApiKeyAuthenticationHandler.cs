@@ -5,8 +5,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using StructaDoc.Application.Authentication;
-using StructaDoc.Infrastructure.Authentication;
-using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Platform.Authentication;
+using StructaDoc.Platform.Persistence;
 
 namespace StructaDoc.Host.Authentication;
 

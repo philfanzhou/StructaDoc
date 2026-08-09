@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Platform.Persistence;
 
 #nullable disable
 
@@ -20,7 +20,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.AdminUserEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.AdminUserEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -76,7 +76,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("admin_users", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ApiClientEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ApiClientEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -124,7 +124,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("api_clients", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.CleanupJobEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.CleanupJobEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -191,7 +191,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("cleanup_jobs", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentAccessGrantEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentAccessGrantEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -236,7 +236,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("document_access_grants", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -325,7 +325,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("documents", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseArtifactEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseArtifactEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -391,7 +391,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("parse_artifacts", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseAssetEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseAssetEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -453,7 +453,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("parse_assets", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseBlockEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseBlockEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -541,7 +541,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("parse_blocks", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParsePageEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParsePageEntity", b =>
                 {
                     b.Property<Guid>("ParseRunId")
                         .HasColumnType("TEXT")
@@ -574,7 +574,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("parse_pages", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -747,7 +747,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("parse_runs", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseSegmentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseSegmentEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -815,7 +815,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("parse_segments", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -873,7 +873,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("provider_configs", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigVersionEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigVersionEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT")
@@ -921,9 +921,9 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.ToTable("provider_config_versions", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentAccessGrantEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentAccessGrantEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", "Document")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.DocumentEntity", "Document")
                         .WithMany("AccessGrants")
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -932,9 +932,9 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("Document");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseArtifactEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseArtifactEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", "ParseRun")
                         .WithMany("Artifacts")
                         .HasForeignKey("ParseRunId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -943,9 +943,9 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("ParseRun");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseAssetEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseAssetEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", "ParseRun")
                         .WithMany("Assets")
                         .HasForeignKey("ParseRunId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -954,21 +954,21 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("ParseRun");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseBlockEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseBlockEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", "ParseRun")
                         .WithMany("Blocks")
                         .HasForeignKey("ParseRunId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseAssetEntity", "Asset")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.ParseAssetEntity", "Asset")
                         .WithMany("Blocks")
                         .HasForeignKey("ParseRunId", "AssetId")
                         .HasPrincipalKey("ParseRunId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParsePageEntity", null)
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.ParsePageEntity", null)
                         .WithMany()
                         .HasForeignKey("ParseRunId", "PageNumber")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -978,9 +978,9 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("ParseRun");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParsePageEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParsePageEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", "ParseRun")
                         .WithMany("Pages")
                         .HasForeignKey("ParseRunId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -989,9 +989,9 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("ParseRun");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", "Document")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.DocumentEntity", "Document")
                         .WithMany("ParseRuns")
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1000,9 +1000,9 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("Document");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseSegmentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseSegmentEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", "ParseRun")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", "ParseRun")
                         .WithMany("Segments")
                         .HasForeignKey("ParseRunId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1011,9 +1011,9 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("ParseRun");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigVersionEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigVersionEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", "ProviderConfig")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.ProviderConfigEntity", "ProviderConfig")
                         .WithMany("Versions")
                         .HasForeignKey("ProviderConfigId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1022,19 +1022,19 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("ProviderConfig");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Navigation("AccessGrants");
 
                     b.Navigation("ParseRuns");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseAssetEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseAssetEntity", b =>
                 {
                     b.Navigation("Blocks");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
                 {
                     b.Navigation("Artifacts");
 
@@ -1047,7 +1047,7 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                     b.Navigation("Segments");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ProviderConfigEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ProviderConfigEntity", b =>
                 {
                     b.Navigation("Versions");
                 });

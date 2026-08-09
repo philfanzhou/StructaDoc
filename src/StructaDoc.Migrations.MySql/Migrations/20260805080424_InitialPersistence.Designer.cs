@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using StructaDoc.Infrastructure.Persistence;
+using StructaDoc.Platform.Persistence;
 
 #nullable disable
 
@@ -25,7 +25,7 @@ namespace StructaDoc.Migrations.MySql.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
@@ -87,7 +87,7 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("documents", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("char(36)")
@@ -224,9 +224,9 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.ToTable("parse_runs", (string)null);
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.ParseRunEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.ParseRunEntity", b =>
                 {
-                    b.HasOne("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", "Document")
+                    b.HasOne("StructaDoc.Platform.Persistence.Entities.DocumentEntity", "Document")
                         .WithMany("ParseRuns")
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -235,7 +235,7 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.Navigation("Document");
                 });
 
-            modelBuilder.Entity("StructaDoc.Infrastructure.Persistence.Entities.DocumentEntity", b =>
+            modelBuilder.Entity("StructaDoc.Platform.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Navigation("ParseRuns");
                 });

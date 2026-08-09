@@ -15,7 +15,7 @@ The service also needs long-lived DTOs, relational transactions, durable job rec
 
 ### 1. Technology baseline
 
-- Use .NET 10 and ASP.NET Core 10 for APIs, background jobs, Providers, and infrastructure.
+- Use .NET 10 and ASP.NET Core 10 for APIs, background jobs, Providers, and platform code.
 - Use the configured supported relational database as the authority for business data and persistent jobs. See [ADR-0004](./0004-relational-database-portability.md).
 - Use Vue 3, TypeScript, and Vite for the user workspace and administration area.
 - Build the web application into static files served by ASP.NET Core; do not deploy a separate web server or frontend container.

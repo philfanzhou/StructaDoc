@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.DataProtection;
-using StructaDoc.Infrastructure.Authentication;
+using StructaDoc.Platform.Authentication;
 
 namespace StructaDoc.Host.Authentication;
 
