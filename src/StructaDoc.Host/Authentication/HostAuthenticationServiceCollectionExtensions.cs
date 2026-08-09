@@ -17,21 +17,23 @@ public static class HostAuthenticationServiceCollectionExtensions
     public static IServiceCollection AddStructaDocHostAuthentication(
         this IServiceCollection services,
         StructaDocAuthenticationOptions options,
-        OidcAuthenticationOptions oidcOptions)
+        OidcAuthenticationOptions oidcOptions,
+        IDataProtectionProvider keyRing)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(oidcOptions);
+        ArgumentNullException.ThrowIfNull(keyRing);
         options.Validate();
         oidcOptions.Validate();
 
-        var keyPath = Path.GetFullPath(options.DataProtectionKeysPath);
-        Directory.CreateDirectory(keyPath);
-
         services.AddStructaDocAuthenticationPersistence();
-        services.AddDataProtection()
-            .SetApplicationName("StructaDoc")
-            .PersistKeysToFileSystem(new DirectoryInfo(keyPath));
+
+        // The key ring is supplied rather than configured here because one of the stored settings is
+        // encrypted and has to be read before this container exists. Registering the same instance
+        // keeps the process to a single key ring: two readers of one directory can each decide it is
+        // empty on a first start and create a key the other has not cached.
+        services.AddSingleton(keyRing);
         services.AddSingleton<IProviderSecretProtector, DataProtectionProviderSecretProtector>();
         services.AddSingleton<IProviderSubmissionProtector, DataProtectionProviderSubmissionProtector>();
         services.AddAntiforgery(antiforgery =>

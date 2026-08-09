@@ -111,7 +111,7 @@ Setting it in the deployment instead pins it, which removes it from the administ
 export STRUCTADOC_EXECUTION_ENABLED=true
 ```
 
-See [Service Settings](../development/service-settings.md) for what else is settable from the browser and what each change requires.
+Sign-in through an identity provider is configured the same way, under `/admin`. Until it is, only administrators can use the deployment: the workspace has no other way in. See [User Workspace and OIDC](../development/user-workspace-oidc.md) for what to register at the provider, and [Service Settings](../development/service-settings.md) for what else is settable from the browser and what each change requires.
 
 ## Restart Policy
 

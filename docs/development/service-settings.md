@@ -1,7 +1,7 @@
 # Service Settings
 
 - Status: Implementation note
-- Last updated: 2026-08-08
+- Last updated: 2026-08-09
 
 ## Purpose
 
@@ -29,10 +29,38 @@ A pinned setting is reported as managed externally and cannot be written through
 | `Worker:MaxConcurrency` | integer, 1–64 | Restart |
 | `Documents:UploadApiEnabled` | boolean | Restart |
 | `Documents:MaxUploadBytes` | integer, 1024–8 GiB | Restart |
+| `Oidc:Enabled` | boolean | Restart |
+| `Oidc:Authority` | address | Restart |
+| `Oidc:ClientId` | text | Restart |
+| `Oidc:ClientSecret` | secret | Restart |
+| `Oidc:RequireHttpsMetadata` | boolean | Restart |
+| `Oidc:NameClaim`, `Oidc:EmailClaim`, `Oidc:RoleClaim`, `Oidc:AdministratorRole` | text | Restart |
 
 Settings are an allowlist. A key that could reach the store without appearing in the catalog would change behaviour no test covers, and would let one compromised administrator session reach configuration that was never meant to be writable from a browser, including paths and credentials. Unknown keys answer `404`.
 
-The catalog restates each default because several of these keys are absent from `appsettings.json` and take their default from the options class. Tests assert the restatements against those classes, so a default cannot drift into a claim about behaviour that is not true.
+The catalog restates each default because several of these keys are absent from `appsettings.json` and take their default from the options class. Tests assert the restatements against those classes, so a default cannot drift into a claim about behaviour that is not true. An empty default means the service ships without a value for that key rather than with an empty one, which is the honest description of an authority nothing supplies.
+
+`Oidc:Scopes` is an array and cannot be expressed as one key and one value, so it is not settable. `CallbackPath` and `SignedOutCallbackPath` are not settable either, because they are addresses registered at the identity provider rather than choices. All three are reported by `GET /api/v1/admin/settings/oidc` so an administrator can see them.
+
+Nothing under `Authentication` is settable. Those options are read from the raw configuration before the store is opened, because the Data Protection key ring they locate is what decrypts the stored secrets; a settable key there would be read too early to have any effect. An architecture test holds that.
+
+An address is stored without its trailing slash. An authority written with one and the issuer a provider reports without one are the same address, and the sign-in middleware compares them literally.
+
+## Secrets
+
+A secret is encrypted with the Data Protection key ring in `/data/keys`, the same one that already protects Provider credentials. The control-plane database sits beside the rest of a deployment's data and travels with every backup, so a client secret written there in the clear would travel with it.
+
+The read API reports only whether a secret is set. Its value never reaches a browser, so an administration session that is read cannot give up a credential the reader did not write. Clearing it deletes the row, as for any other setting.
+
+Losing or replacing the key ring makes a stored secret unreadable rather than breaking the deployment. It is dropped at startup and recorded as a fault, reported as set so it can be written over, and never reported as pending a restart, because restarting would drop it again.
+
+## Failing to Start
+
+A value written from a browser can be wrong in ways a configuration file cannot, because nobody is watching a container log when an administrator presses save. Settings are also written one key at a time, so a combination such as `Oidc:Enabled` without `Oidc:Authority` is reachable in an ordinary order of work and no single write can see it coming.
+
+Refusing to start on that would take away the only surface such a deployment could be fixed from. A stored section that fails validation is dropped instead, the service starts without it, and `GET /api/v1/admin/settings/oidc` reports what was rejected. The whole section goes rather than the failing key alone: half a configuration is harder to reason about than none. The stored values are still reported so an administrator can see what they wrote; the fault is what says they are not in effect.
+
+The distinction is the source of the value, not the error. Anything the deployment pins still stops the service, because whoever set it has a command line. This applies to the `Oidc` section today; nothing else settable can fail this way yet.
 
 ## Taking Effect
 
@@ -52,12 +80,14 @@ The Host exits cleanly, with status `0`, so `on-failure` does not restart it. `u
 |---|---|---|
 | `GET` | `/api/v1/admin/settings` | Current value, source, and pending state of every settable key |
 | `PUT` | `/api/v1/admin/settings` | Set or clear one key |
+| `GET` | `/api/v1/admin/settings/oidc` | What sign-in is running, what was rejected at startup, and the addresses to register |
+| `POST` | `/api/v1/admin/settings/oidc/test` | Fetch an authority's discovery document and check it |
 | `POST` | `/api/v1/admin/system/restart` | Stop the Host so its supervisor restarts it |
 
-All are administrator-only, and the writes require antiforgery validation.
+All are administrator-only, and the writes require antiforgery validation. The discovery test counts as a write for that purpose: it makes the service fetch an address the caller chose. See [User Workspace and OIDC](./user-workspace-oidc.md) for what the test does and does not establish.
 
 ## Remaining Work
 
-- secret-valued settings, which need encryption through Data Protection before any are published;
-- Storage, OIDC, and business-database settings, which is the point at which a connection test and a recovery path for a bad value become necessary;
-- change listeners for the remaining keys, so fewer settings need a restart at all.
+- Storage and business-database settings, which need a connection test of their own and a recovery path that keeps `/admin` usable while the business database is unreachable;
+- change listeners for the remaining keys, so fewer settings need a restart at all;
+- rate limiting on the discovery test, which is the one settings endpoint that makes an outbound request.

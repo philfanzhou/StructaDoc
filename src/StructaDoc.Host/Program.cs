@@ -31,13 +31,28 @@ var controlPlaneOptions = builder.Configuration
     .Get<ControlPlaneOptions>() ?? new ControlPlaneOptions();
 controlPlaneOptions.Validate();
 
+// Read from the builder configuration rather than the settings-aware one below, because the key
+// ring it locates is what decrypts the stored settings. Nothing under Authentication is settable
+// from the browser, which is what makes reading it this early the same as reading it later; an
+// architecture test holds that true.
+var authenticationOptions = builder.Configuration
+    .GetSection(StructaDocAuthenticationOptions.SectionName)
+    .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
+authenticationOptions.Validate();
+
+var keyRing = StructaDocKeyRing.Create(authenticationOptions);
+var settingSecretProtector = new DataProtectionSettingSecretProtector(keyRing);
+var settingsStartupFault = new SettingsStartupFault();
+
 // Settings an administrator chose in the browser join configuration before anything is read from
 // it. Everything below binds against this rather than the raw builder configuration, or a stored
 // setting would be visible to the administration page and invisible to the service using it.
 var settingsConfiguration = StructaDocSettingsConfiguration.Create(
     builder.Configuration,
     controlPlaneOptions,
-    args);
+    args,
+    settingSecretProtector,
+    settingsStartupFault);
 var configuration = settingsConfiguration.Effective;
 
 var databaseOptions = configuration
@@ -67,14 +82,7 @@ storageOptions.Validate();
 providerResultOptions.Validate();
 providerResultNormalizationOptions.Validate();
 conversionOptions.Validate();
-var authenticationOptions = configuration
-    .GetSection(StructaDocAuthenticationOptions.SectionName)
-    .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
-authenticationOptions.Validate();
-var oidcOptions = configuration
-    .GetSection(OidcAuthenticationOptions.SectionName)
-    .Get<OidcAuthenticationOptions>() ?? new OidcAuthenticationOptions();
-oidcOptions.Validate();
+var oidcOptions = OidcConfigurationBinder.Bind(settingsConfiguration, settingsStartupFault);
 
 builder.Services
     .AddHealthChecks()
@@ -87,10 +95,13 @@ builder.Services.AddStructaDocParseProviders();
 builder.Services.AddStructaDocProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
-builder.Services.AddStructaDocHostAuthentication(authenticationOptions, oidcOptions);
+builder.Services.AddStructaDocHostAuthentication(authenticationOptions, oidcOptions, keyRing);
 builder.Services.AddSingleton(oidcOptions);
 builder.Services.AddSingleton(workerOptions);
 builder.Services.AddSingleton(settingsConfiguration);
+builder.Services.AddSingleton(settingsStartupFault);
+builder.Services.AddSingleton<ISettingSecretProtector>(settingSecretProtector);
+builder.Services.AddSingleton<OidcDiscoveryProbe>();
 builder.Services.AddSingleton(new ParseExecutionGate(workerOptions.ExecutionEnabled));
 builder.Services.AddSingleton<ISettingChangeListener>(
     services => services.GetRequiredService<ParseExecutionGate>());
@@ -107,6 +118,17 @@ builder.Services.Configure<FormOptions>(options =>
     options.MultipartBodyLengthLimit = checked(ingestionOptions.MaxUploadBytes + (1024 * 1024)));
 
 var app = builder.Build();
+
+// Dropping a stored setting is decided before logging exists, so it is reported here. An operator
+// reading the container log is the one person who would otherwise see a service that started
+// cleanly with a feature quietly switched off.
+if (settingsStartupFault.HasFault)
+{
+    app.Logger.LogWarning(
+        "Stored configuration in section {Section} was not applied. {Detail}",
+        settingsStartupFault.Section,
+        settingsStartupFault.Detail);
+}
 
 // The control plane is migrated first and unconditionally: administration must be reachable even
 // when the configured business database is not, and it is what an administrator uses to fix that.
@@ -169,6 +191,7 @@ app.MapAdministratorAccountEndpoints(
     authenticationOptions.AdministratorSessionLifetime);
 app.MapApiClientAdministrationEndpoints();
 app.MapSettingsEndpoints();
+app.MapOidcSettingsEndpoints();
 app.MapSystemControlEndpoints();
 app.MapProviderConfigAdministrationEndpoints();
 app.MapParseRunEndpoints();

@@ -163,7 +163,7 @@ The Worker uses the configured relational database as the authoritative queue. I
 
 ## Identity and Authorization
 
-Interactive users authenticate through configurable OIDC Authorization Code flow with PKCE. StructaDoc depends on standard discovery, token validation, and claim mapping, not on a Provider-specific SDK. SignaCore, Keycloak, Authentik, Entra ID, and other standards-compliant Providers can be used without changing business code.
+Interactive users authenticate through configurable OIDC Authorization Code flow with PKCE. StructaDoc depends on standard discovery, token validation, and claim mapping, not on a Provider-specific SDK. SignaCore, Keycloak, Authentik, Entra ID, and other standards-compliant Providers can be used without changing business code. An administrator can configure the Provider under `/admin`, with a test that fetches its discovery document, so a deployment never needs a command line to let its users in.
 
 The stable identity key is `(issuer, subject)`. Email and display name are presentation attributes, not authorization keys. OIDC tokens remain in the Host; browser JavaScript receives only an encrypted HttpOnly application session.
 
@@ -233,7 +233,7 @@ Configuration uses standard ASP.NET Core keys; environment variables replace `:`
 | Worker | `Worker__Enabled`, `Worker__ExecutionEnabled`, `Worker__MaxConcurrency`, `Worker__MaxExecutionDuration`, lease, heartbeat, retry, and polling limits |
 | Storage | `Storage__Provider`, `Storage__RootPath`, S3 endpoint, bucket, prefix, region, and credential settings |
 | Documents | `Documents__UploadApiEnabled`, `Documents__MaxUploadBytes` |
-| OIDC | `Oidc__Enabled`, `Oidc__Authority`, `Oidc__ClientId`, `Oidc__ClientSecret`, scopes and role mapping |
+| OIDC | `Oidc__Enabled`, `Oidc__Authority`, `Oidc__ClientId`, `Oidc__ClientSecret`, scopes and role mapping; all but scopes and the callback paths are also settable under `/admin` |
 | Local administration | bootstrap credentials, session lifetime, login limits, and Data Protection key path under `Authentication__*` |
 | Conversion | executable, concurrency, timeout, and byte/disk limits under `LibreOffice__*` |
 | Provider results | archive, entry, expansion, compression-ratio, and normalization limits |

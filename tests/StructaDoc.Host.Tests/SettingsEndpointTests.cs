@@ -17,8 +17,6 @@ namespace StructaDoc.Host.Tests;
 /// </summary>
 public sealed class SettingsEndpointTests
 {
-    private const string Username = "settings-admin";
-    private const string Password = "StructaDoc-Settings-2026!";
 
     [Fact]
     public async Task A_stored_setting_replaces_the_shipped_default_and_survives_a_restart()
@@ -156,7 +154,9 @@ public sealed class SettingsEndpointTests
                     {
                         DatabasePath = context.Configuration["ControlPlane:DatabasePath"]!,
                     },
-                    ["--Worker:MaxConcurrency=7"]))));
+                    ["--Worker:MaxConcurrency=7"],
+                    new FakeSettingSecretProtector(),
+                    new SettingsStartupFault()))));
         using var client = await SignedInClientAsync(factory);
 
         // Only the refusal is asserted here. The pin reaches this Host through the replaced
@@ -272,85 +272,8 @@ public sealed class SettingsEndpointTests
         return settings!.Single(setting => setting.Key == key);
     }
 
-    private static async Task<HttpClient> SignedInClientAsync(WebApplicationFactory<Program> factory)
+    private static Task<HttpClient> SignedInClientAsync(WebApplicationFactory<Program> factory)
     {
-        var client = factory.CreateClient();
-        var anonymousToken = await client.GetAntiforgeryTokenAsync();
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/session")
-        {
-            Content = JsonContent.Create(new AdministratorLoginRequest(Username, Password)),
-        };
-        request.Headers.Add(anonymousToken.HeaderName, anonymousToken.RequestToken);
-        using var response = await client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-
-        var token = await client.GetAntiforgeryTokenAsync();
-        client.DefaultRequestHeaders.Remove(token.HeaderName);
-        client.DefaultRequestHeaders.Add(token.HeaderName, token.RequestToken);
-        return client;
-    }
-
-    /// <summary>
-    /// One directory that outlives the Host, so a settings store can be observed across a restart
-    /// rather than only within the process that wrote it.
-    /// </summary>
-    private sealed class SettingsTestDeployment : IDisposable
-    {
-        private readonly string directory = Path.Combine(
-            Path.GetTempPath(),
-            "structadoc-settings-tests",
-            Guid.NewGuid().ToString("N"));
-
-        public SettingsTestDeployment()
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        public WebApplicationFactory<Program> CreateFactory(
-            Action<IWebHostBuilder>? configure = null)
-        {
-            return new SettingsTestFactory(directory, configure);
-        }
-
-        public void Dispose()
-        {
-            if (Directory.Exists(directory))
-            {
-                SqliteConnection.ClearAllPools();
-                Directory.Delete(directory, recursive: true);
-            }
-        }
-    }
-
-    private sealed class SettingsTestFactory(string directory, Action<IWebHostBuilder>? configure)
-        : WebApplicationFactory<Program>
-    {
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            builder.UseSetting("Worker:Enabled", "false");
-            builder.UseSetting("Authentication:BootstrapAdministratorUsername", Username);
-            builder.UseSetting("Authentication:BootstrapAdministratorPassword", Password);
-            builder.UseSetting(
-                "Authentication:DataProtectionKeysPath",
-                Path.Combine(directory, "keys"));
-            builder.UseSetting("Storage:Provider", "Local");
-            builder.UseSetting("Storage:RootPath", Path.Combine(directory, "storage"));
-            builder.UseSetting("Database:Provider", "Sqlite");
-            builder.UseSetting(
-                "Database:ConnectionString",
-                $"Data Source={Path.Combine(directory, "structadoc.db")};Pooling=False");
-            builder.UseSetting("ControlPlane:DatabasePath", Path.Combine(directory, "control.db"));
-            configure?.Invoke(builder);
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            base.Dispose(disposing);
-
-            if (disposing)
-            {
-                SqliteConnection.ClearAllPools();
-            }
-        }
+        return SettingsTestDeployment.SignedInClientAsync(factory);
     }
 }

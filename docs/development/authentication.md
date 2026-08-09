@@ -121,4 +121,4 @@ Provider bearer tokens remain separate from every user credential. Adapters decr
 - configurable failed-login lockout and persistent authentication audit;
 - rate limiting on the password-change endpoint, which currently shares nothing with the sign-in limiter;
 - production reverse-proxy, HTTPS, and Cookie Secure deployment recipes;
-- an external Data Protection key-ring option for multi-instance platforms.
+- an external Data Protection key-ring option for multi-instance platforms. The key ring now also encrypts stored settings, so replacing it costs a stored client secret as well as every live session; see [Service Settings](./service-settings.md).

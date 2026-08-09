@@ -9,6 +9,7 @@ namespace StructaDoc.Infrastructure.Settings;
 public sealed class SettingsService(
     ControlPlaneDbContext dbContext,
     StructaDocSettingsConfiguration configuration,
+    ISettingSecretProtector secretProtector,
     IEnumerable<ISettingChangeListener> listeners) : ISettingsService
 {
     public async Task<IReadOnlyList<SettingState>> ListAsync(
@@ -37,16 +38,25 @@ public sealed class SettingsService(
         // A row left over from before the deployment pinned the key is dead weight, not the value in
         // force, so it must not be reported as one.
         var isManagedExternally = configuration.IsManagedExternally(definition.Key);
-        var chosen = isManagedExternally ? null : stored.GetValueOrDefault(definition.Key);
+        var row = isManagedExternally ? null : stored.GetValueOrDefault(definition.Key);
+
+        // A secret is stored encrypted, so what gets compared with the running value is its
+        // plaintext. A row that cannot be decrypted is still a row: it is reported as set so an
+        // administrator can write over it, but it is not in force, because the running service
+        // dropped it for the same reason.
+        var isSecret = SettingCatalog.IsSecret(definition);
+        var chosen = isSecret && row is not null ? secretProtector.TryUnprotect(row) : row;
         var inForce = chosen ?? basis;
 
         return new SettingState(
             definition.Key,
             definition.Kind,
-            inForce,
+            // Only whether a secret is set is reported. The value never reaches a browser, so an
+            // administration session that is read cannot give up a credential it did not write.
+            isSecret ? string.Empty : inForce,
             definition.RequiresRestart,
             isManagedExternally,
-            IsStored: chosen is not null,
+            IsStored: row is not null,
             IsPendingRestart: definition.RequiresRestart
                 && !string.Equals(inForce, running, StringComparison.Ordinal),
             definition.Minimum,
@@ -106,19 +116,25 @@ public sealed class SettingsService(
             return new SettingWriteResult(SettingWriteStatus.InvalidValue);
         }
 
+        // What goes in the row is not always what the service reads. A secret is encrypted here so
+        // that a copy of the database file, which travels with every backup, does not carry it.
+        var persisted = SettingCatalog.IsSecret(definition)
+            ? secretProtector.Protect(normalized)
+            : normalized;
+
         if (existing is null)
         {
             dbContext.Settings.Add(new SettingEntity
             {
                 Key = definition.Key,
-                Value = normalized,
+                Value = persisted,
                 UpdatedAtUtc = nowUtc,
                 UpdatedBy = updatedBy,
             });
         }
         else
         {
-            existing.Value = normalized;
+            existing.Value = persisted;
             existing.UpdatedAtUtc = nowUtc;
             existing.UpdatedBy = updatedBy;
         }

@@ -23,10 +23,53 @@ const settingLabels: Record<string, string> = {
   'Worker:MaxConcurrency': '并发解析数',
   'Documents:UploadApiEnabled': '开放上传接口',
   'Documents:MaxUploadBytes': '单文件上传上限（字节）',
+  'Oidc:Enabled': '启用组织账号登录',
+  'Oidc:Authority': '身份提供方地址',
+  'Oidc:ClientId': '客户端 ID',
+  'Oidc:ClientSecret': '客户端密钥',
+  'Oidc:RequireHttpsMetadata': '要求 HTTPS 元数据',
+  'Oidc:NameClaim': '姓名 claim',
+  'Oidc:EmailClaim': '邮箱 claim',
+  'Oidc:RoleClaim': '角色 claim',
+  'Oidc:AdministratorRole': '管理员角色值',
+}
+
+// The identity provider is the only way an end user reaches the workspace, so it gets a panel of its
+// own rather than a row among the service settings.
+type OidcStatus = { enabled: boolean; startupFault: string | null; callbackPath: string; signedOutCallbackPath: string; scopes: string[] }
+const oidcStatus = ref<OidcStatus | null>(null)
+const oidcSecretDraft = ref('')
+const oidcAuthorityDraft = ref('')
+const oidcTestResult = ref('')
+const oidcTesting = ref(false)
+const oidcClaimKeys = ['Oidc:NameClaim', 'Oidc:EmailClaim', 'Oidc:RoleClaim', 'Oidc:AdministratorRole']
+const serviceSettings = computed(() => settings.value.filter(setting => !setting.key.startsWith('Oidc:')))
+// Composed in the browser rather than by the service: behind a reverse proxy only the browser knows
+// the address a user actually reaches, and registering the wrong one at the provider fails the
+// sign-in at its last step.
+const oidcRedirectUri = computed(() => oidcStatus.value ? location.origin + oidcStatus.value.callbackPath : '')
+const oidcSignedOutUri = computed(() => oidcStatus.value ? location.origin + oidcStatus.value.signedOutCallbackPath : '')
+function settingOf(key: string) { return settings.value.find(setting => setting.key === key) }
+
+// The service answers with a stable code so it does not have to guess the reader's language, and
+// carries the deployment-specific part separately.
+const oidcTestMessages: Record<string, string> = {
+  Reachable: '连接成功：发现文档可读，issuer 与填写的地址一致',
+  InvalidAuthority: '地址无效，需要是以 http:// 或 https:// 开头的完整地址',
+  InsecureAuthority: '当前要求 HTTPS 元数据，该地址不是 https',
+  Unreachable: '无法连接到该地址',
+  TimedOut: '连接超时',
+  HttpError: '该地址返回了错误状态码',
+  MalformedDocument: '该地址返回的不是合法 JSON',
+  IncompleteDocument: '返回的文档缺少 OIDC 必需字段，该地址可能不是身份提供方',
+  IssuerMismatch: '该地址的发现文档声明了不同的 issuer，登录时每个令牌都会被拒绝',
 }
 
 async function load() {
-  try { [providers.value, clients.value, administrators.value, settings.value] = await Promise.all([get('/api/v1/admin/provider-configs'), get('/api/v1/admin/api-clients'), get('/api/v1/admin/administrators'), get('/api/v1/admin/settings')]) }
+  try {
+    [providers.value, clients.value, administrators.value, settings.value, oidcStatus.value] = await Promise.all([get('/api/v1/admin/provider-configs'), get('/api/v1/admin/api-clients'), get('/api/v1/admin/administrators'), get('/api/v1/admin/settings'), get('/api/v1/admin/settings/oidc')])
+    oidcAuthorityDraft.value = settingOf('Oidc:Authority')?.value ?? ''
+  }
   catch (e) { message((e as Error).message, true) }
 }
 
@@ -36,6 +79,34 @@ async function saveSetting(setting: Setting, value: string) {
     settings.value = await get('/api/v1/admin/settings')
     message(result.restartRequired ? '已保存，需重启服务后生效' : '已保存并生效')
   } catch (e) { message((e as Error).message, true); settings.value = await get('/api/v1/admin/settings') }
+}
+
+async function saveSettingByKey(key: string, value: string) {
+  const setting = settingOf(key)
+  if (setting) await saveSetting(setting, value)
+}
+
+// Written from the draft and then forgotten by this page. The service never sends a secret back, so
+// leaving it in the field would be the only copy of it in a browser.
+async function saveOidcSecret() {
+  if (!oidcSecretDraft.value) return
+  await saveSettingByKey('Oidc:ClientSecret', oidcSecretDraft.value)
+  oidcSecretDraft.value = ''
+}
+
+// Tests what is typed rather than what is stored, so a wrong address is caught before it is saved.
+// Only the address is checked; whether the identity provider accepts the client id and secret cannot
+// be known without completing a sign-in.
+async function testOidc() {
+  oidcTesting.value = true
+  oidcTestResult.value = ''
+  try {
+    const result = await mutate<{ succeeded: boolean; code: string; detail: string; issuer: string | null }>('/api/v1/admin/settings/oidc/test', 'POST', { authority: oidcAuthorityDraft.value, requireHttpsMetadata: settingOf('Oidc:RequireHttpsMetadata')?.value !== 'false' })
+    const detail = result.detail ? `（${result.detail}）` : ''
+    const issuer = !result.succeeded && result.issuer ? ` issuer=${result.issuer}` : ''
+    oidcTestResult.value = (oidcTestMessages[result.code] ?? result.code) + detail + issuer
+  } catch (e) { oidcTestResult.value = (e as Error).message }
+  finally { oidcTesting.value = false }
 }
 
 // The Host can only stop itself; what brings it back is the container restart policy. Saying so in
@@ -127,7 +198,7 @@ onMounted(() => load())
       <p class="eyebrow">SERVICE SETTINGS</p><h2>服务设置</h2>
       <div v-if="restartPending" class="notice-banner"><div>部分设置需重启服务后才会生效。</div><button :disabled="restarting" @click="restart">{{ restarting ? '正在重启…' : '立即重启' }}</button></div>
       <div class="admin-list">
-        <div v-for="setting in settings" :key="setting.key">
+        <div v-for="setting in serviceSettings" :key="setting.key">
           <span><strong>{{ settingLabels[setting.key] || setting.key }}</strong><small>{{ setting.key }}<template v-if="setting.isManagedExternally"> · 由部署环境变量固定</template><template v-else-if="!setting.isStored"> · 使用默认值</template><template v-if="setting.isPendingRestart"> · 待重启生效</template></small></span>
           <span class="row-actions">
             <template v-if="setting.kind === 'Boolean'">
@@ -140,6 +211,23 @@ onMounted(() => load())
             <button v-if="setting.isStored && !setting.isManagedExternally" @click="saveSetting(setting, '')">恢复默认</button>
           </span>
         </div>
+      </div>
+    </section>
+
+    <section class="panel admin-card wide-card">
+      <p class="eyebrow">SINGLE SIGN-ON</p><h2>组织账号登录</h2>
+      <p class="hint">终端用户只能通过身份提供方登录；未配置时工作区无人可用，管理员仍可从本地账号进入。</p>
+      <div v-if="oidcStatus?.startupFault" class="notice-banner"><div>已保存的配置在服务启动时被拒绝，当前未生效：{{ oidcStatus.startupFault }}</div></div>
+      <div class="form-grid" v-if="settingOf('Oidc:Enabled')">
+        <label class="wide"><input type="checkbox" :checked="settingOf('Oidc:Enabled')!.value === 'true'" :disabled="settingOf('Oidc:Enabled')!.isManagedExternally" @change="saveSettingByKey('Oidc:Enabled', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 启用组织账号登录<small>当前运行状态：{{ oidcStatus?.enabled ? '已启用' : '未启用' }}</small></label>
+        <label class="wide">身份提供方地址<input v-model="oidcAuthorityDraft" type="url" placeholder="https://id.example.com/realms/main" :disabled="settingOf('Oidc:Authority')!.isManagedExternally" @change="saveSettingByKey('Oidc:Authority', oidcAuthorityDraft)"><small>末尾斜杠会被去掉，保存后应与发现文档中的 issuer 完全一致</small></label>
+        <label>客户端 ID<input :value="settingOf('Oidc:ClientId')!.value" :disabled="settingOf('Oidc:ClientId')!.isManagedExternally" @change="saveSettingByKey('Oidc:ClientId', ($event.target as HTMLInputElement).value)"></label>
+        <label>客户端密钥<input v-model="oidcSecretDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Oidc:ClientSecret')!.isStored ? '已设置（不回显）' : '未设置'" :disabled="settingOf('Oidc:ClientSecret')!.isManagedExternally"></label>
+        <span class="row-actions wide"><button :disabled="!oidcSecretDraft" @click="saveOidcSecret">保存密钥</button><button v-if="settingOf('Oidc:ClientSecret')!.isStored" class="danger-link" @click="saveSettingByKey('Oidc:ClientSecret', '')">清除密钥</button><button :disabled="oidcTesting" @click="testOidc">{{ oidcTesting ? '正在测试…' : '测试连接' }}</button></span>
+        <p v-if="oidcTestResult" class="hint wide">{{ oidcTestResult }}</p>
+        <label class="wide"><input type="checkbox" :checked="settingOf('Oidc:RequireHttpsMetadata')!.value === 'true'" :disabled="settingOf('Oidc:RequireHttpsMetadata')!.isManagedExternally" @change="saveSettingByKey('Oidc:RequireHttpsMetadata', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 要求 HTTPS 元数据<small>仅在内网 http 身份提供方下关闭</small></label>
+        <label v-for="key in oidcClaimKeys" :key="key">{{ settingLabels[key] }}<input :value="settingOf(key)!.value" :disabled="settingOf(key)!.isManagedExternally" @change="saveSettingByKey(key, ($event.target as HTMLInputElement).value)"></label>
+        <p class="hint wide">在身份提供方处需登记回调地址 <code>{{ oidcRedirectUri }}</code>，注销回调 <code>{{ oidcSignedOutUri }}</code>。请求的 scope 为 <code>{{ oidcStatus?.scopes.join(' ') }}</code>，此项与回调路径不可在此修改。</p>
       </div>
     </section>
 
