@@ -123,6 +123,29 @@ Setting `Storage__*` or `Database__*` on `docker run` still works and still pins
 
 Moving either is a migration, not a switch. A new database is created empty at the next start and a new storage location starts empty; nothing copies existing documents, objects, or Parse Runs across. Test the new location with the button beside it first — the storage test writes and removes a probe object, and the database test connects and reads migration history without creating anything.
 
+## Behind a Reverse Proxy
+
+A proxy that terminates TLS forwards plain HTTP from its own address, so without being told otherwise the service is wrong about three things at once: session cookies are issued without `Secure`, because the request it can see is not secure; the sign-in redirect address composed for an identity provider says `http` and no longer matches what was registered there; and the sign-in rate limiter partitions every visitor into one bucket belonging to the proxy, so ten wrong passwords from anyone lock out everyone.
+
+The proxy states what the browser actually asked for in `X-Forwarded-Proto`, `X-Forwarded-Host`, and `X-Forwarded-For`. A forwarded header is a claim by whoever sent it, so nothing is read until the deployment names the peer it believes:
+
+```bash
+docker run ... \
+  --env ReverseProxy__TrustedProxies='172.17.0.1' \
+  --env ReverseProxy__PublicHosts='docs.example.com' \
+  structadoc:local
+```
+
+The address to name is the one the container sees, which is rarely the one the proxy has. A proxy running on the Docker host arrives as the bridge gateway, typically `172.17.0.1`; a proxy in another container on a shared network arrives as its address there, which is worth naming as a range such as `172.18.0.0/16` because it is not stable. Addresses and ranges are separated by commas. Nothing else is trusted, including loopback: inside a container that is the container itself.
+
+Getting the address wrong looks like a working deployment until sign-in fails, and nothing outside the container can read that address off. The service reports it instead: a forwarded header that arrives and is not applied is logged once per peer, naming the address to trust.
+
+`ReverseProxy__PublicHosts` is separate because `X-Forwarded-Host` is the one forwarded value a proxy usually does not set and does pass through from the client, so trusting the peer is not enough to trust the value. Until the published host names are listed, that header is ignored entirely. Set it if an identity provider is configured, since the host decides the sign-in redirect address.
+
+`ReverseProxy__ForwardLimit` defaults to `1`. Raise it to the number of proxies actually in front of the deployment — a CDN in front of an ingress is `2` — and no higher, because each hop consumes one entry and a limit above the real count lets the client supply the rest.
+
+None of this is settable from `/admin`. An administrator reaches the service through the proxy and cannot see what is in front of it, so it stays with whoever placed the container in that network. Reaching the deployment directly over HTTP, without a proxy, needs no configuration here at all.
+
 ## Restart Policy
 
 Some settings only take effect after a restart, and the administration page offers a button that stops the Host so its supervisor starts it again. The image cannot restart itself, so run the container with a restart policy or that button leaves the service down until it is started by hand:

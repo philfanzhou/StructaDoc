@@ -78,6 +78,8 @@ Sign-in through an identity provider is configured under `/admin`, because it is
 
 `Oidc:Scopes` is an array, which the settings store cannot express as one key and one value, so it is not settable from the browser. The administration page reports the scopes in force so an administrator can see what is requested without having to find out by reading a sign-in request. `CallbackPath` and `SignedOutCallbackPath` are reported for the same reason: they have to be registered at the identity provider, and the page composes them against the address the browser actually reached, which is the only place that knows what a reverse proxy publishes.
 
+Behind a proxy that terminates TLS, the address the service composes is that reported address only once the proxy is trusted. Until then it says `http` and carries the internal host, and the sign-in request is refused by the identity provider for a redirect address that does not match what was registered. A deployment with an identity provider behind a proxy therefore needs both `ReverseProxy:TrustedProxies` and `ReverseProxy:PublicHosts`; see [Behind a Reverse Proxy](../deployment/single-container.md#behind-a-reverse-proxy).
+
 A client secret set from the browser is encrypted with the Data Protection key ring and never sent back; only whether one is set is reported. Injecting it through a deployment secret instead remains supported and takes precedence. HTTPS metadata should remain required outside explicitly isolated development environments.
 
 ### Getting It Wrong

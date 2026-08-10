@@ -62,6 +62,8 @@ The catalog restates each default because several of these keys are absent from 
 
 Nothing under `Authentication` is settable. Those options are read from the raw configuration before the store is opened, because the Data Protection key ring they locate is what decrypts the stored secrets; a settable key there would be read too early to have any effect. An architecture test holds that.
 
+Nothing under `ReverseProxy` is settable either, for a different reason. It names the peer allowed to say what scheme, host, and address a request really had, which is a fact about the network the container was placed in; an administrator reaches the service through that proxy and cannot see what is in front of it, and a wrong answer lets a caller choose its own apparent address. It stays with whoever placed the container, and a test holds it out of this catalog. See [Behind a Reverse Proxy](../deployment/single-container.md#behind-a-reverse-proxy).
+
 An address is stored without its trailing slash. An authority written with one and the issuer a provider reports without one are the same address, and the sign-in middleware compares them literally.
 
 ## Secrets

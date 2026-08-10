@@ -91,7 +91,9 @@ Deleting is irreversible and drops the account's history, while disabling keeps 
 
 Authentication failure returns `401` without revealing whether an account is absent, disabled, or has the wrong password. API endpoints do not redirect to an HTML login page.
 
-The login endpoint uses a fixed window per `RemoteIpAddress`, defaulting to ten attempts per minute. Configure `Authentication:LoginPermitLimit` and `Authentication:LoginRateLimitWindow`. A reverse proxy must restrict trusted forwarded headers; multi-instance limits are currently per instance.
+The login endpoint uses a fixed window per `RemoteIpAddress`, defaulting to ten attempts per minute. Configure `Authentication:LoginPermitLimit` and `Authentication:LoginRateLimitWindow`. Multi-instance limits are currently per instance.
+
+Behind a proxy that address is the proxy's until `ReverseProxy:TrustedProxies` names it, at which point every visitor shares one bucket and ten wrong passwords from anyone lock out everyone. Cookies are issued with `CookieSecurePolicy.SameAsRequest`, which is the same statement about the same fact: a proxy that terminates TLS forwards plain HTTP, so `Secure` is set once the forwarded scheme is believed and not before. Neither is settable from a browser, because which peer may speak for the client is a property of the network the container sits in. See [Behind a Reverse Proxy](../deployment/single-container.md#behind-a-reverse-proxy).
 
 ## API-Client Credentials
 
@@ -120,5 +122,5 @@ Provider bearer tokens remain separate from every user credential. Adapters decr
 
 - configurable failed-login lockout and persistent authentication audit;
 - rate limiting on the password-change endpoint, which currently shares nothing with the sign-in limiter;
-- production reverse-proxy, HTTPS, and Cookie Secure deployment recipes;
+- redirecting HTTP to HTTPS and emitting HSTS, which is left to the proxy that terminates TLS;
 - an external Data Protection key-ring option for multi-instance platforms. The key ring now also encrypts stored settings, so replacing it costs a stored client secret as well as every live session; see [Service Settings](./service-settings.md).

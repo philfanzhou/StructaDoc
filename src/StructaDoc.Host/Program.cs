@@ -42,6 +42,15 @@ var authenticationOptions = builder.Configuration
     .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
 authenticationOptions.Validate();
 
+// Read from the raw configuration for the same reason, though a different one applies too: which
+// peer may state what the browser asked for is a fact about the network the container was placed
+// in, and an administrator reaching this service through that proxy cannot see what is in front of
+// it. An architecture test holds that it stays out of the settings catalog.
+var reverseProxyOptions = builder.Configuration
+    .GetSection(ReverseProxyOptions.SectionName)
+    .Get<ReverseProxyOptions>() ?? new ReverseProxyOptions();
+reverseProxyOptions.Validate();
+
 var keyRing = StructaDocKeyRing.Create(authenticationOptions);
 var settingSecretProtector = new DataProtectionSettingSecretProtector(keyRing);
 var settingsStartupFault = new SettingsStartupFault();
@@ -177,6 +186,12 @@ catch (Exception error) when (
 await app.Services.BootstrapStructaDocAdministratorAsync(
     authenticationOptions,
     app.Lifetime.ApplicationStopping);
+
+// First, because everything after it reads a scheme, a host, or a caller's address that is only
+// correct once the proxy in front has been believed: cookies decide `Secure` from the scheme, the
+// sign-in redirect address composed for an identity provider is built from the scheme and host, and
+// the rate limiter below partitions on the caller's address.
+app.UseStructaDocReverseProxy(reverseProxyOptions, app.Logger);
 
 app.UseRateLimiter();
 app.UseDefaultFiles();
