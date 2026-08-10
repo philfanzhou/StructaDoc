@@ -15,9 +15,12 @@ Stored settings are rows in the control-plane SQLite database, alongside adminis
 
 1. an environment variable or command-line argument, when present;
 2. a stored setting;
-3. the value the service ships with.
+3. the container image's own default, when running inside the image;
+4. the value the service ships with.
 
 Precedence is decided explicitly rather than by where a configuration source lands in a list. Host builders do not agree on that order, and the test host appends sources after the application has configured itself, so an ordering-based rule would mean one thing in production and another under test. Stored settings are layered above the application configuration, and any key the deployment pins is left out of that layer entirely: it keeps winning because nothing is ever put above it.
+
+Level 3 is decided the same way, and had to be: `appsettings.Container.json` first tried to take its place by source position, and the web host — which reads environment variables both before and after `appsettings.json` and then chains its host configuration on at the end — has no position that is above the repository's defaults and below the deployment's at once. The file landed under `appsettings.json`, and the image started against a read-only `/app/data`. It is now applied key by key, skipping every key an environment variable or argument supplied. See [Single Container](../deployment/single-container.md) for what the image puts there.
 
 A pinned setting is reported as managed externally and cannot be written through the API, which answers `409`. Storing a value the service would never read would report a change that did not happen.
 

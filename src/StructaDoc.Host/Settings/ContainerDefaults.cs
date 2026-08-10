@@ -1,7 +1,4 @@
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Configuration.CommandLine;
-using Microsoft.Extensions.Configuration.EnvironmentVariables;
-using Microsoft.Extensions.Configuration.Json;
 
 namespace StructaDoc.Host.Settings;
 
@@ -18,31 +15,45 @@ public static class ContainerDefaults
     public const string FileName = "appsettings.Container.json";
 
     /// <summary>
-    /// Adds the file beneath the environment variables and command line rather than on top of them.
-    /// The position is the whole point: a value passed to <c>docker run</c> has to keep winning, and
-    /// a source appended at the end would quietly beat it. Everything already added stays below,
-    /// because the image's answer for where <c>/data</c> is should beat the repository's development
-    /// default.
+    /// Applies the file above everything the deployment did not supply, and not at all for the keys
+    /// it did.
+    ///
+    /// Precedence is decided by key rather than by where the file lands in the source list, for the
+    /// same reason <see cref="StructaDoc.Adapters.ControlPlane.StructaDocSettingsConfiguration"/>
+    /// decides it that way: host builders do not agree on that order. The web host reads environment
+    /// variables both before and after <c>appsettings.json</c> and then chains its host configuration
+    /// on at the end, so no single position is above the repository's defaults and below the
+    /// deployment's at once. Placing the file by source type produced exactly that: it landed under
+    /// <c>appsettings.json</c>, and the image started against a read-only <c>/app/data</c>.
     /// </summary>
-    public static IConfigurationBuilder AddContainerDefaults(this IConfigurationBuilder configuration)
+    public static IConfigurationBuilder AddContainerDefaults(
+        this IConfigurationBuilder configuration,
+        string[] commandLineArguments)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        var deploymentIndex = configuration.Sources
-            .Select((source, position) => (source, position))
-            .Where(item => item.source is EnvironmentVariablesConfigurationSource
-                or CommandLineConfigurationSource)
-            .Select(item => (int?)item.position)
-            .Min() ?? configuration.Sources.Count;
+        // The file exists only in the image, so an ordinary `dotnet run` and every test must be
+        // untouched by it. It is read through the builder's own file provider, which is what makes
+        // it resolve against the content root the same way `appsettings.json` does.
+        var image = new ConfigurationBuilder()
+            .SetFileProvider(configuration.GetFileProvider())
+            .AddJsonFile(FileName, optional: true, reloadOnChange: false)
+            .Build();
 
-        configuration.Sources.Insert(
-            deploymentIndex,
-            new JsonConfigurationSource
-            {
-                Path = FileName,
-                Optional = true,
-                ReloadOnChange = false,
-            });
+        var deployment = new ConfigurationBuilder()
+            .AddEnvironmentVariables()
+            .AddCommandLine(commandLineArguments ?? [])
+            .Build();
+
+        var defaults = image
+            .AsEnumerable()
+            .Where(entry => entry.Value is not null && deployment[entry.Key] is null)
+            .ToArray();
+
+        if (defaults.Length > 0)
+        {
+            configuration.AddInMemoryCollection(defaults);
+        }
 
         return configuration;
     }

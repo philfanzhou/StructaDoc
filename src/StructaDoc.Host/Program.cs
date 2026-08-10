@@ -26,7 +26,7 @@ using StructaDoc.Adapters.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Configuration.AddContainerDefaults();
+builder.Configuration.AddContainerDefaults(args);
 
 var controlPlaneOptions = builder.Configuration
     .GetSection(ControlPlaneOptions.SectionName)
