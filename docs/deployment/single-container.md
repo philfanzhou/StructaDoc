@@ -14,6 +14,24 @@ The final image contains ASP.NET Core Runtime, the Host, web assets, four migrat
 
 Ubuntu 24.04 Noble is explicit because the official .NET 10 image does not provide a Debian variant. The Dockerfile installs only the no-GUI components required for DOC/DOCX, XLS/XLSX, and PPT/PPTX conversion and verifies that Python, Node.js, and npm are absent from the runtime stage.
 
+## Published Image
+
+CI publishes the image to GitHub Container Registry after every push to `main` that passes all three test jobs, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
+
+```bash
+docker pull ghcr.io/philfanzhou/structadoc:latest
+```
+
+The repository is public and so is the package, so this needs no registry sign-in. Tags are `latest` for the default branch, `sha-<commit>` for a specific commit, and `<version>` plus `<major>.<minor>` for a `v*` release tag. Name a `sha-` or version tag in production: `latest` moves under a deployment that restarts.
+
+Each image carries a signed build provenance attestation and an SBOM. Verify one before a deployment trusts it:
+
+```bash
+gh attestation verify oci://ghcr.io/philfanzhou/structadoc:latest --owner philfanzhou
+```
+
+Substitute `ghcr.io/philfanzhou/structadoc:latest` for `structadoc:local` in the commands below to run it. Building locally remains supported and is what the following sections describe; it is the path for a private fork, an air-gapped site, or a build against internal package mirrors.
+
 ## Build
 
 The default build uses official Microsoft Container Registry, Ubuntu, npm, and NuGet sources:
