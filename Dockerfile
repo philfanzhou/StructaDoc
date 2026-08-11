@@ -30,11 +30,23 @@ RUN test -n "${NUGET_SOURCE}" \
 
 COPY src/ src/
 COPY --from=web-build /web-dist/ src/StructaDoc.Host/wwwroot/
+
+# What the running service answers when asked which build it is. Declared here rather than beside the
+# other arguments so that changing them does not invalidate the restore layer above: both change on
+# every commit, and the NuGet restore does not.
+#
+# Both are optional. An unset VERSION leaves the placeholder Directory.Build.props declares, which is
+# what a build from a working copy should report; the release tag supplies the real one. SOURCE_REVISION
+# is appended by the SDK, so a deployment names the exact commit even when no tag named the version.
+ARG VERSION
+ARG SOURCE_REVISION
 RUN dotnet publish src/StructaDoc.Host/StructaDoc.Host.csproj \
     --configuration "${BUILD_CONFIGURATION}" \
     --no-restore \
     --output /app/publish \
-    /p:UseAppHost=false
+    /p:UseAppHost=false \
+    ${VERSION:+/p:Version="${VERSION}"} \
+    ${SOURCE_REVISION:+/p:SourceRevisionId="${SOURCE_REVISION}"}
 
 FROM ${DOTNET_REGISTRY}/aspnet:${DOTNET_VERSION}-noble AS runtime
 

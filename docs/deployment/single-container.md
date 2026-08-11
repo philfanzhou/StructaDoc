@@ -24,6 +24,8 @@ docker pull ghcr.io/philfanzhou/structadoc:latest
 
 The repository is public and so is the package, so this needs no registry sign-in. Tags are `latest` for the default branch, `sha-<commit>` for a specific commit, and `<version>` plus `<major>.<minor>` for a `v*` release tag. Name a `sha-` or version tag in production: `latest` moves under a deployment that restarts.
 
+The registry also holds tags of the form `sha256-<digest>`. Those are not images. They are the provenance attestations described below, stored under the fallback name the OCI referrers specification gives them, and the package page lists them beside the real tags. One pulls in about eleven kilobytes and produces something with no platform, no layers, and no entrypoint. The image tag for a commit is `sha-<commit>`; anything beginning `sha256-` is not one.
+
 Each image carries a signed build provenance attestation and an SBOM. Verify one before a deployment trusts it:
 
 ```bash
@@ -32,12 +34,37 @@ gh attestation verify oci://ghcr.io/philfanzhou/structadoc:latest --owner philfa
 
 Substitute `ghcr.io/philfanzhou/structadoc:latest` for `structadoc:local` in the commands below to run it. Building locally remains supported and is what the following sections describe; it is the path for a private fork, an air-gapped site, or a build against internal package mirrors.
 
+### Which Build Is Running
+
+A deployment names itself over HTTP, so the question can be answered without reaching the machine:
+
+```bash
+curl --silent http://127.0.0.1:8080/api/v1/system/info
+```
+
+```json
+{"name":"StructaDoc","version":"0.1.0+9fc05ce62bbaa17e0aac4de712c66ba0a53dcb22"}
+```
+
+The part after `+` is the commit, at the same length as the `sha-` tag, so it names the exact image to pin. The version before it comes from the `v*` release tag that built it; a build from the default branch reports `0.0.0-dev`, which is honest about a build no release named rather than a version number that separates nothing. The administration area shows the same string in its header, for an administrator who does not use a terminal.
+
+Nothing inside the image can work this out for itself: `.dockerignore` excludes `.git`, so the SourceLink the .NET SDK ships finds no repository. The `SOURCE_REVISION` build argument carries it, and both the CI workflow and the build wrappers below pass it. An image built from a working copy with uncommitted changes reports the commit with `-dirty` appended, because an image that names a commit it was not built from is worse than one that admits it.
+
 ## Build
 
 The default build uses official Microsoft Container Registry, Ubuntu, npm, and NuGet sources:
 
 ```bash
 docker build --tag structadoc:local .
+```
+
+That image reports `0.0.0-dev` with no commit, because nothing told it which one. Two optional arguments fill that in; the wrappers below supply the second on their own:
+
+```bash
+docker build --tag structadoc:local \
+    --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" \
+    --build-arg VERSION=0.1.0 \
+    .
 ```
 
 The repository also provides Bash and PowerShell wrappers with `official`, `china`, and `auto` modes. `auto` tests connectivity to the official package sources with a short timeout before invoking Docker; it does not use IP geolocation.

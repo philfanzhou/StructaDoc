@@ -8,7 +8,7 @@ Three jobs run independently:
 
 1. **Build and unit tests** installs .NET 10 and Node.js 24, restores and builds the backend and frontend, audits npm dependencies, and runs tests that do not require Docker.
 2. **PostgreSQL, MySQL, and MariaDB contracts** sets `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`; Testcontainers starts PostgreSQL 17, MySQL 8.4, and MariaDB 11.4 and runs the same migration, persistence, lease, recovery, and canonical-commit contracts.
-3. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, checks that a forwarded header from a peer nothing trusts is refused and reported, and uses Chromium to exercise administrator sign-in, Provider configuration, PDF upload, parsing, and the administration area.
+3. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, checks that the running image reports the commit that built it, checks that a forwarded header from a peer nothing trusts is refused and reported, and uses Chromium to exercise administrator sign-in, Provider configuration, PDF upload, parsing, and the administration area.
 
 A fourth waits for all three:
 
@@ -19,6 +19,10 @@ TRX results, Playwright HTML reports, screenshots, failure traces/videos, and co
 ## Published Images
 
 `ghcr.io/philfanzhou/structadoc` receives `latest` from the default branch, `sha-<commit>` for every published commit, and `<version>` plus `<major>.<minor>` from a `v*` tag.
+
+Releasing is one push. `git tag -a v0.1.0 && git push origin v0.1.0` is what turns the semver rules on; nothing else in the workflow distinguishes a release. The tag also supplies the `VERSION` build argument, so the version the registry advertises and the version the running service reports come from the same place and cannot drift. A push to the default branch leaves the placeholder `Directory.Build.props` declares.
+
+Both image-building jobs pass `SOURCE_REVISION`, and the container job then asks the running image for it. This is checked rather than assumed because nothing inside the image can derive it: `.dockerignore` excludes `.git`, so the SourceLink the SDK ships finds no repository and stamps nothing. A build argument that quietly stopped being passed would leave every deployment unable to say which commit it is, while every health check still passed.
 
 Publishing waits on all three test jobs, so a tag in the registry is an image that built, started under the production security flags, answered readiness, and served a browser flow. An image that failed any of that is never pushed, which is what keeps `latest` from being the least tested thing in the registry.
 
@@ -38,7 +42,7 @@ What no test covers is a real MinerU service. Nothing in CI can supply one, so t
 
 ## Current Remote Status
 
-The latest `main` run at the time of this update, workflow run `31361065169` for commit `d0bcab6`, completed successfully across all three test jobs. It is the last run before image publishing was added.
+The latest `main` run at the time of this update, workflow run `31369943829` for commit `9fc05ce`, completed successfully across all four jobs and published the first image to the registry.
 
 One preceding run remains visible as a failure in Actions history and is superseded rather than still active: run `31324328532` for commit `4fced2a` failed the container job on a read-only `/app/data`, because the image shipped its own defaults file and then ignored it. Commit `b2ea5c2` fixed the precedence and the next run passed.
 

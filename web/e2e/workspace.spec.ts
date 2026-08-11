@@ -39,6 +39,15 @@ test('administrator can use the document workspace and administration area', asy
   await expect(page.getByText('STORAGE', { exact: true })).toBeVisible()
   await expect(page.getByText('DATABASE', { exact: true })).toBeVisible()
 
+  // Which build is running has to be readable by an administrator who never opens a terminal, which
+  // is the whole reason it is on the page rather than only in `docker image inspect`. What the page
+  // owes is that the string is the service's own, in full, copyable: the abbreviation next to it is
+  // for reading. Whether that string names a commit depends on the build arguments rather than on
+  // this page, and the container job checks it where it is decided.
+  const reported = await page.evaluate(async () => (await (await fetch('/api/v1/system/info')).json()).version)
+  expect(reported).toBeTruthy()
+  await expect(page.locator('.page-header code')).toHaveAttribute('title', reported)
+
   const providers = page.locator('section').filter({ has: page.getByText('PROVIDERS', { exact: true }) })
   // A deployment with no Provider cannot parse anything, so the administration area has to be able
   // to create one and mark it default without a command line.

@@ -7,5 +7,10 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
     <Deterministic>true</Deterministic>
+    <!-- What a build reports when no release tag named it. The SDK's own default is 1.0.0, which
+         every unstamped assembly reports and which therefore identifies nothing. A `v*` tag replaces
+         this during the container build; see the VERSION argument in the Dockerfile. The commit is
+         appended separately through SourceRevisionId, so even an untagged build names itself. -->
+    <Version>0.0.0-dev</Version>
   </PropertyGroup>
 </Project>

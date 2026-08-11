@@ -68,6 +68,31 @@ $dotNetRegistry = if ($env:STRUCTADOC_DOTNET_REGISTRY) {
 } else {
     'mcr.microsoft.com/dotnet'
 }
+# What the built service answers to /api/v1/system/info. The SDK ships SourceLink and would work this
+# out on its own, but .dockerignore keeps .git out of the build context, so the commit has to be
+# handed in. A working copy with changes in it produced an image that matches no commit, and saying
+# so is the point: an image that names a commit it was not built from is worse than one that admits
+# it. Outside a checkout, neither is claimed.
+#
+# Git's stderr is deliberately left alone here. Redirecting a native command's stderr in Windows
+# PowerShell wraps each line in an error record, which $ErrorActionPreference = 'Stop' then turns
+# into a terminating error -- so a working checkout would be reported as no checkout at all. The exit
+# code is the reliable signal, and outside a checkout git's own message is worth seeing.
+$sourceRevision = ''
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    # Out-String rather than Select-Object: taking the first element stops the pipeline early, and a
+    # stopped pipeline leaves $LASTEXITCODE at -1 even though git succeeded.
+    $revision = (git rev-parse HEAD | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0 -and $revision) {
+        $sourceRevision = $revision
+        if (git status --porcelain) { $sourceRevision = "$sourceRevision-dirty" }
+    }
+    $ErrorActionPreference = $previousPreference
+}
+Write-Host "Source revision: $(if ($sourceRevision) { $sourceRevision } else { 'unknown, not a checkout' })"
+
 $dockerArguments = @(
     'build',
     '--tag', $ImageTag,
@@ -75,6 +100,7 @@ $dockerArguments = @(
     '--build-arg', "NUGET_SOURCE=$($env:STRUCTADOC_NUGET_SOURCE)",
     '--build-arg', "APT_MIRROR=$($env:STRUCTADOC_APT_MIRROR)",
     '--build-arg', "APT_PORTS_MIRROR=$($env:STRUCTADOC_APT_PORTS_MIRROR)",
+    '--build-arg', "SOURCE_REVISION=$sourceRevision",
     '.'
 )
 

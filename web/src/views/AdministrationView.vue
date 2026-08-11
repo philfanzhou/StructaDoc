@@ -23,6 +23,16 @@ const newClient = ref({ name: '', scopes: ['documents:read', 'documents:write', 
 const newAdministrator = ref({ username: '', displayName: '', password: '' })
 const ownPassword = ref({ currentPassword: '', newPassword: '', confirmPassword: '' })
 const issuedCredential = ref('')
+// Which build is running, shown rather than left to `docker image inspect`: the administrator who
+// needs it during a "this machine behaves differently" call is the one who cannot reach the machine.
+const serviceVersion = ref('')
+// The service reports `<version>+<commit>` with the commit at full length, which is what the registry
+// tag uses and what a deployment should be pinned to. Seven characters are enough to read at a
+// glance; the full string stays on the element so it can be hovered and copied.
+const versionLabel = computed(() => {
+  const [version, revision] = serviceVersion.value.split('+')
+  return revision ? `${version} · 构建 ${revision.slice(0, 7)}` : version
+})
 
 type Setting = { key: string; kind: string; value: string; requiresRestart: boolean; isManagedExternally: boolean; isStored: boolean; isPendingRestart: boolean; minimum: number; maximum: number; allowedValues: string[] }
 const settings = ref<Setting[]>([])
@@ -135,7 +145,7 @@ const oidcTestMessages: Record<string, string> = {
 // database, and this page is where a deployment pointed at an unreachable one is repaired: if one
 // failed read could blank the page, the settings needed to fix it would go with it.
 async function load() {
-  const sources = ['/api/v1/admin/settings', '/api/v1/admin/settings/oidc', '/api/v1/admin/settings/storage', '/api/v1/admin/settings/database', '/api/v1/admin/administrators', '/api/v1/admin/provider-configs', '/api/v1/admin/api-clients']
+  const sources = ['/api/v1/admin/settings', '/api/v1/admin/settings/oidc', '/api/v1/admin/settings/storage', '/api/v1/admin/settings/database', '/api/v1/admin/administrators', '/api/v1/admin/provider-configs', '/api/v1/admin/api-clients', '/api/v1/system/info']
   const results = await Promise.allSettled(sources.map(source => get(source)))
   const value = <T,>(index: number, fallback: T): T => results[index].status === 'fulfilled' ? (results[index] as PromiseFulfilledResult<T>).value : fallback
   settings.value = value(0, settings.value)
@@ -145,6 +155,7 @@ async function load() {
   administrators.value = value(4, [])
   providers.value = value(5, [])
   clients.value = value(6, [])
+  serviceVersion.value = value<{ version?: string } | null>(7, null)?.version ?? ''
   oidcAuthorityDraft.value = settingOf('Oidc:Authority')?.value ?? ''
 
   // Only a failure that is not already explained by the banners is worth a toast.
@@ -381,7 +392,7 @@ onMounted(() => load())
 </script>
 
 <template>
-  <header class="page-header"><div><p class="eyebrow">ADMINISTRATION</p><h1>系统管理</h1><p>管理服务设置、本地管理员、解析提供方与服务 API 客户端。</p></div></header>
+  <header class="page-header"><div><p class="eyebrow">ADMINISTRATION</p><h1>系统管理</h1><p>管理服务设置、本地管理员、解析提供方与服务 API 客户端。</p><p v-if="versionLabel" class="hint">当前运行版本 <code :title="serviceVersion">{{ versionLabel }}</code></p></div></header>
 
   <div class="admin-grid">
     <section class="panel admin-card wide-card">

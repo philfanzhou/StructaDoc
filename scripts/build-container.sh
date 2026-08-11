@@ -49,10 +49,22 @@ echo "StructaDoc build mirror mode: $selected_mode"
 echo "NuGet source: $STRUCTADOC_NUGET_SOURCE"
 echo "APT mirror: ${STRUCTADOC_APT_MIRROR:-Ubuntu official repositories}"
 
+# What the built service answers to /api/v1/system/info. The SDK ships SourceLink and would work this
+# out on its own, but .dockerignore keeps .git out of the build context, so the commit has to be
+# handed in. A working copy with changes in it produced an image that matches no commit, and saying
+# so is the point: an image that names a commit it was not built from is worse than one that admits
+# it. Outside a checkout, neither is claimed.
+source_revision="$(git rev-parse HEAD 2>/dev/null || true)"
+if [[ -n "$source_revision" && -n "$(git status --porcelain 2>/dev/null)" ]]; then
+    source_revision="$source_revision-dirty"
+fi
+echo "Source revision: ${source_revision:-unknown, not a checkout}"
+
 docker build \
     --tag "$image_tag" \
     --build-arg "DOTNET_REGISTRY=${STRUCTADOC_DOTNET_REGISTRY:-mcr.microsoft.com/dotnet}" \
     --build-arg "NUGET_SOURCE=$STRUCTADOC_NUGET_SOURCE" \
     --build-arg "APT_MIRROR=$STRUCTADOC_APT_MIRROR" \
     --build-arg "APT_PORTS_MIRROR=$STRUCTADOC_APT_PORTS_MIRROR" \
+    --build-arg "SOURCE_REVISION=$source_revision" \
     .

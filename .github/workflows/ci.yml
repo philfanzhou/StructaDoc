@@ -135,7 +135,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build production image
-        run: docker build --tag structadoc:ci .
+        run: >-
+          docker build --tag structadoc:ci
+          --build-arg SOURCE_REVISION="$GITHUB_SHA"
+          .
 
       - name: Start production container
         run: |
@@ -163,7 +166,22 @@ jobs:
       - name: Verify live and system endpoints
         run: |
           curl --fail --silent --show-error http://127.0.0.1:8080/health/live
-          curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/system/info
+
+          info=$(curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/system/info)
+          echo "$info"
+
+          # Which build is running has to be answerable over HTTP, because the operator asking is
+          # usually the one who cannot reach the machine. Nothing inside the image can work this out
+          # on its own: .dockerignore excludes .git, so the SourceLink the SDK ships finds no
+          # repository and stamps nothing. The build argument is the only carrier, and a version that
+          # cannot name its own commit is exactly what this catches.
+          case "$info" in
+            *"+$GITHUB_SHA"*) ;;
+            *)
+              echo "system/info did not report the commit that built the image."
+              exit 1
+              ;;
+          esac
 
       # A forwarded header from a peer no deployment named must not be believed, and the published
       # image has to read the section that decides that. The service reports the refusal with the
@@ -245,7 +263,15 @@ jobs:
       # that on its own; the attestation below takes the name as given.
       - name: Name the image
         id: image
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+          # A release tag is the only thing that names a version. A push to the default branch keeps
+          # the placeholder Directory.Build.props declares and is identified by its commit, which the
+          # build stamps either way -- saying 0.0.0-dev is honest about a build no release named.
+          if [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4.2.0
@@ -281,6 +307,11 @@ jobs:
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+          # What the running service answers to /api/v1/system/info. An empty VERSION leaves the
+          # placeholder; the commit is always carried.
+          build-args: |
+            VERSION=${{ steps.image.outputs.version }}
+            SOURCE_REVISION=${{ github.sha }}
           # A second build rather than a promotion of the image the container job tested: that job
           # runs in parallel and keeps its image on its own runner. The layer cache carries across
           # runs of this job, which is what keeps the LibreOffice install off the critical path.
