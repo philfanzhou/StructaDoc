@@ -16,13 +16,23 @@ Ubuntu 24.04 Noble is explicit because the official .NET 10 image does not provi
 
 ## Published Image
 
-CI publishes the image to GitHub Container Registry after every push to `main` that passes all three test jobs, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
+CI publishes the image to GitHub Container Registry after every push to `main` and every `v*` tag that passes all three test jobs, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
 
 ```bash
 docker pull ghcr.io/philfanzhou/structadoc:latest
 ```
 
-The repository is public and so is the package, so this needs no registry sign-in. Tags are `latest` for the default branch, `sha-<commit>` for a specific commit, and `<version>` plus `<major>.<minor>` for a `v*` release tag. Name a `sha-` or version tag in production: `latest` moves under a deployment that restarts.
+The repository is public and so is the package, so this needs no registry sign-in. Tags are:
+
+| Tag | Published by | Points at |
+|---|---|---|
+| `latest` | a `v*` tag | the newest release |
+| `<version>`, `<major>.<minor>` | a `v*` tag | that release |
+| `sha-<commit>` | a push to `main` | that commit, reporting `0.0.0-dev` |
+
+`latest` follows releases rather than the default branch, because whoever pulls it is whoever did not choose a tag and should not be handed a development build. It still moves under a deployment that restarts, so name a version tag in production, or a digest to pin exactly.
+
+A commit tag is published only by the branch build. A release cut on a commit already published would otherwise move `sha-<commit>` onto a differently stamped image; only a digest is immutable in any case.
 
 The registry also holds tags of the form `sha256-<digest>`. Those are not images. They are the provenance attestations described below, stored under the fallback name the OCI referrers specification gives them, and the package page lists them beside the real tags. One pulls in about eleven kilobytes and produces something with no platform, no layers, and no entrypoint. The image tag for a commit is `sha-<commit>`; anything beginning `sha256-` is not one.
 

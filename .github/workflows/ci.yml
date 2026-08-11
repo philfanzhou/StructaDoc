@@ -283,16 +283,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # `latest` follows the default branch, every commit keeps a tag of its own so a deployment can
-      # name exactly what it runs, and a `v*` tag publishes the release series it belongs to.
+      # `latest` follows releases rather than the default branch. Whoever pulls it is whoever did not
+      # choose a tag, and what they should get is the newest build a release named, not the newest
+      # commit: a `latest` reporting `0.0.0-dev` is a development build handed to someone who never
+      # asked for one. `{{is_default_branch}}` cannot express this, because it is also true for a tag
+      # push -- both builds of one commit claimed the name and whichever finished last kept it.
+      #
+      # A commit tag belongs to the branch build alone for the same reason. A release cut on a commit
+      # already published would otherwise move `sha-<commit>` onto a differently stamped image, and a
+      # name that moves is not one a deployment can be pinned to.
+      #
+      # A push to the default branch therefore publishes `sha-<commit>` and nothing else, which is
+      # what such a build can honestly be called.
       - name: Decide tags
         id: metadata
         uses: docker/metadata-action@v6.2.0
         with:
           images: ${{ steps.image.outputs.name }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=long
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,format=long,enable=${{ github.ref_type == 'branch' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
           labels: |

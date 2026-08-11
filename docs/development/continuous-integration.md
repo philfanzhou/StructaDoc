@@ -18,13 +18,17 @@ TRX results, Playwright HTML reports, screenshots, failure traces/videos, and co
 
 ## Published Images
 
-`ghcr.io/philfanzhou/structadoc` receives `latest` from the default branch, `sha-<commit>` for every published commit, and `<version>` plus `<major>.<minor>` from a `v*` tag.
+`ghcr.io/philfanzhou/structadoc` receives `sha-<commit>` from a push to the default branch, and `latest` plus `<version>` and `<major>.<minor>` from a `v*` tag.
+
+`latest` follows releases rather than the default branch. Whoever pulls it did not choose a tag, so what they get should be the newest build a release named rather than the newest commit, which reports `0.0.0-dev`. The rule cannot be `{{is_default_branch}}`: that is also true for a tag push, so both builds of one commit claimed the name and whichever finished last kept it. Commit tags belong to the branch build for the same reason — a release cut on a published commit would move `sha-<commit>` onto a differently stamped image. Only a digest is immutable.
 
 Releasing is one push. `git tag -a v0.1.0 && git push origin v0.1.0` is what turns the semver rules on; nothing else in the workflow distinguishes a release. The tag also supplies the `VERSION` build argument, so the version the registry advertises and the version the running service reports come from the same place and cannot drift. A push to the default branch leaves the placeholder `Directory.Build.props` declares.
 
 Both image-building jobs pass `SOURCE_REVISION`, and the container job then asks the running image for it. This is checked rather than assumed because nothing inside the image can derive it: `.dockerignore` excludes `.git`, so the SourceLink the SDK ships finds no repository and stamps nothing. A build argument that quietly stopped being passed would leave every deployment unable to say which commit it is, while every health check still passed.
 
 Publishing waits on all three test jobs, so a tag in the registry is an image that built, started under the production security flags, answered readiness, and served a browser flow. An image that failed any of that is never pushed, which is what keeps `latest` from being the least tested thing in the registry.
+
+Note that a release rebuilds rather than retags: the tag run produces its own image, so `<version>` and the `sha-<commit>` of the same commit are different bytes even though the source is identical. Only the version stamped into them differs.
 
 The push is authenticated with the workflow's own `GITHUB_TOKEN` rather than a stored credential; no registry secret exists in this repository. Each image carries a signed build provenance attestation naming the workflow, commit, and build parameters that produced it, and an SBOM. `gh attestation verify oci://ghcr.io/philfanzhou/structadoc:latest --owner philfanzhou` checks one against this repository.
 
@@ -42,7 +46,9 @@ What no test covers is a real MinerU service. Nothing in CI can supply one, so t
 
 ## Current Remote Status
 
-The latest `main` run at the time of this update, workflow run `31369943829` for commit `9fc05ce`, completed successfully across all four jobs and published the first image to the registry.
+The latest `main` run at the time of this update, workflow run `31467581430` for commit `dc9ccbb`, completed successfully across all four jobs, as did run `31467584970` for the `v0.1.1` tag on the same commit.
+
+That pair is what the tag rules above were changed for. Both runs published under the previous rules, both claimed `latest`, and the branch run finished later, so `latest` named an image reporting `0.0.0-dev` while `0.1.1` named the identical source stamped as the release. The next `v*` tag is what moves `latest` onto a release again.
 
 One preceding run remains visible as a failure in Actions history and is superseded rather than still active: run `31324328532` for commit `4fced2a` failed the container job on a read-only `/app/data`, because the image shipped its own defaults file and then ignored it. Commit `b2ea5c2` fixed the precedence and the next run passed.
 
