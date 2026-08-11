@@ -128,9 +128,6 @@ builder.Services.AddSingleton<ISettingSecretProtector>(settingSecretProtector);
 builder.Services.AddSingleton<OidcDiscoveryProbe>();
 builder.Services.AddSingleton<StorageConnectionProbe>();
 builder.Services.AddSingleton<DatabaseConnectionProbe>();
-builder.Services.AddSingleton(new ParseExecutionGate(workerOptions.ExecutionEnabled));
-builder.Services.AddSingleton<ISettingChangeListener>(
-    services => services.GetRequiredService<ParseExecutionGate>());
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ParseRunLeaseHeartbeat>();

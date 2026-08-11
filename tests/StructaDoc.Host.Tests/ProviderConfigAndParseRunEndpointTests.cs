@@ -48,11 +48,11 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         Assert.False(local.Model.IsUsed);
     }
 
-    // A Parse Run is accepted while execution is off and then queues indefinitely, which the product
-    // supports on purpose. What it cannot do is leave that indistinguishable from a queue about to
-    // move, so the state has to be readable by whoever is watching one.
+    // Configuring a Provider is the whole of what a deployment has to do before its documents are
+    // parsed. Nothing else is switched on afterwards, and this is what would notice a second gate
+    // being reintroduced between an administrator's decision and the Worker acting on it.
     [Fact]
-    public async Task Parse_execution_status_reports_both_switches_that_stop_a_queue_moving()
+    public async Task Parse_execution_needs_nothing_beyond_a_configured_provider()
     {
         using var client = factory.CreateClient();
         await client.LoginAsAdministratorAsync();
@@ -61,10 +61,7 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
             .GetFromJsonAsync<ParseExecutionStatusResponse>("/api/v1/parse-execution");
 
         Assert.NotNull(status);
-        // Workers run here; the shipped default for execution is off. A run created below therefore
-        // stays queued, and this is the only thing that says why.
         Assert.True(status.WorkerEnabled);
-        Assert.False(status.ExecutionEnabled);
     }
 
     [Fact]
@@ -446,8 +443,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         Assert.Equal(HttpStatusCode.Created, createParse.StatusCode);
         Assert.Equal("queued", parseRun!.Status);
 
-        // Execution is disabled by default, so without cancellation this run — and its Document —
-        // would stay non-final forever.
+        // This Host runs no execution worker, so without cancellation this run — and its Document —
+        // would stay non-final for as long as the test does.
         using var blockedDelete = await client.DeleteAsync($"/api/v1/documents/{document.Id:D}");
         Assert.Equal(HttpStatusCode.Conflict, blockedDelete.StatusCode);
 

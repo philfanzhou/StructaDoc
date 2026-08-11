@@ -158,19 +158,13 @@ The examples are placeholders, not default credentials. Production environments 
 
 The default mapping is `http://localhost:8080`, and readiness is `/health/ready`. One container serves the document workspace at `/`, the administration area at `/admin`, and the API under `/api/v1`, so a deployment needs one published port, one certificate, and one reverse-proxy upstream. See [User Workspace and OIDC](../development/user-workspace-oidc.md).
 
-Real Parse Run execution remains disabled until it is turned on. An administrator can do that under `/admin` without touching the container, and it takes effect immediately. Enabling it permits the Worker to send documents to the selected Provider and to start LibreOffice when conversion is required.
+Configuring a parsing Provider under `/admin` is the one thing a new deployment must do, and it is the only thing standing between an upload and an execution attempt. One Provider has to be enabled and marked default: the workspace starts a parse without naming a Provider, so a deployment with configuration but no enabled default has a button that can only fail. The administration area says so when that is the case, and puts Providers at the top of the page under **必须配置** for the same reason.
 
-A new deployment therefore parses nothing until someone does that, and until then an uploaded document sits at `queued` rather than failing. Both the workspace and the administration area say so, with the switch itself, so this is something an administrator is told rather than something a first deployment has to be warned about here. `GET /api/v1/parse-execution` answers the same question for anything that is not a browser.
+There is no separate switch to turn parsing on afterwards. Choosing a Provider, supplying its credential, and enabling it is the point at which a deployment says its documents may be sent there — a cloud Provider means they leave the machine — and a further default-off flag added nothing to that decision while producing deployments where an upload queued forever with nothing failing and nothing logged. To pause parsing, disable the Provider; that stops new runs from being created, though runs already queued carry their own configuration snapshot and will still run.
 
-Setting it in the deployment instead pins it, which removes it from the administration page:
+`Worker__Enabled=false` stops this Host running Workers at all. That is for splitting a deployment — one Host serving the API, others parsing — not for pausing: it is not settable from a browser, and a Host with it off still accepts Parse Runs and leaves them queued. The workspace says so when it is off, and `GET /api/v1/parse-execution` answers the same question for anything that is not a browser.
 
-```bash
-export STRUCTADOC_EXECUTION_ENABLED=true
-```
-
-Sign-in through an identity provider is configured the same way, under `/admin`. Until it is, only administrators can use the deployment: the workspace has no other way in. See [User Workspace and OIDC](../development/user-workspace-oidc.md) for what to register at the provider, and [Service Settings](../development/service-settings.md) for what else is settable from the browser and what each change requires.
-
-A parsing Provider is configured there too, and one of them has to be marked default: the workspace starts a parse without naming a Provider, so a deployment with configuration but no enabled default has a button that can only fail. The administration area says so when that is the case.
+Sign-in through an identity provider is configured under `/admin` as well. Until it is, only administrators can use the deployment: the workspace has no other way in. See [User Workspace and OIDC](../development/user-workspace-oidc.md) for what to register at the provider, and [Service Settings](../development/service-settings.md) for what else is settable from the browser and what each change requires.
 
 ## Where /data Comes From
 

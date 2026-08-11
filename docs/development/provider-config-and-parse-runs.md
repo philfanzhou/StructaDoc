@@ -45,7 +45,7 @@ Callers may send one visible-ASCII `Idempotency-Key` up to 256 characters. Scope
 
 `GET /api/v1/parse-runs/{id}` requires corresponding resource access or `parses:read`. It returns stable status/stage, configuration snapshot facts, sanitized options, media types, attempt count, sanitized errors, and timestamps. It excludes leases, concurrency tokens, internal callers, credentials, checkpoints, and external task IDs.
 
-`GET /api/v1/parse-execution` requires `parses:read` and answers `workerEnabled` and `executionEnabled`. A run created while execution is closed is accepted and queues indefinitely, which is deliberate, but `queued` alone cannot distinguish that from a queue about to move. The two switches are reported separately because different people can act on them: `Worker:Enabled` belongs to whoever starts the container, `Worker:ExecutionEnabled` to an administrator with a browser. The value comes from the live gate rather than the bound option, so opening the switch takes the notice down without a restart or a reload.
+`GET /api/v1/parse-execution` requires `parses:read` and answers `workerEnabled`. A Host started without Workers accepts Parse Runs and queues them behind nothing, and `queued` alone cannot distinguish that from a queue about to move. It is a deployment choice and not settable from a browser, so the workspace reports it rather than offering to change it.
 
 ## Cancellation
 
@@ -61,7 +61,7 @@ The credential field starts empty on an edit, because the service never sends a 
 
 Disabling the default configuration clears its default marker in the same write, since the service refuses a configuration that is disabled and default at once. The area also reports when no enabled default exists at all: the workspace starts a parse without naming a Provider, so that deployment has a button that can only fail.
 
-Parse execution being closed is reported the same way, as a banner rather than one boolean row among thirty. It is the only setting whose "off" is otherwise invisible from every direction: nothing fails, nothing is logged, and documents simply accumulate at `queued`. The workspace carries the same notice, with the switch itself for an administrator who is already looking at the stuck queue and would otherwise have to go and find it.
+The area is ordered by what a new deployment still has to do. Providers come first under a **必须配置** band, because nothing parses without one. Accounts and API clients follow. Everything with a working shipped default — sign-in, storage, business database, service settings — is collected at the bottom under **可选配置** with its body collapsed, each panel showing what it currently holds so the common answer, nothing to do here, needs no clicks. A collapsed panel opens itself when what it holds is broken: a storage or sign-in section the service refused at startup, a database it cannot reach, or a setting waiting on a restart. Hiding those would be the one thing this layout must not do.
 
 ## Current Gaps
 

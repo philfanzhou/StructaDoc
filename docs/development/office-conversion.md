@@ -50,7 +50,7 @@ Container CPU, memory, process, and filesystem quotas remain necessary in additi
 | `LibreOffice:MaxOutputBytes` | 200 MiB | PDF output limit |
 | `LibreOffice:MaxTemporaryBytes` | 512 MiB | Combined input, output, and profile disk limit |
 
-Environment variables use double underscores, for example `LibreOffice__ExecutablePath=/usr/bin/libreoffice`. Enabling conversion does not enable Parse execution; `Worker:ExecutionEnabled` remains separate and defaults to `false`.
+Environment variables use double underscores, for example `LibreOffice__ExecutablePath=/usr/bin/libreoffice`. Conversion runs as part of an execution attempt, so it happens only once a Provider is configured and a Parse Run is created against it.
 
 ## Verification and Remaining Work
 

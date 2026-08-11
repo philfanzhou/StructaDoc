@@ -28,7 +28,6 @@ A pinned setting is reported as managed externally and cannot be written through
 
 | Key | Type | Effect |
 |---|---|---|
-| `Worker:ExecutionEnabled` | boolean | Applies immediately |
 | `Worker:MaxConcurrency` | integer, 1–64 | Restart |
 | `Documents:UploadApiEnabled` | boolean | Restart |
 | `Documents:MaxUploadBytes` | integer, 1024–8 GiB | Restart |
@@ -90,9 +89,7 @@ The administration page loads its panels independently rather than together for 
 
 ## Taking Effect
 
-Options are bound once at startup, so a stored value reaches the running service only through a change listener. `Worker:ExecutionEnabled` has one: the execution Worker consults a gate on every cycle rather than reading the flag at startup, so turning parsing on and off never needs a restart. Runs already claimed are not interrupted when it closes.
-
-That same gate is what `GET /api/v1/parse-execution` answers from, and for the same reason: a page that reported the bound option would go on telling someone parsing is off after they had just turned it on. It is the one setting whose closed state produces no error and no log line anywhere, so it is the one the interface has to volunteer.
+Options are bound once at startup, so a stored value reaches the running service only through a change listener. No setting currently has one: `Worker:ExecutionEnabled` was the only such setting and was removed, because a switch that stood between an administrator configuring a Provider and the Worker acting on it added nothing to that decision while producing deployments where an upload queued forever with nothing failing and nothing logged. `ISettingChangeListener` remains the mechanism, and what depends on it is the reporting below rather than any particular key.
 
 Everything else needs a restart, and the API reports that from what actually happened rather than from the catalog flag, so a setting that lost its listener says a restart is needed instead of claiming an effect it did not have. `GET /api/v1/admin/settings` reports `isPendingRestart` for a stored value the running process has not picked up.
 

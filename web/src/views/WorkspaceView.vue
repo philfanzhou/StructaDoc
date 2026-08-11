@@ -23,29 +23,15 @@ const finalStatuses = ['succeeded', 'failed', 'cancelled']
 const canAdmin = computed(() => session.value?.isAdministrator === true)
 const canCancelRun = computed(() => selectedRun.value !== undefined && !finalStatuses.includes(selectedRun.value.status))
 
-// Nothing on this page can distinguish a queue that is moving from one that never will, and the
-// difference is a switch somewhere else entirely. Left unsaid, a document sits at 排队中 forever and
-// the only available reading is that parsing is broken.
+// A Host started without Workers still accepts uploads and still queues Parse Runs, and nothing on
+// this page could otherwise tell that from a queue about to move. Nobody with a browser can fix it,
+// which is exactly why it has to be said rather than left to look like parsing being broken.
 const parseExecution = ref<ParseExecutionStatus>()
-const enablingExecution = ref(false)
-const parsingHalted = computed(() =>
-  parseExecution.value !== undefined
-  && !(parseExecution.value.workerEnabled && parseExecution.value.executionEnabled))
-// Worker:Enabled is pinned by whoever starts the container, so an administrator reading this page
-// cannot act on it. Saying which of the two is shut is what makes the message actionable or not.
-const haltedByDeployment = computed(() => parseExecution.value?.workerEnabled === false)
+const parsingHalted = computed(() => parseExecution.value?.workerEnabled === false)
 
 async function loadParseExecution() {
   try { parseExecution.value = await get<ParseExecutionStatus>('/api/v1/parse-execution') }
   catch { parseExecution.value = undefined }
-}
-
-// An administrator who is already looking at the stuck queue should not have to go and find the
-// switch. Same endpoint the administration page writes, so the same permission decides it.
-async function enableExecution() {
-  enablingExecution.value = true
-  try { await mutate('/api/v1/admin/settings', 'PUT', { key: 'Worker:ExecutionEnabled', value: 'true' }); await loadParseExecution(); message('解析执行已启用，排队中的任务会在几秒内开始') }
-  catch (e) { message((e as Error).message, true) } finally { enablingExecution.value = false }
 }
 
 // Parsing runs on the service and finishes without telling the browser, so anything unfinished on
@@ -172,9 +158,7 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
   <header class="page-header"><div><p class="eyebrow">WORKSPACE</p><h1>你的文档</h1><p>从原始文件到结构化结果，过程和产物都清晰可见。</p></div></header>
 
   <div v-if="parsingHalted" class="notice-banner">
-    <div v-if="haltedByDeployment">本服务未启用解析 Worker，新建的解析任务会一直停留在“排队中”，不会发送给解析提供方。这一项由部署方在启动参数中固定（<code>Worker__Enabled</code>），无法在网页上修改。</div>
-    <div v-else>解析执行未启用，新建的解析任务会一直停留在“排队中”，不会发送给解析提供方。<template v-if="!canAdmin">请联系管理员在“系统管理 → 服务设置”中开启“启用解析执行”。</template></div>
-    <button v-if="!haltedByDeployment && canAdmin" :disabled="enablingExecution" @click="enableExecution">{{ enablingExecution ? '正在启用…' : '立即启用' }}</button>
+    <div>本服务未启用解析 Worker，新建的解析任务会一直停留在“排队中”。这一项由部署方在启动参数中固定（<code>Worker__Enabled</code>），无法在网页上修改。</div>
   </div>
 
   <section class="upload-zone" @dragover.prevent @drop.prevent="onFiles($event.dataTransfer?.files || null)">

@@ -40,7 +40,7 @@ Parsing is the part of the product that is hardest to reach from a test, and the
 
 - `ParseRunExecutorTests` substitutes the Provider and covers the orchestration around it: conversion, checkpoints, deadlines, and the failure classes.
 - `ParseExecutionEndToEndTests` substitutes nothing below the public API. It starts a MinerU-shaped HTTP server on a real socket, configures a real `mineru-local` Provider against it, and lets the resident Worker carry a Parse Run from `queued` to `succeeded`. It then reads the Blocks, Pages, Assets, Artifacts, Markdown, and a ZIP export back through the API. This is what exercises the real HTTP adapter, the archive download, normalization, and the canonical commit together.
-- The browser job runs the production image with `Worker__ExecutionEnabled=true` and points a Provider at an address the Host itself refuses. That covers what is specific to the image: the resident Worker starts, claims a queued run, calls out over HTTP, records a final status, and the workspace shows it without anyone pressing refresh.
+- The browser job runs the production image as shipped and points a Provider at an address the Host itself refuses. That covers what is specific to the image: the resident Worker starts, claims a queued run, calls out over HTTP, records a final status, and the workspace shows it without anyone pressing refresh. It passes no `Worker__` variable, so it also holds that a configured Provider is the only thing standing between an upload and an execution attempt.
 
 What no test covers is a real MinerU service. Nothing in CI can supply one, so the first real parse remains a deployment step rather than a verified one; everything up to the Provider's own behaviour is verified.
 

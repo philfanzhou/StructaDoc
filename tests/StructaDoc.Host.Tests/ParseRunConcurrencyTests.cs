@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
+using StructaDoc.Host.Workers;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
@@ -18,12 +19,14 @@ public sealed class ParseRunConcurrencyTests(StructaDocWebApplicationFactory fac
         var provider = new BlockingParseProvider(expectedConcurrency: 2);
         using var application = factory.WithWebHostBuilder(builder =>
         {
-            builder.UseSetting("Worker:ExecutionEnabled", "true");
             builder.UseSetting("Worker:MaxConcurrency", "2");
             builder.UseSetting("Worker:LeaseDuration", "00:00:30");
             builder.UseSetting("Worker:HeartbeatInterval", "00:00:00.200");
             builder.ConfigureServices(services =>
             {
+                // Execution is the subject here, and the shared host leaves its worker out so that
+                // Parse Runs written as fixtures elsewhere are not claimed out from under them.
+                services.AddHostedService<ParseRunExecutionWorker>();
                 services.RemoveAll<IParseProvider>();
                 services.AddSingleton<IParseProvider>(provider);
             });

@@ -4,6 +4,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using StructaDoc.Host.Workers;
 using StructaDoc.Contracts.Documents;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Contracts.Providers;
@@ -157,15 +159,17 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
     }
 
     /// <summary>
-    /// Execution is off by default, so a Host that is supposed to run work has to say so. The poll
-    /// delays are shortened because the Provider answers instantly and the default second-long
-    /// waits would otherwise dominate the test.
+    /// The shared test host leaves the execution worker out so that Parse Runs written as fixtures
+    /// stay where a test put them; this is one of the few places execution is the subject, so it is
+    /// added back. The poll delays are shortened because the Provider answers instantly and the
+    /// default second-long waits would otherwise dominate the test.
     /// </summary>
     private WebApplicationFactory<Program> CreateExecutingHost()
     {
         return factory.WithWebHostBuilder(builder =>
         {
-            builder.UseSetting("Worker:ExecutionEnabled", "true");
+            builder.ConfigureServices(services =>
+                services.AddHostedService<ParseRunExecutionWorker>());
             builder.UseSetting("Worker:MaintenanceInterval", "00:00:00.100");
             builder.UseSetting("Worker:MinimumPollDelay", "00:00:00.100");
             builder.UseSetting("Worker:MaximumPollDelay", "00:00:00.200");

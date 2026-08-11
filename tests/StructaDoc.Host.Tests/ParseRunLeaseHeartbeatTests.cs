@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using StructaDoc.Application.ParseRuns;
+using StructaDoc.Application.Settings;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Workers;
 using StructaDoc.Adapters.Persistence;
@@ -94,17 +94,21 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
         Assert.Throws<InvalidOperationException>(options.Validate);
     }
 
+    // Configuring a Provider is the whole of what a deployment does before its documents are parsed.
+    // There was once a second switch after that decision, defaulting to off, and what it produced was
+    // an upload that queued forever while nothing failed and nothing was logged. This is what would
+    // notice one coming back: shipped options that run Workers, and a settings catalog with nothing
+    // in it that stands between an administrator's decision and the Worker acting on it.
     [Fact]
-    public void Worker_execution_is_opt_in_by_default()
+    public void Nothing_switchable_stands_between_a_configured_provider_and_execution()
     {
-        using var client = factory.CreateClient();
+        Assert.True(new ParseRunWorkerOptions().Enabled);
 
-        Assert.False(factory.Services
-            .GetRequiredService<ParseRunWorkerOptions>()
-            .ExecutionEnabled);
-        Assert.Contains(
-            factory.Services.GetServices<IHostedService>(),
-            service => service is ParseRunExecutionWorker);
+        Assert.DoesNotContain(
+            SettingCatalog.All,
+            definition => definition.Key.Equals(
+                "Worker:ExecutionEnabled",
+                StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<ParseRunLease> AddRunningParseRunAsync()

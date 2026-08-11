@@ -64,12 +64,8 @@ const settings = ref<Setting[]>([])
 // The banner follows what the server reports rather than what this tab did, so a change another
 // administrator made is not silently forgotten by a reload.
 const restartPending = computed(() => settings.value.some(setting => setting.isPendingRestart))
-// The one setting whose "off" is invisible everywhere else: nothing fails, nothing is logged, and
-// documents simply queue. Surfaced as a banner rather than left as one row among thirty.
-const parseExecutionOff = computed(() => settings.value.find(setting => setting.key === 'Worker:ExecutionEnabled' && setting.value !== 'true'))
 const restarting = ref(false)
 const settingLabels: Record<string, string> = {
-  'Worker:ExecutionEnabled': '启用解析执行',
   'Worker:MaxConcurrency': '并发解析数',
   'Documents:UploadApiEnabled': '开放上传接口',
   'Documents:MaxUploadBytes': '单文件上传上限（字节）',
@@ -146,6 +142,21 @@ const oidcTestResult = ref('')
 const oidcTesting = ref(false)
 const oidcClaimKeys = ['Oidc:NameClaim', 'Oidc:EmailClaim', 'Oidc:RoleClaim', 'Oidc:AdministratorRole']
 const serviceSettings = computed(() => settings.value.filter(setting => !setting.key.startsWith('Oidc:') && !storageKeys.includes(setting.key) && !databaseKeys.includes(setting.key)))
+
+// A collapsed panel says what it currently holds, so the common case -- nothing to do here -- is
+// answered without opening anything. A panel is forced open when what it holds is broken: a
+// deployment whose storage was refused at startup must not have that folded away out of sight.
+const changedServiceSettings = computed(() => serviceSettings.value.filter(setting => setting.isStored || setting.isManagedExternally).length)
+const serviceSettingsSummary = computed(() => changedServiceSettings.value ? `${changedServiceSettings.value} 项已调整` : '全部使用默认值')
+const storageSummary = computed(() => storageProviderLabels[storageStatus.value?.provider || ''] || storageStatus.value?.provider || '')
+const databaseSummary = computed(() => {
+  const label = databaseProviderLabels[databaseStatus.value?.provider || ''] || databaseStatus.value?.provider || ''
+  if (!databaseStatus.value) return label
+  return databaseStatus.value.isReachable ? `${label} · 可连接` : `${label} · 无法连接`
+})
+const storageNeedsAttention = computed(() => !!storageStatus.value?.startupFault)
+const databaseNeedsAttention = computed(() => !!databaseStatus.value?.startupFault || databaseStatus.value?.isReachable === false)
+const oidcNeedsAttention = computed(() => !!oidcStatus.value?.startupFault)
 const usesObjectStorage = computed(() => settingOf('Storage:Provider')?.value === 'S3')
 const needsServerVersion = computed(() => ['MySql', 'MariaDb'].includes(settingOf('Database:Provider')?.value ?? ''))
 // Composed in the browser rather than by the service: behind a reverse proxy only the browser knows
@@ -424,91 +435,16 @@ onMounted(() => load())
 </script>
 
 <template>
-  <header class="page-header"><div><p class="eyebrow">ADMINISTRATION</p><h1>系统管理</h1><p>管理服务设置、本地管理员、解析提供方与服务 API 客户端。</p><p v-if="versionLabel" class="hint">当前运行版本 <code :title="serviceVersion">{{ versionLabel }}</code></p></div></header>
+  <header class="page-header"><div><p class="eyebrow">ADMINISTRATION</p><h1>系统管理</h1><p>配置解析提供方、管理员与服务客户端；其余设置不改也能正常运行。</p><p v-if="versionLabel" class="hint">当前运行版本 <code :title="serviceVersion">{{ versionLabel }}</code></p></div></header>
+
+  <div v-if="restartPending" class="notice-banner"><div>部分设置需重启服务后才会生效。</div><button :disabled="restarting" @click="restart">{{ restarting ? '正在重启…' : '立即重启' }}</button></div>
 
   <div class="admin-grid">
-    <section class="panel admin-card wide-card">
-      <p class="eyebrow">SERVICE SETTINGS</p><h2>服务设置</h2>
-      <div v-if="restartPending" class="notice-banner"><div>部分设置需重启服务后才会生效。</div><button :disabled="restarting" @click="restart">{{ restarting ? '正在重启…' : '立即重启' }}</button></div>
-      <div v-if="parseExecutionOff" class="notice-banner"><div>解析执行未启用：用户上传并创建的解析任务会一直停留在“排队中”，不会发送给解析提供方。</div><button v-if="!parseExecutionOff.isManagedExternally" @click="saveSetting(parseExecutionOff, 'true')">立即启用</button></div>
-      <div class="admin-list">
-        <div v-for="setting in serviceSettings" :key="setting.key">
-          <span><strong>{{ settingLabels[setting.key] || setting.key }}</strong><small>{{ setting.key }}<template v-if="setting.isManagedExternally"> · 由部署环境变量固定</template><template v-else-if="!setting.isStored"> · 使用默认值</template><template v-if="setting.isPendingRestart"> · 待重启生效</template></small></span>
-          <span class="row-actions">
-            <template v-if="setting.kind === 'Boolean'">
-              <span class="status" :class="setting.value === 'true' ? 'succeeded' : ''">{{ setting.value === 'true' ? '开启' : '关闭' }}</span>
-              <button v-if="!setting.isManagedExternally" @click="saveSetting(setting, setting.value === 'true' ? 'false' : 'true')">{{ setting.value === 'true' ? '关闭' : '开启' }}</button>
-            </template>
-            <template v-else-if="setting.allowedValues.length">
-              <select class="setting-input" :value="setting.value" :disabled="setting.isManagedExternally" @change="saveSetting(setting, ($event.target as HTMLSelectElement).value)"><option v-for="allowed in setting.allowedValues" :key="allowed" :value="allowed">{{ allowed }}</option></select>
-            </template>
-            <template v-else>
-              <input class="setting-input" :value="setting.value" :disabled="setting.isManagedExternally" @change="saveSetting(setting, ($event.target as HTMLInputElement).value)">
-            </template>
-            <button v-if="setting.isStored && !setting.isManagedExternally" @click="saveSetting(setting, '')">恢复默认</button>
-          </span>
-        </div>
-      </div>
-    </section>
+    <div class="section-band wide-card"><span class="band-label required">必须配置</span><p>不配置这一项，工作台的“开始新解析”只会失败。</p></div>
 
-    <section class="panel admin-card" v-if="settingOf('Storage:Provider')">
-      <p class="eyebrow">STORAGE</p><h2>文件存储</h2>
-      <p class="hint">原始文档、解析结果与导出文件的存放位置。修改后需重启服务，已经存放的文件不会自动迁移。</p>
-      <div v-if="storageStatus?.startupFault" class="notice-banner"><div>保存的存储配置在服务启动时被拒绝，当前未生效：{{ storageStatus.startupFault }}</div></div>
-      <div class="form-grid">
-        <label class="wide">存储方式<select :value="settingOf('Storage:Provider')!.value" :disabled="settingOf('Storage:Provider')!.isManagedExternally" @change="saveSettingByKey('Storage:Provider', ($event.target as HTMLSelectElement).value)"><option v-for="allowed in settingOf('Storage:Provider')!.allowedValues" :key="allowed" :value="allowed">{{ storageProviderLabels[allowed] || allowed }}</option></select><small>当前运行中：{{ storageProviderLabels[storageStatus?.provider || ''] || storageStatus?.provider }}</small></label>
-        <label v-if="!usesObjectStorage" class="wide">本地目录<input :value="settingOf('Storage:RootPath')!.value" :disabled="settingOf('Storage:RootPath')!.isManagedExternally" @change="saveSettingByKey('Storage:RootPath', ($event.target as HTMLInputElement).value)"><small>必须是容器中持久卷内的路径，否则重启后文件会丢失</small></label>
-        <template v-else>
-          <label class="wide">服务地址<input :value="settingOf('Storage:ServiceUrl')!.value" type="url" placeholder="https://s3.example.com" :disabled="settingOf('Storage:ServiceUrl')!.isManagedExternally" @change="saveSettingByKey('Storage:ServiceUrl', ($event.target as HTMLInputElement).value)"><small>留空表示使用 AWS 官方地址</small></label>
-          <label>存储桶<input :value="settingOf('Storage:Bucket')!.value" :disabled="settingOf('Storage:Bucket')!.isManagedExternally" @change="saveSettingByKey('Storage:Bucket', ($event.target as HTMLInputElement).value)"></label>
-          <label>区域<input :value="settingOf('Storage:Region')!.value" placeholder="us-east-1" :disabled="settingOf('Storage:Region')!.isManagedExternally" @change="saveSettingByKey('Storage:Region', ($event.target as HTMLInputElement).value)"></label>
-          <label>路径前缀<input :value="settingOf('Storage:Prefix')!.value" :disabled="settingOf('Storage:Prefix')!.isManagedExternally" @change="saveSettingByKey('Storage:Prefix', ($event.target as HTMLInputElement).value)"></label>
-          <label><input type="checkbox" :checked="settingOf('Storage:ForcePathStyle')!.value === 'true'" :disabled="settingOf('Storage:ForcePathStyle')!.isManagedExternally" @change="saveSettingByKey('Storage:ForcePathStyle', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 强制路径风格<small>MinIO 等自建服务通常需要开启</small></label>
-          <label>Access Key<input v-model="storageAccessKeyDraft" type="password" autocomplete="off" :placeholder="settingOf('Storage:AccessKey')!.isStored ? '已设置（不回显）' : '未设置'" :disabled="settingOf('Storage:AccessKey')!.isManagedExternally"></label>
-          <label>Secret Key<input v-model="storageSecretKeyDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Storage:SecretKey')!.isStored ? '已设置（不回显）' : '未设置'" :disabled="settingOf('Storage:SecretKey')!.isManagedExternally"></label>
-          <span class="row-actions wide"><button :disabled="!storageAccessKeyDraft && !storageSecretKeyDraft" @click="saveStorageCredential">保存凭据</button><button v-if="settingOf('Storage:AccessKey')!.isStored" class="danger-link" @click="clearStorageCredential">清除凭据</button></span>
-        </template>
-        <span class="row-actions wide"><button :disabled="storageTesting" @click="testStorage">{{ storageTesting ? '正在测试…' : '测试写入' }}</button></span>
-        <p v-if="storageTestResult" class="hint wide">{{ storageTestResult }}</p>
-      </div>
-    </section>
-
-    <section class="panel admin-card" v-if="settingOf('Database:Provider')">
-      <p class="eyebrow">DATABASE</p><h2>业务数据库</h2>
-      <p class="hint">文档元数据、解析记录与结构化结果的存放位置。管理员账号与本页设置存放在独立的控制库中，因此这里配置错误时本页仍可用。</p>
-      <div v-if="databaseStatus?.startupFault" class="notice-banner"><div>{{ databaseStatus.startupFault }}</div></div>
-      <div v-else-if="databaseStatus && !databaseStatus.isReachable" class="notice-banner"><div>当前数据库无法连接，上传与解析都不可用。</div></div>
-      <div class="form-grid">
-        <label class="wide">数据库类型<select :value="settingOf('Database:Provider')!.value" :disabled="settingOf('Database:Provider')!.isManagedExternally" @change="saveSettingByKey('Database:Provider', ($event.target as HTMLSelectElement).value)"><option v-for="allowed in settingOf('Database:Provider')!.allowedValues" :key="allowed" :value="allowed">{{ databaseProviderLabels[allowed] || allowed }}</option></select><small>当前运行中：{{ databaseProviderLabels[databaseStatus?.provider || ''] || databaseStatus?.provider }}<template v-if="databaseStatus?.isReachable"> · 可连接</template><template v-if="databaseStatus?.hasPendingMigrations"> · 重启后会补齐表结构</template></small></label>
-        <label class="wide">连接字符串<input v-model="databaseConnectionDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Database:ConnectionString')!.isStored ? '已设置（不回显）' : '使用镜像自带的 SQLite 默认值'" :disabled="settingOf('Database:ConnectionString')!.isManagedExternally"><small>其中通常包含密码，因此保存后不会再回显</small></label>
-        <label v-if="needsServerVersion" class="wide">服务器版本<input :value="settingOf('Database:ServerVersion')!.value" placeholder="8.4.0" :disabled="settingOf('Database:ServerVersion')!.isManagedExternally" @change="saveSettingByKey('Database:ServerVersion', ($event.target as HTMLInputElement).value)"><small>MySQL 与 MariaDB 必填，服务不会通过连接去猜测</small></label>
-        <span class="row-actions wide"><button :disabled="databaseTesting" @click="testDatabase">{{ databaseTesting ? '正在测试…' : '测试连接' }}</button><button class="primary" :disabled="!databaseConnectionDraft" @click="saveDatabaseConnection">保存连接字符串</button><button v-if="settingOf('Database:ConnectionString')!.isStored" class="danger-link" @click="saveSettingByKey('Database:ConnectionString', '')">恢复默认</button></span>
-        <p v-if="databaseTestResult" class="hint wide">{{ databaseTestResult }}</p>
-        <p class="hint wide">切换数据库不会迁移已有数据。新库会在重启时自动建表，原有文档与解析记录仍留在旧库中。</p>
-      </div>
-    </section>
-
-    <section class="panel admin-card wide-card">
-      <p class="eyebrow">SINGLE SIGN-ON</p><h2>组织账号登录</h2>
-      <p class="hint">终端用户只能通过身份提供方登录；未配置时工作区无人可用，管理员仍可从本地账号进入。</p>
-      <div v-if="oidcStatus?.startupFault" class="notice-banner"><div>已保存的配置在服务启动时被拒绝，当前未生效：{{ oidcStatus.startupFault }}</div></div>
-      <div class="form-grid" v-if="settingOf('Oidc:Enabled')">
-        <label class="wide"><input type="checkbox" :checked="settingOf('Oidc:Enabled')!.value === 'true'" :disabled="settingOf('Oidc:Enabled')!.isManagedExternally" @change="saveSettingByKey('Oidc:Enabled', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 启用组织账号登录<small>当前运行状态：{{ oidcStatus?.enabled ? '已启用' : '未启用' }}</small></label>
-        <label class="wide">身份提供方地址<input v-model="oidcAuthorityDraft" type="url" placeholder="https://id.example.com/realms/main" :disabled="settingOf('Oidc:Authority')!.isManagedExternally" @change="saveSettingByKey('Oidc:Authority', oidcAuthorityDraft)"><small>末尾斜杠会被去掉，保存后应与发现文档中的 issuer 完全一致</small></label>
-        <label>客户端 ID<input :value="settingOf('Oidc:ClientId')!.value" :disabled="settingOf('Oidc:ClientId')!.isManagedExternally" @change="saveSettingByKey('Oidc:ClientId', ($event.target as HTMLInputElement).value)"></label>
-        <label>客户端密钥<input v-model="oidcSecretDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Oidc:ClientSecret')!.isStored ? '已设置（不回显）' : '未设置'" :disabled="settingOf('Oidc:ClientSecret')!.isManagedExternally"></label>
-        <span class="row-actions wide"><button :disabled="!oidcSecretDraft" @click="saveOidcSecret">保存密钥</button><button v-if="settingOf('Oidc:ClientSecret')!.isStored" class="danger-link" @click="saveSettingByKey('Oidc:ClientSecret', '')">清除密钥</button><button :disabled="oidcTesting" @click="testOidc">{{ oidcTesting ? '正在测试…' : '测试连接' }}</button></span>
-        <p v-if="oidcTestResult" class="hint wide">{{ oidcTestResult }}</p>
-        <label class="wide"><input type="checkbox" :checked="settingOf('Oidc:RequireHttpsMetadata')!.value === 'true'" :disabled="settingOf('Oidc:RequireHttpsMetadata')!.isManagedExternally" @change="saveSettingByKey('Oidc:RequireHttpsMetadata', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 要求 HTTPS 元数据<small>仅在内网 http 身份提供方下关闭</small></label>
-        <label v-for="key in oidcClaimKeys" :key="key">{{ settingLabels[key] }}<input :value="settingOf(key)!.value" :disabled="settingOf(key)!.isManagedExternally" @change="saveSettingByKey(key, ($event.target as HTMLInputElement).value)"></label>
-        <p class="hint wide">在身份提供方处需登记回调地址 <code>{{ oidcRedirectUri }}</code>，注销回调 <code>{{ oidcSignedOutUri }}</code>。请求的 scope 为 <code>{{ oidcStatus?.scopes.join(' ') }}</code>，此项与回调路径不可在此修改。</p>
-      </div>
-    </section>
-
-    <section class="panel admin-card wide-card"><p class="eyebrow">ADMINISTRATORS</p><h2>管理员账号</h2><div class="admin-list"><div v-for="administrator in administrators" :key="administrator.id"><span><strong>{{ administrator.displayName }}</strong><small>{{ administrator.username }}<template v-if="administrator.isCurrent"> · 当前登录</template></small></span><span class="row-actions"><span class="status" :class="administrator.isActive ? 'succeeded' : 'failed'">{{ administrator.isActive ? '启用' : '停用' }}</span><button v-if="!administrator.isCurrent" @click="resetPassword(administrator)">重置密码</button><button v-if="!administrator.isCurrent" @click="toggleAdministrator(administrator)">{{ administrator.isActive ? '停用' : '启用' }}</button><button v-if="!administrator.isCurrent" class="danger-link" @click="deleteAdministrator(administrator)">删除</button></span></div></div><details><summary>新增管理员</summary><div class="form-grid"><label>用户名<input v-model="newAdministrator.username" autocomplete="off"></label><label>显示名称<input v-model="newAdministrator.displayName" autocomplete="off"></label><label class="wide">密码（至少 8 位）<input v-model="newAdministrator.password" type="password" autocomplete="new-password"></label><button class="primary" @click="createAdministrator">创建</button></div></details><details><summary>修改我的密码</summary><div class="form-grid"><label class="wide">当前密码<input v-model="ownPassword.currentPassword" type="password" autocomplete="current-password"></label><label>新密码<input v-model="ownPassword.newPassword" type="password" autocomplete="new-password"></label><label>确认新密码<input v-model="ownPassword.confirmPassword" type="password" autocomplete="new-password"></label><button class="primary" @click="changeOwnPassword">修改密码</button><p class="hint wide">修改后其他设备上的登录会立即失效，当前设备保持登录。</p></div></details></section>
     <section class="panel admin-card wide-card">
       <p class="eyebrow">PROVIDERS</p><h2>解析提供方</h2>
-      <p class="hint">工作台的“开始新解析”总是使用默认提供方。选择云端类型意味着文档会被上传到外部服务。</p>
+      <p class="hint">工作台的“开始新解析”总是使用默认提供方。选择云端类型意味着文档会被上传到外部服务。配置好并设为默认之后，上传的文档就会被解析，没有另外的开关。</p>
       <div v-if="providers.length && !hasDefaultProvider" class="notice-banner"><div>当前没有启用中的默认提供方，工作台的“开始新解析”会失败。请为其中一个提供方点击“设为默认”。</div></div>
       <div class="admin-list">
         <div v-for="provider in providers" :key="provider.id">
@@ -541,7 +477,7 @@ onMounted(() => load())
         </div>
       </div>
 
-      <details><summary>新增提供方</summary><div class="form-grid">
+      <details :open="!providers.length"><summary>新增提供方</summary><div class="form-grid">
         <label>名称<input v-model="newProvider.name"></label>
         <label>类型<select v-model="newProvider.providerType"><option v-for="type in providerTypes" :key="type.value" :value="type.value">{{ type.label }}</option></select></label>
         <label class="wide">服务地址<input v-model="newProvider.baseUrl" type="url" :placeholder="typeInfo(newProvider.providerType)?.suggestedBaseUrl ?? 'http://mineru.internal:8000'"><small>{{ typeInfo(newProvider.providerType)?.suggestedBaseUrl ? `官方地址为 ${typeInfo(newProvider.providerType)!.suggestedBaseUrl}，已自动填入` : '自建服务的地址只有部署方知道，例如 http://mineru.internal:8000' }}</small></label>
@@ -552,11 +488,112 @@ onMounted(() => load())
         <button class="primary" @click="createProvider">创建</button>
       </div></details>
     </section>
-    <section class="panel admin-card"><p class="eyebrow">API CLIENTS</p><h2>服务客户端</h2><div class="admin-list"><div v-for="client in clients" :key="client.id"><span><strong>{{ client.name }}</strong><small>{{ client.scopes.join(' · ') }}</small></span><span class="row-actions"><span class="status" :class="client.isActive ? 'succeeded' : 'failed'">{{ client.isActive ? '有效' : '已吊销' }}</span><button v-if="client.isActive" @click="rotateClient(client)">轮换</button><button v-if="client.isActive" class="danger-link" @click="revokeClient(client)">吊销</button></span></div></div><details><summary>新增 API 客户端</summary><div class="form-grid"><label class="wide">名称<input v-model="newClient.name"></label><button class="primary" @click="createClient">创建并签发凭据</button><div v-if="issuedCredential" class="credential wide"><strong>仅显示一次</strong><code>{{ issuedCredential }}</code></div></div></details></section>
+
+    <div class="section-band wide-card"><span class="band-label">账号与访问</span><p>谁能进来，以及机器怎么调用。</p></div>
+
+    <section class="panel admin-card wide-card"><p class="eyebrow">ADMINISTRATORS</p><h2>管理员账号</h2><div class="admin-list"><div v-for="administrator in administrators" :key="administrator.id"><span><strong>{{ administrator.displayName }}</strong><small>{{ administrator.username }}<template v-if="administrator.isCurrent"> · 当前登录</template></small></span><span class="row-actions"><span class="status" :class="administrator.isActive ? 'succeeded' : 'failed'">{{ administrator.isActive ? '启用' : '停用' }}</span><button v-if="!administrator.isCurrent" @click="resetPassword(administrator)">重置密码</button><button v-if="!administrator.isCurrent" @click="toggleAdministrator(administrator)">{{ administrator.isActive ? '停用' : '启用' }}</button><button v-if="!administrator.isCurrent" class="danger-link" @click="deleteAdministrator(administrator)">删除</button></span></div></div><details><summary>新增管理员</summary><div class="form-grid"><label>用户名<input v-model="newAdministrator.username" autocomplete="off"></label><label>显示名称<input v-model="newAdministrator.displayName" autocomplete="off"></label><label class="wide">密码（至少 8 位）<input v-model="newAdministrator.password" type="password" autocomplete="new-password"></label><button class="primary" @click="createAdministrator">创建</button></div></details><details><summary>修改我的密码</summary><div class="form-grid"><label class="wide">当前密码<input v-model="ownPassword.currentPassword" type="password" autocomplete="current-password"></label><label>新密码<input v-model="ownPassword.newPassword" type="password" autocomplete="new-password"></label><label>确认新密码<input v-model="ownPassword.confirmPassword" type="password" autocomplete="new-password"></label><button class="primary" @click="changeOwnPassword">修改密码</button><p class="hint wide">修改后其他设备上的登录会立即失效，当前设备保持登录。</p></div></details></section>
+
+    <section class="panel admin-card wide-card">
+      <p class="eyebrow">SINGLE SIGN-ON</p><h2>组织账号登录 <span class="state-chip">{{ oidcStatus?.enabled ? '已启用' : '未启用' }}</span></h2>
+      <p class="hint">终端用户只能通过身份提供方登录；未配置时工作区无人可用，管理员仍可从本地账号进入。</p>
+      <details :open="oidcNeedsAttention || oidcStatus?.enabled"><summary>配置组织账号登录</summary>
+        <div v-if="oidcStatus?.startupFault" class="notice-banner"><div>已保存的配置在服务启动时被拒绝，当前未生效：{{ oidcStatus.startupFault }}</div></div>
+        <div class="form-grid" v-if="settingOf('Oidc:Enabled')">
+          <label class="wide"><input type="checkbox" :checked="settingOf('Oidc:Enabled')!.value === 'true'" :disabled="settingOf('Oidc:Enabled')!.isManagedExternally" @change="saveSettingByKey('Oidc:Enabled', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 启用组织账号登录<small>当前运行状态：{{ oidcStatus?.enabled ? '已启用' : '未启用' }}</small></label>
+          <label class="wide">身份提供方地址<input v-model="oidcAuthorityDraft" type="url" placeholder="https://id.example.com/realms/main" :disabled="settingOf('Oidc:Authority')!.isManagedExternally" @change="saveSettingByKey('Oidc:Authority', oidcAuthorityDraft)"><small>末尾斜杠会被去掉，保存后应与发现文档中的 issuer 完全一致</small></label>
+          <label>客户端 ID<input :value="settingOf('Oidc:ClientId')!.value" :disabled="settingOf('Oidc:ClientId')!.isManagedExternally" @change="saveSettingByKey('Oidc:ClientId', ($event.target as HTMLInputElement).value)"></label>
+          <label>客户端密钥<input v-model="oidcSecretDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Oidc:ClientSecret')!.isStored ? '已设置（不回显）' : '未设置'" :disabled="settingOf('Oidc:ClientSecret')!.isManagedExternally"></label>
+          <span class="row-actions wide"><button :disabled="!oidcSecretDraft" @click="saveOidcSecret">保存密钥</button><button v-if="settingOf('Oidc:ClientSecret')!.isStored" class="danger-link" @click="saveSettingByKey('Oidc:ClientSecret', '')">清除密钥</button><button :disabled="oidcTesting" @click="testOidc">{{ oidcTesting ? '正在测试…' : '测试连接' }}</button></span>
+          <p v-if="oidcTestResult" class="hint wide">{{ oidcTestResult }}</p>
+          <label class="wide"><input type="checkbox" :checked="settingOf('Oidc:RequireHttpsMetadata')!.value === 'true'" :disabled="settingOf('Oidc:RequireHttpsMetadata')!.isManagedExternally" @change="saveSettingByKey('Oidc:RequireHttpsMetadata', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 要求 HTTPS 元数据<small>仅在内网 http 身份提供方下关闭</small></label>
+          <label v-for="key in oidcClaimKeys" :key="key">{{ settingLabels[key] }}<input :value="settingOf(key)!.value" :disabled="settingOf(key)!.isManagedExternally" @change="saveSettingByKey(key, ($event.target as HTMLInputElement).value)"></label>
+          <p class="hint wide">在身份提供方处需登记回调地址 <code>{{ oidcRedirectUri }}</code>，注销回调 <code>{{ oidcSignedOutUri }}</code>。请求的 scope 为 <code>{{ oidcStatus?.scopes.join(' ') }}</code>，此项与回调路径不可在此修改。</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel admin-card wide-card"><p class="eyebrow">API CLIENTS</p><h2>服务客户端 <span class="state-chip">{{ clients.length ? `${clients.length} 个` : '无' }}</span></h2><p class="hint">供其他系统直接调用 API；只用网页的部署不需要配置。</p><details><summary>管理服务客户端</summary><div class="admin-list"><div v-for="client in clients" :key="client.id"><span><strong>{{ client.name }}</strong><small>{{ client.scopes.join(' · ') }}</small></span><span class="row-actions"><span class="status" :class="client.isActive ? 'succeeded' : 'failed'">{{ client.isActive ? '有效' : '已吊销' }}</span><button v-if="client.isActive" @click="rotateClient(client)">轮换</button><button v-if="client.isActive" class="danger-link" @click="revokeClient(client)">吊销</button></span></div></div><div class="form-grid"><label class="wide">名称<input v-model="newClient.name"></label><button class="primary" @click="createClient">创建并签发凭据</button><div v-if="issuedCredential" class="credential wide"><strong>仅显示一次</strong><code>{{ issuedCredential }}</code></div></div></details></section>
+
+    <div class="section-band wide-card"><span class="band-label">可选配置</span><p>镜像自带可用的默认值，不改也能跑。只有换存储、换数据库或需要调参时才展开。</p></div>
+
+    <section class="panel admin-card" v-if="settingOf('Storage:Provider')">
+      <p class="eyebrow">STORAGE</p><h2>文件存储 <span class="state-chip">{{ storageSummary }}</span></h2>
+      <p class="hint">原始文档、解析结果与导出文件的存放位置。修改后需重启服务，已经存放的文件不会自动迁移。</p>
+      <details :open="storageNeedsAttention"><summary>更改文件存储</summary>
+      <div v-if="storageStatus?.startupFault" class="notice-banner"><div>保存的存储配置在服务启动时被拒绝，当前未生效：{{ storageStatus.startupFault }}</div></div>
+      <div class="form-grid">
+        <label class="wide">存储方式<select :value="settingOf('Storage:Provider')!.value" :disabled="settingOf('Storage:Provider')!.isManagedExternally" @change="saveSettingByKey('Storage:Provider', ($event.target as HTMLSelectElement).value)"><option v-for="allowed in settingOf('Storage:Provider')!.allowedValues" :key="allowed" :value="allowed">{{ storageProviderLabels[allowed] || allowed }}</option></select><small>当前运行中：{{ storageProviderLabels[storageStatus?.provider || ''] || storageStatus?.provider }}</small></label>
+        <label v-if="!usesObjectStorage" class="wide">本地目录<input :value="settingOf('Storage:RootPath')!.value" :disabled="settingOf('Storage:RootPath')!.isManagedExternally" @change="saveSettingByKey('Storage:RootPath', ($event.target as HTMLInputElement).value)"><small>必须是容器中持久卷内的路径，否则重启后文件会丢失</small></label>
+        <template v-else>
+          <label class="wide">服务地址<input :value="settingOf('Storage:ServiceUrl')!.value" type="url" placeholder="https://s3.example.com" :disabled="settingOf('Storage:ServiceUrl')!.isManagedExternally" @change="saveSettingByKey('Storage:ServiceUrl', ($event.target as HTMLInputElement).value)"><small>留空表示使用 AWS 官方地址</small></label>
+          <label>存储桶<input :value="settingOf('Storage:Bucket')!.value" :disabled="settingOf('Storage:Bucket')!.isManagedExternally" @change="saveSettingByKey('Storage:Bucket', ($event.target as HTMLInputElement).value)"></label>
+          <label>区域<input :value="settingOf('Storage:Region')!.value" placeholder="us-east-1" :disabled="settingOf('Storage:Region')!.isManagedExternally" @change="saveSettingByKey('Storage:Region', ($event.target as HTMLInputElement).value)"></label>
+          <label>路径前缀<input :value="settingOf('Storage:Prefix')!.value" :disabled="settingOf('Storage:Prefix')!.isManagedExternally" @change="saveSettingByKey('Storage:Prefix', ($event.target as HTMLInputElement).value)"></label>
+          <label><input type="checkbox" :checked="settingOf('Storage:ForcePathStyle')!.value === 'true'" :disabled="settingOf('Storage:ForcePathStyle')!.isManagedExternally" @change="saveSettingByKey('Storage:ForcePathStyle', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 强制路径风格<small>MinIO 等自建服务通常需要开启</small></label>
+          <label>Access Key<input v-model="storageAccessKeyDraft" type="password" autocomplete="off" :placeholder="settingOf('Storage:AccessKey')!.isStored ? '已设置（不回显）' : '未设置'" :disabled="settingOf('Storage:AccessKey')!.isManagedExternally"></label>
+          <label>Secret Key<input v-model="storageSecretKeyDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Storage:SecretKey')!.isStored ? '已设置（不回显）' : '未设置'" :disabled="settingOf('Storage:SecretKey')!.isManagedExternally"></label>
+          <span class="row-actions wide"><button :disabled="!storageAccessKeyDraft && !storageSecretKeyDraft" @click="saveStorageCredential">保存凭据</button><button v-if="settingOf('Storage:AccessKey')!.isStored" class="danger-link" @click="clearStorageCredential">清除凭据</button></span>
+        </template>
+        <span class="row-actions wide"><button :disabled="storageTesting" @click="testStorage">{{ storageTesting ? '正在测试…' : '测试写入' }}</button></span>
+        <p v-if="storageTestResult" class="hint wide">{{ storageTestResult }}</p>
+      </div>
+      </details>
+    </section>
+
+    <section class="panel admin-card" v-if="settingOf('Database:Provider')">
+      <p class="eyebrow">DATABASE</p><h2>业务数据库 <span class="state-chip">{{ databaseSummary }}</span></h2>
+      <p class="hint">文档元数据、解析记录与结构化结果的存放位置。管理员账号与本页设置存放在独立的控制库中，因此这里配置错误时本页仍可用。</p>
+      <div v-if="databaseStatus?.startupFault" class="notice-banner"><div>{{ databaseStatus.startupFault }}</div></div>
+      <div v-else-if="databaseStatus && !databaseStatus.isReachable" class="notice-banner"><div>当前数据库无法连接，上传与解析都不可用。</div></div>
+      <details :open="databaseNeedsAttention"><summary>更改业务数据库</summary>
+      <div class="form-grid">
+        <label class="wide">数据库类型<select :value="settingOf('Database:Provider')!.value" :disabled="settingOf('Database:Provider')!.isManagedExternally" @change="saveSettingByKey('Database:Provider', ($event.target as HTMLSelectElement).value)"><option v-for="allowed in settingOf('Database:Provider')!.allowedValues" :key="allowed" :value="allowed">{{ databaseProviderLabels[allowed] || allowed }}</option></select><small>当前运行中：{{ databaseProviderLabels[databaseStatus?.provider || ''] || databaseStatus?.provider }}<template v-if="databaseStatus?.isReachable"> · 可连接</template><template v-if="databaseStatus?.hasPendingMigrations"> · 重启后会补齐表结构</template></small></label>
+        <label class="wide">连接字符串<input v-model="databaseConnectionDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Database:ConnectionString')!.isStored ? '已设置（不回显）' : '使用镜像自带的 SQLite 默认值'" :disabled="settingOf('Database:ConnectionString')!.isManagedExternally"><small>其中通常包含密码，因此保存后不会再回显</small></label>
+        <label v-if="needsServerVersion" class="wide">服务器版本<input :value="settingOf('Database:ServerVersion')!.value" placeholder="8.4.0" :disabled="settingOf('Database:ServerVersion')!.isManagedExternally" @change="saveSettingByKey('Database:ServerVersion', ($event.target as HTMLInputElement).value)"><small>MySQL 与 MariaDB 必填，服务不会通过连接去猜测</small></label>
+        <span class="row-actions wide"><button :disabled="databaseTesting" @click="testDatabase">{{ databaseTesting ? '正在测试…' : '测试连接' }}</button><button class="primary" :disabled="!databaseConnectionDraft" @click="saveDatabaseConnection">保存连接字符串</button><button v-if="settingOf('Database:ConnectionString')!.isStored" class="danger-link" @click="saveSettingByKey('Database:ConnectionString', '')">恢复默认</button></span>
+        <p v-if="databaseTestResult" class="hint wide">{{ databaseTestResult }}</p>
+        <p class="hint wide">切换数据库不会迁移已有数据。新库会在重启时自动建表，原有文档与解析记录仍留在旧库中。</p>
+      </div>
+      </details>
+    </section>
+
+    <section class="panel admin-card wide-card">
+      <p class="eyebrow">SERVICE SETTINGS</p><h2>服务设置 <span class="state-chip">{{ serviceSettingsSummary }}</span></h2>
+      <p class="hint">上传限制与解析并发等运行参数。镜像自带的默认值适用于绝大多数部署，遇到具体问题再调。</p>
+      <details :open="restartPending"><summary>调整运行参数</summary>
+        <div class="admin-list">
+          <div v-for="setting in serviceSettings" :key="setting.key">
+            <span><strong>{{ settingLabels[setting.key] || setting.key }}</strong><small>{{ setting.key }}<template v-if="setting.isManagedExternally"> · 由部署环境变量固定</template><template v-else-if="!setting.isStored"> · 使用默认值</template><template v-if="setting.isPendingRestart"> · 待重启生效</template></small></span>
+            <span class="row-actions">
+              <template v-if="setting.kind === 'Boolean'">
+                <span class="status" :class="setting.value === 'true' ? 'succeeded' : ''">{{ setting.value === 'true' ? '开启' : '关闭' }}</span>
+                <button v-if="!setting.isManagedExternally" @click="saveSetting(setting, setting.value === 'true' ? 'false' : 'true')">{{ setting.value === 'true' ? '关闭' : '开启' }}</button>
+              </template>
+              <template v-else-if="setting.allowedValues.length">
+                <select class="setting-input" :value="setting.value" :disabled="setting.isManagedExternally" @change="saveSetting(setting, ($event.target as HTMLSelectElement).value)"><option v-for="allowed in setting.allowedValues" :key="allowed" :value="allowed">{{ allowed }}</option></select>
+              </template>
+              <template v-else>
+                <input class="setting-input" :value="setting.value" :disabled="setting.isManagedExternally" @change="saveSetting(setting, ($event.target as HTMLInputElement).value)">
+              </template>
+              <button v-if="setting.isStored && !setting.isManagedExternally" @click="saveSetting(setting, '')">恢复默认</button>
+            </span>
+          </div>
+        </div>
+      </details>
+    </section>
   </div>
 </template>
 
 <style scoped>
+/* The page is read top to bottom by someone who has just deployed and wants to know what is left to
+   do. The bands answer that before any panel is opened, and the chip on a collapsed panel answers
+   the follow-up question -- what is it set to now -- without opening it either. */
+.section-band{display:flex;align-items:baseline;gap:14px;margin:10px 0 -4px;flex-wrap:wrap}
+.section-band:not(:first-child){margin-top:26px;border-top:1px solid var(--line);padding-top:26px}
+.band-label{font-size:12px;letter-spacing:.16em;font-weight:700;color:#57816e}
+.band-label.required{color:#8f5a12}
+.section-band p{margin:0;font-size:12px;color:var(--muted)}
+.state-chip{font:600 11px/1 'DM Sans',sans-serif;letter-spacing:0;color:#37664f;background:#e4eee8;border-radius:20px;padding:6px 10px;vertical-align:middle;margin-left:8px}
 .row-actions{display:flex;align-items:center;gap:8px}.row-actions button{border:0;background:transparent;color:#37664f;font-size:11px;padding:3px}.row-actions .danger-link{color:#a23b36}
 .provider-editor{border-top:1px solid #d8ded9;margin-top:20px;padding-top:18px}.provider-editor h3{font-size:13px;margin:0 0 14px}.provider-editor small{font-weight:400;color:#69766f;font-size:11px}.provider-editor .row-actions button{border:1px solid transparent;font-size:13px;padding:11px 17px}.provider-editor .row-actions .primary{border-color:transparent}.provider-editor .row-actions .secondary{border-color:#aab9b0;color:#123c2b}
 </style>

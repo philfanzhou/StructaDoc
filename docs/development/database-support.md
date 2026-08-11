@@ -66,7 +66,7 @@ A connection or migration failure prevents readiness. Whether it also prevents s
 
 `IParseBundleCommitStore` verifies object size and SHA-256 before a single transaction writes Pages, Blocks, Assets, Artifacts, bundle fingerprint, and `succeeded`. Same-fingerprint replay is idempotent; a stale lease, cancellation race, partial rows, or different fingerprint cannot overwrite state.
 
-Maintenance requeues due retries and recovers expired claims. The execution Worker adopts resumable external jobs before claiming new work. `Worker:ExecutionEnabled` is `false` by default, so an unconfigured deployment makes no Provider requests.
+Maintenance requeues due retries and recovers expired claims. The execution Worker adopts resumable external jobs before claiming new work. A deployment with no configured Provider makes no Provider requests, because a Parse Run cannot be created without one.
 
 ## Migration Workflow
 

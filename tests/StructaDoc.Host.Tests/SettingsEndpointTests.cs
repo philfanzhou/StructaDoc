@@ -121,19 +121,20 @@ public sealed class SettingsEndpointTests
 
         using var stored = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.ParseExecutionEnabled, "true"));
+            new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "4"));
         stored.EnsureSuccessStatusCode();
+        Assert.True((await GetAsync(client, SettingCatalog.ParseMaxConcurrency)).IsPendingRestart);
 
         using var cleared = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.ParseExecutionEnabled, string.Empty));
+            new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, string.Empty));
         cleared.EnsureSuccessStatusCode();
 
-        // The listener closed the gate, so the default is genuinely in force. The startup snapshot
-        // still holds the value the deleted row had, and reporting from it would contradict what the
-        // service is doing.
-        var state = await GetAsync(client, SettingCatalog.ParseExecutionEnabled);
-        Assert.Equal("false", state.Value);
+        // Clearing restores the default, and the default is what the running process is already
+        // using. Reporting from the startup snapshot alone would be right here by accident; reporting
+        // the value the deleted row held would say a change is waiting that nothing is waiting for.
+        var state = await GetAsync(client, SettingCatalog.ParseMaxConcurrency);
+        Assert.Equal("1", state.Value);
         Assert.False(state.IsStored);
         Assert.False(state.IsPendingRestart);
     }
@@ -175,39 +176,20 @@ public sealed class SettingsEndpointTests
     }
 
     [Fact]
-    public async Task Execution_can_be_switched_without_a_restart()
+    public async Task Parse_execution_status_reports_a_host_that_runs_no_workers()
     {
         using var deployment = new SettingsTestDeployment();
         using var factory = deployment.CreateFactory();
         using var client = await SignedInClientAsync(factory);
 
-        // The same boolean arrives as "False" from appsettings.json and "false" from the store, so
-        // a caller comparing the two spellings would read one of them wrongly.
-        Assert.Equal("false", (await GetAsync(client, SettingCatalog.ParseExecutionEnabled)).Value);
-
-        // What the workspace reads to explain a queue that is not moving. It has to follow the gate
-        // the Worker consults rather than the value bound at startup, or the notice telling someone
-        // parsing is off would stay up after they turned it on.
-        var beforeStatus = await client
+        // This deployment starts a Host with no Workers, which is the one remaining way a Parse Run
+        // queues behind nothing. It is a deployment choice and not settable here, so all the service
+        // can do is report it -- and it has to, or a queue that will never move looks like one that
+        // is about to.
+        var status = await client
             .GetFromJsonAsync<ParseExecutionStatusResponse>("/api/v1/parse-execution");
-        // This deployment pins Worker:Enabled off, which is the case the two flags exist to keep
-        // apart: opening the switch below still leaves nothing running, and only one of the two can
-        // be acted on from a browser.
-        Assert.False(beforeStatus!.WorkerEnabled);
-        Assert.False(beforeStatus.ExecutionEnabled);
 
-        using var response = await client.PutAsJsonAsync(
-            "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.ParseExecutionEnabled, "true"));
-        response.EnsureSuccessStatusCode();
-
-        var result = await response.Content.ReadFromJsonAsync<SettingUpdateResponse>();
-        Assert.False(result!.RestartRequired);
-        Assert.Equal("true", (await GetAsync(client, SettingCatalog.ParseExecutionEnabled)).Value);
-
-        var afterStatus = await client
-            .GetFromJsonAsync<ParseExecutionStatusResponse>("/api/v1/parse-execution");
-        Assert.True(afterStatus!.ExecutionEnabled);
+        Assert.False(status!.WorkerEnabled);
     }
 
     [Fact]
@@ -229,7 +211,7 @@ public sealed class SettingsEndpointTests
     [InlineData(SettingCatalog.ParseMaxConcurrency, "0")]
     [InlineData(SettingCatalog.ParseMaxConcurrency, "65")]
     [InlineData(SettingCatalog.ParseMaxConcurrency, "many")]
-    [InlineData(SettingCatalog.ParseExecutionEnabled, "yes")]
+    [InlineData(SettingCatalog.UploadApiEnabled, "yes")]
     [InlineData(SettingCatalog.MaxUploadBytes, "512")]
     public async Task Values_outside_a_settings_range_or_type_are_refused(string key, string value)
     {
@@ -279,7 +261,7 @@ public sealed class SettingsEndpointTests
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
         using var withoutToken = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.ParseExecutionEnabled, "true"));
+            new SettingUpdateRequest(SettingCatalog.UploadApiEnabled, "false"));
         Assert.Equal(HttpStatusCode.BadRequest, withoutToken.StatusCode);
     }
 

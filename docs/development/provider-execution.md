@@ -52,7 +52,11 @@ If a conversion snapshot exists, recovery reuses its PDF. If an archive exists, 
 
 For a protocol without a durable submission checkpoint, an unknown submission outcome is not automatically resent; it fails with `provider-submission-outcome-unknown`. This deliberately favors avoiding duplicate external jobs over speculative resubmission.
 
-`Worker:ExecutionEnabled` must be explicitly enabled and defaults to `false`. Queueing runs before it is opened is supported and nothing rejects them, so the state has to be visible instead: `GET /api/v1/parse-execution` reports it to anyone who may read Parse Runs, and both the workspace and the administration area say so rather than leaving a document at `queued` with no explanation. The endpoint reads the same gate the Worker consults, not the value bound at startup, so the notice clears as soon as the switch is opened.
+Configuring an enabled default Provider is the whole of what a deployment does before its documents are parsed. There is no second switch after that decision, and there deliberately is not one: a Parse Run can only be created against a Provider an administrator configured and enabled, which is where the consent to send a document outward is actually given. A further default-off flag added nothing to that consent and produced deployments where an upload queued forever while nothing failed and nothing was logged.
+
+`Worker:Enabled` remains, and is a deployment choice rather than a pause button: it lets a Host serve the API while other Hosts do the parsing. It is not settable from a browser. Pausing parsing is done by disabling the Provider, which stops new runs from being created; runs already queued still carry their own configuration snapshot and will run.
+
+`GET /api/v1/parse-execution` reports `workerEnabled` to anyone who may read Parse Runs, because a Host with no Workers queues runs behind nothing and the person watching cannot otherwise tell that from a queue about to move.
 
 `Worker:MaxConcurrency` sets how many Parse Runs one Host executes at a time and defaults to `1`. Each slot claims under its own Worker ID, so slots never share a lease and one long-running Parse Run does not block the others. Raise it only within Provider rate limits and the independent `LibreOffice:MaxConcurrency` bound. Multiple Hosts can parallelize further through a server database; SQLite remains single-instance.
 

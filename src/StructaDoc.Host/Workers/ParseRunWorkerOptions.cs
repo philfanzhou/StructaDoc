@@ -4,9 +4,13 @@ public sealed class ParseRunWorkerOptions
 {
     public const string SectionName = "Worker";
 
+    /// <summary>
+    /// Whether this Host runs Parse Run Workers at all. A deployment choice: it exists so a Host can
+    /// be run to serve the API while other Hosts do the parsing, not as a way to pause parsing.
+    /// Nothing sends a document anywhere until an administrator configures a Provider, which is the
+    /// point where that consent is actually given.
+    /// </summary>
     public bool Enabled { get; init; } = true;
-
-    public bool ExecutionEnabled { get; init; }
 
     public TimeSpan MaintenanceInterval { get; init; } = TimeSpan.FromSeconds(5);
 

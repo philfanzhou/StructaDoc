@@ -54,7 +54,6 @@ public sealed record SettingDefinition(
 /// </summary>
 public static class SettingCatalog
 {
-    public const string ParseExecutionEnabled = "Worker:ExecutionEnabled";
     public const string ParseMaxConcurrency = "Worker:MaxConcurrency";
     public const string UploadApiEnabled = "Documents:UploadApiEnabled";
     public const string MaxUploadBytes = "Documents:MaxUploadBytes";
@@ -113,9 +112,6 @@ public static class SettingCatalog
 
     public static IReadOnlyList<SettingDefinition> All { get; } =
     [
-        // The one setting the running service re-reads, because turning parsing on and off is a
-        // routine act rather than a deployment change.
-        new(ParseExecutionEnabled, SettingKind.Boolean, RequiresRestart: false, Default: "false"),
         new(
             ParseMaxConcurrency,
             SettingKind.Integer,

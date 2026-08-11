@@ -10,7 +10,7 @@ This specification defines persistent Parse Run statuses, diagnostic stages, ato
 
 The implementation covers creation and idempotent replay, immutable Provider snapshots, status reads, atomic claim/renewal, recovery of expired unstarted claims, `claimed → running`, retry/failure transitions, due-retry requeueing, execution snapshots restricted by a live lease, conditional stage and external-ID persistence, encrypted Cloud submission checkpoints, adoption of running external jobs, serialized heartbeat sessions, capability-driven LibreOffice fallback, bounded Provider result intake, deterministic MinerU normalization, idempotent canonical success transactions, large-PDF segment recovery, local cancellation, and durable cleanup jobs.
 
-Real execution remains disabled by default with `Worker:ExecutionEnabled=false`. Upstream cancellation propagation and richer attempt-history records remain incomplete.
+Real execution follows a configured Provider with no further switch. Upstream cancellation propagation and richer attempt-history records remain incomplete.
 
 ## 2. Authority
 
@@ -204,7 +204,7 @@ The request deliberately leaves any live lease in place. Lease renewal requires 
 - the owning Worker completes it immediately after stopping, guarded by its claim rather than by its now-stale concurrency version;
 - Parse Run maintenance completes any `cancel-requested` run whose lease is absent or lapsed, which covers `queued` and `retry-wait` runs and any Worker that crashed mid-cancellation.
 
-Completion clears the stage, claim, lease, and encrypted submission continuation, and sets `completedAt`. Because maintenance runs independently of `Worker:ExecutionEnabled`, cancellation completes even when execution is disabled. Error facts from the last attempt are retained for diagnosis; `status` remains the only authority on finality.
+Completion clears the stage, claim, lease, and encrypted submission continuation, and sets `completedAt`. Maintenance and execution are separate Workers, so cancellation completes on a Host whose execution slots are all busy. Error facts from the last attempt are retained for diagnosis; `status` remains the only authority on finality.
 
 The complete upstream cancellation path remains an implementation gap because the current MinerU protocols do not expose a stable single-task cancellation contract. Until then, a run submitted to an online Provider may continue consuming remote resources after StructaDoc reports `cancelled`, and the user-facing workspace states this explicitly.
 

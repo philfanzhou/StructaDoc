@@ -41,6 +41,6 @@ Deletion is not a fragile synchronous transaction across a database and object s
 4. only after all object deletions succeed does a database transaction remove relational rows and mark the job `completed`;
 5. transient failures enter exponential `retry-wait`, and stale `running` jobs are recovered.
 
-A non-final Parse Run cannot be deleted, and a Document with active Parse Runs cannot be deleted. This prevents cleanup and execution Workers from racing for the same resources. Cancellation is therefore the supported way to release a Document whose Parse Run will never complete on its own, including every run created while `Worker:ExecutionEnabled` is `false`. See [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) section 13.
+A non-final Parse Run cannot be deleted, and a Document with active Parse Runs cannot be deleted. This prevents cleanup and execution Workers from racing for the same resources. Cancellation is therefore the supported way to release a Document whose Parse Run will never complete on its own, including every run created on a Host started without Workers. See [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) section 13.
 
 Persistent Cleanup Jobs make failed deletion observable and retryable; they do not hide object-storage failures behind prematurely removed database rows.

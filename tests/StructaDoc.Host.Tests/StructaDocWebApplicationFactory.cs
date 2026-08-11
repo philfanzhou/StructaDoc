@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using StructaDoc.Host.Workers;
 
 namespace StructaDoc.Host.Tests;
 
@@ -54,6 +57,22 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
         builder.UseSetting(
             "ControlPlane:DatabasePath",
             Path.Combine(testDirectory, "control.db"));
+
+        // Most tests on this shared host create a Parse Run as a fixture for something else: a
+        // cancellation, an export, a document that cannot be deleted yet. A resident execution
+        // worker claims those the moment they are written and races every assertion about them.
+        // Maintenance is left running, because requeueing and completing a cancellation are things
+        // those same tests depend on. Execution is added back by the classes it is the subject of.
+        builder.ConfigureServices(services =>
+        {
+            foreach (var descriptor in services
+                .Where(service => service.ServiceType == typeof(IHostedService)
+                    && service.ImplementationType == typeof(ParseRunExecutionWorker))
+                .ToArray())
+            {
+                services.Remove(descriptor);
+            }
+        });
     }
 
     protected override void Dispose(bool disposing)

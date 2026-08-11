@@ -57,6 +57,10 @@ public sealed class ParseRunMaintenanceWorkerTests(StructaDocWebApplicationFacto
 
         var deadlineUtc = DateTime.UtcNow.AddSeconds(5);
 
+        // Queued is what maintenance writes, but it is not what this can wait to observe: the
+        // execution Worker on the same Host claims a queued run within its next cycle, and polling
+        // for the exact word would be a race against it. Leaving retry-wait is the whole of what
+        // maintenance is responsible for here, and a broken one leaves the run there forever.
         while (DateTime.UtcNow < deadlineUtc)
         {
             await using var scope = factory.Services.CreateAsyncScope();
@@ -67,14 +71,15 @@ public sealed class ParseRunMaintenanceWorkerTests(StructaDocWebApplicationFacto
                 .Select(parseRun => parseRun.Status)
                 .SingleAsync();
 
-            if (status == ParseRunStatuses.Queued)
+            if (status != ParseRunStatuses.RetryWait)
             {
+                Assert.NotEqual(ParseRunStatuses.Cancelled, status);
                 return;
             }
 
             await Task.Delay(50);
         }
 
-        Assert.Fail("The maintenance worker did not queue the due retry within five seconds.");
+        Assert.Fail("The maintenance worker did not requeue the due retry within five seconds.");
     }
 }

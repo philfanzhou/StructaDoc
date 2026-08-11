@@ -63,6 +63,6 @@ Local `backend` and Cloud `model` come from the immutable Provider configuration
 
 ## Execution and Remaining Risk
 
-The adapters are wired into the recoverable executor, but `Worker:ExecutionEnabled` defaults to `false`. Enabling it permits document transfer to the selected Provider.
+The adapters are wired into the recoverable executor. Configuring one of them as the enabled default Provider is what permits document transfer to it; nothing else is switched on afterwards.
 
 Remaining work includes integration coverage with each deployed MinerU version, cancellation when upstream provides a contract, richer attempt history, and deployment-specific trust policy for administrator-configured base URLs. Local URLs intentionally permit trusted private networks; signed Cloud transfers do not.
