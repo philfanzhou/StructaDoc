@@ -46,9 +46,11 @@ What no test covers is a real MinerU service. Nothing in CI can supply one, so t
 
 ## Current Remote Status
 
-The latest `main` run at the time of this update, workflow run `31467581430` for commit `dc9ccbb`, completed successfully across all four jobs, as did run `31467584970` for the `v0.1.1` tag on the same commit.
+The latest `main` run at the time of this update, workflow run `31475679356` for commit `dfa76a4`, completed successfully across all four jobs, as did run `31475683487` for the `v0.1.2` tag on the same commit.
 
-That pair is what the tag rules above were changed for. Both runs published under the previous rules, both claimed `latest`, and the branch run finished later, so `latest` named an image reporting `0.0.0-dev` while `0.1.1` named the identical source stamped as the release. The next `v*` tag is what moves `latest` onto a release again.
+Those two are the first pair to run under the current tag rules, and they confirm them: the branch run published `sha-dfa76a4…` and nothing else, and the tag run published `0.1.2`, `0.1`, and `latest`. All three names now resolve to one manifest, which is the release build.
+
+The rules were changed because of the preceding pair, run `31467581430` for `dc9ccbb` and run `31467584970` for `v0.1.1`. Both published under the previous rules, both claimed `latest`, and the branch run finished later, so `latest` named an image reporting `0.0.0-dev` while `0.1.1` named the identical source stamped as the release. Nothing was retagged to correct it; the next release moved `latest` back onto a release build on its own, which is what the rules are for.
 
 One preceding run remains visible as a failure in Actions history and is superseded rather than still active: run `31324328532` for commit `4fced2a` failed the container job on a read-only `/app/data`, because the image shipped its own defaults file and then ignored it. Commit `b2ea5c2` fixed the precedence and the next run passed.
 
