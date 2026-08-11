@@ -10,6 +10,13 @@ public static class ProviderConfigAdministrationEndpoints
     public static IEndpointRouteBuilder MapProviderConfigAdministrationEndpoints(
         this IEndpointRouteBuilder endpoints)
     {
+        // What each type needs and what it defaults to, so the form can say so instead of leaving an
+        // administrator to guess an address and wonder what "leave blank" produces. It is served
+        // rather than compiled into the browser bundle because the defaults belong to the adapters.
+        endpoints.MapGet("/api/v1/admin/provider-types", ListTypes)
+            .RequireAuthorization(AuthorizationPolicies.Administrator)
+            .Produces<IReadOnlyList<ProviderTypeResponse>>();
+
         var group = endpoints.MapGroup("/api/v1/admin/provider-configs")
             .RequireAuthorization(AuthorizationPolicies.Administrator);
 
@@ -33,6 +40,9 @@ public static class ProviderConfigAdministrationEndpoints
 
         return endpoints;
     }
+
+    private static IResult ListTypes() => Results.Ok(
+        ProviderTypeDescriptors.All.Select(ToResponse).ToArray());
 
     private static async Task<IResult> ListAsync(
         IProviderConfigAdministrationService service,
@@ -188,6 +198,12 @@ public static class ProviderConfigAdministrationEndpoints
 
         return (null, Results.ValidationProblem(new Dictionary<string, string[]> { [field] = [message] }));
     }
+
+    private static ProviderTypeResponse ToResponse(ProviderTypeDescriptor descriptor) => new(
+        descriptor.ProviderType,
+        descriptor.SuggestedBaseUrl,
+        new ProviderSettingResponse(descriptor.Model.IsUsed, descriptor.Model.AppliedDefault),
+        new ProviderSettingResponse(descriptor.Backend.IsUsed, descriptor.Backend.AppliedDefault));
 
     private static ProviderConfigResponse ToResponse(ProviderConfigRecord config) => new(
         config.Id,

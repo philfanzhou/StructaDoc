@@ -25,6 +25,7 @@ Administrator Cookie endpoints require antiforgery validation for writes:
 | `POST` | `/api/v1/admin/provider-configs` | Creates a logical configuration and version 1 |
 | `PUT` | `/api/v1/admin/provider-configs/{id}` | Creates and selects a new immutable version |
 | `DELETE` | `/api/v1/admin/provider-configs/{id}` | Removes a logical configuration and every version of it, or refuses |
+| `GET` | `/api/v1/admin/provider-types` | Describes each type: official base URL, and what a blank `model`/`backend` sends |
 
 Deletion exists because a configuration created by mistake would otherwise stay in the list forever. It removes rows rather than hiding them, so it only applies while nothing points at one. A Parse Run that has not reached a final status still reads its configuration version as it executes, and a finished one keeps that version as the record of how its result was produced; both refuse with `409` and separate detail text, because one clears on its own and the other never does. Disabling is how a configuration that has been used is retired.
 
@@ -51,6 +52,8 @@ Callers may send one visible-ASCII `Idempotency-Key` up to 256 characters. Scope
 ## Administration Area
 
 Every field the API accepts is reachable from `/admin`: name, type, base URL, model, backend, credential, enabled, and default. The type is a fixed choice rather than typed text, because the service accepts a closed set and a typo could only ever come back as a validation error. Editing an existing configuration leaves the type read-only, matching the service's refusal to change it.
+
+Choosing the hosted type fills the base URL with the published address of the hosted service. It has exactly one, so requiring an administrator to retype it is requiring them to get it wrong; a typed or corrected address is left alone, and switching back to the self-hosted type removes the suggestion rather than leaving a wrong address that looks deliberate. `model` and `backend` are each read by one type and ignored by the other, so the form offers only the one that has an effect and states what a blank field produces: Cloud sends the advertised default, Local sends nothing and the MinerU service decides. These come from `provider-types` rather than from the browser bundle, because the defaults belong to the adapters and a copy in the form would go on naming the old one after an adapter changed.
 
 The credential field starts empty on an edit, because the service never sends a stored credential back. An empty field means the stored value is kept; erasing one is a separate checkbox that sends `clearCredential`.
 

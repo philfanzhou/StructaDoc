@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { get, mutate } from '../api'
 import { message } from '../messages'
 
@@ -16,6 +16,31 @@ type ProviderDraft = { id?: string; name: string; providerType: string; baseUrl:
 function blankProvider(): ProviderDraft { return { name: '', providerType: 'mineru-local', baseUrl: '', model: '', backend: '', credential: '', clearCredential: false, isEnabled: true, isDefault: false, hasCredential: false } }
 const newProvider = ref<ProviderDraft>(blankProvider())
 const providerDraft = ref<ProviderDraft | null>(null)
+// What each type needs and what a blank field turns into. The service owns these because the
+// adapters do; holding a copy here would go on claiming a default after the adapter changed it.
+type ProviderSetting = { isUsed: boolean; appliedDefault: string | null }
+type ProviderTypeInfo = { providerType: string; suggestedBaseUrl: string | null; model: ProviderSetting; backend: ProviderSetting }
+const providerTypeInfo = ref<ProviderTypeInfo[]>([])
+function typeInfo(providerType: string) { return providerTypeInfo.value.find(info => info.providerType === providerType) }
+// An optional field is worth showing only when the type reads it, and it is worth filling in only
+// when what it would otherwise send is not already what the administrator wants.
+function settingHint(setting: ProviderSetting | undefined) {
+  if (!setting?.isUsed) return ''
+  return setting.appliedDefault ? `留空即使用 ${setting.appliedDefault}` : '留空则不发送此项，由服务端自行决定'
+}
+// The hosted service has one published address, so asking an administrator to type it is asking them
+// to get it wrong. Switching type replaces the address only when the field is empty or still holds
+// the previous type's suggestion: an address that was typed or corrected is the administrator's.
+watch(() => newProvider.value.providerType, (current, previous) => {
+  const draft = newProvider.value
+  const suggested = typeInfo(current)?.suggestedBaseUrl ?? ''
+  if (!draft.baseUrl || draft.baseUrl === (typeInfo(previous)?.suggestedBaseUrl ?? '')) draft.baseUrl = suggested
+})
+// An emptied form is a form about to be filled in again, so it starts where a new one does.
+function resetNewProvider() {
+  newProvider.value = blankProvider()
+  newProvider.value.baseUrl = typeInfo(newProvider.value.providerType)?.suggestedBaseUrl ?? ''
+}
 // The workspace starts a parse without naming a Provider, so a deployment with no enabled default
 // has a button that can only fail. Saying so here is cheaper than reading that failure.
 const hasDefaultProvider = computed(() => providers.value.some(provider => provider.isDefault && provider.isEnabled))
@@ -145,7 +170,7 @@ const oidcTestMessages: Record<string, string> = {
 // database, and this page is where a deployment pointed at an unreachable one is repaired: if one
 // failed read could blank the page, the settings needed to fix it would go with it.
 async function load() {
-  const sources = ['/api/v1/admin/settings', '/api/v1/admin/settings/oidc', '/api/v1/admin/settings/storage', '/api/v1/admin/settings/database', '/api/v1/admin/administrators', '/api/v1/admin/provider-configs', '/api/v1/admin/api-clients', '/api/v1/system/info']
+  const sources = ['/api/v1/admin/settings', '/api/v1/admin/settings/oidc', '/api/v1/admin/settings/storage', '/api/v1/admin/settings/database', '/api/v1/admin/administrators', '/api/v1/admin/provider-configs', '/api/v1/admin/api-clients', '/api/v1/system/info', '/api/v1/admin/provider-types']
   const results = await Promise.allSettled(sources.map(source => get(source)))
   const value = <T,>(index: number, fallback: T): T => results[index].status === 'fulfilled' ? (results[index] as PromiseFulfilledResult<T>).value : fallback
   settings.value = value(0, settings.value)
@@ -156,6 +181,10 @@ async function load() {
   providers.value = value(5, [])
   clients.value = value(6, [])
   serviceVersion.value = value<{ version?: string } | null>(7, null)?.version ?? ''
+  providerTypeInfo.value = value<ProviderTypeInfo[]>(8, [])
+  // The descriptors arrive after the blank draft was built, so the type it starts on gets its
+  // address here; the watcher only fires on a later change.
+  if (!newProvider.value.baseUrl) newProvider.value.baseUrl = typeInfo(newProvider.value.providerType)?.suggestedBaseUrl ?? ''
   oidcAuthorityDraft.value = settingOf('Oidc:Authority')?.value ?? ''
 
   // Only a failure that is not already explained by the banners is worth a toast.
@@ -327,7 +356,7 @@ function providerPayload(draft: ProviderDraft) {
 }
 
 async function createProvider() {
-  try { await mutate('/api/v1/admin/provider-configs', 'POST', providerPayload(newProvider.value)); newProvider.value = blankProvider(); message('解析提供方已创建'); await reloadProviders() }
+  try { await mutate('/api/v1/admin/provider-configs', 'POST', providerPayload(newProvider.value)); resetNewProvider(); message('解析提供方已创建'); await reloadProviders() }
   catch (e) { message((e as Error).message, true) }
 }
 
@@ -497,9 +526,9 @@ onMounted(() => load())
         <div class="form-grid">
           <label>名称<input v-model="providerDraft.name"></label>
           <label>类型<select v-model="providerDraft.providerType" disabled><option v-for="type in providerTypes" :key="type.value" :value="type.value">{{ type.label }}</option></select><small>类型不可更改，需要更换时请新增一个提供方</small></label>
-          <label class="wide">服务地址<input v-model="providerDraft.baseUrl" type="url" placeholder="http://mineru.internal:8000"></label>
-          <label>模型（可选）<input v-model="providerDraft.model" placeholder="留空使用服务端默认"></label>
-          <label>后端（可选）<input v-model="providerDraft.backend" placeholder="留空使用服务端默认"></label>
+          <label class="wide">服务地址<input v-model="providerDraft.baseUrl" type="url" :placeholder="typeInfo(providerDraft.providerType)?.suggestedBaseUrl ?? 'http://mineru.internal:8000'"><small v-if="typeInfo(providerDraft.providerType)?.suggestedBaseUrl">官方地址为 {{ typeInfo(providerDraft.providerType)!.suggestedBaseUrl }}</small></label>
+          <label v-if="typeInfo(providerDraft.providerType)?.model.isUsed">模型（可选）<input v-model="providerDraft.model" :placeholder="settingHint(typeInfo(providerDraft.providerType)?.model)"><small>{{ settingHint(typeInfo(providerDraft.providerType)?.model) }}</small></label>
+          <label v-if="typeInfo(providerDraft.providerType)?.backend.isUsed">后端（可选）<input v-model="providerDraft.backend" :placeholder="settingHint(typeInfo(providerDraft.providerType)?.backend)"><small>{{ settingHint(typeInfo(providerDraft.providerType)?.backend) }}</small></label>
           <label class="wide">凭据<input v-model="providerDraft.credential" type="password" autocomplete="new-password" :disabled="providerDraft.clearCredential" :placeholder="providerDraft.hasCredential ? '已设置（不回显），留空即保持不变' : '未设置'"></label>
           <label v-if="providerDraft.hasCredential"><input v-model="providerDraft.clearCredential" type="checkbox"> 清除已保存的凭据</label>
           <label><input v-model="providerDraft.isEnabled" type="checkbox"> 启用</label>
@@ -511,10 +540,10 @@ onMounted(() => load())
       <details><summary>新增提供方</summary><div class="form-grid">
         <label>名称<input v-model="newProvider.name"></label>
         <label>类型<select v-model="newProvider.providerType"><option v-for="type in providerTypes" :key="type.value" :value="type.value">{{ type.label }}</option></select></label>
-        <label class="wide">服务地址<input v-model="newProvider.baseUrl" type="url" placeholder="http://mineru.internal:8000"></label>
-        <label>模型（可选）<input v-model="newProvider.model" placeholder="留空使用服务端默认"></label>
-        <label>后端（可选）<input v-model="newProvider.backend" placeholder="留空使用服务端默认"></label>
-        <label class="wide">凭据<input v-model="newProvider.credential" type="password" autocomplete="new-password" placeholder="本地服务通常不需要"></label>
+        <label class="wide">服务地址<input v-model="newProvider.baseUrl" type="url" :placeholder="typeInfo(newProvider.providerType)?.suggestedBaseUrl ?? 'http://mineru.internal:8000'"><small>{{ typeInfo(newProvider.providerType)?.suggestedBaseUrl ? `官方地址为 ${typeInfo(newProvider.providerType)!.suggestedBaseUrl}，已自动填入` : '自建服务的地址只有部署方知道，例如 http://mineru.internal:8000' }}</small></label>
+        <label v-if="typeInfo(newProvider.providerType)?.model.isUsed">模型（可选）<input v-model="newProvider.model" :placeholder="settingHint(typeInfo(newProvider.providerType)?.model)"><small>{{ settingHint(typeInfo(newProvider.providerType)?.model) }}</small></label>
+        <label v-if="typeInfo(newProvider.providerType)?.backend.isUsed">后端（可选）<input v-model="newProvider.backend" :placeholder="settingHint(typeInfo(newProvider.providerType)?.backend)"><small>{{ settingHint(typeInfo(newProvider.providerType)?.backend) }}</small></label>
+        <label class="wide">凭据<input v-model="newProvider.credential" type="password" autocomplete="new-password" :placeholder="newProvider.providerType === 'mineru-cloud' ? '云端服务必填：MinerU 的 API Token' : '本地服务通常不需要'"></label>
         <label><input v-model="newProvider.isDefault" type="checkbox"> 设为默认</label>
         <button class="primary" @click="createProvider">创建</button>
       </div></details>

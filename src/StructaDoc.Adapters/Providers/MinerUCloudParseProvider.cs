@@ -372,7 +372,7 @@ public sealed class MinerUCloudParseProvider(
         var payload = new Dictionary<string, object>
         {
             ["files"] = new[] { file },
-            ["model_version"] = configuration.Model ?? "pipeline",
+            ["model_version"] = configuration.Model ?? ProviderTypeDescriptors.MinerUCloudDefaultModel,
             ["enable_formula"] = options.Formula,
             ["enable_table"] = options.Table,
             ["language"] = options.Language,

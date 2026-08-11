@@ -16,6 +16,51 @@ namespace StructaDoc.Host.Tests;
 public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicationFactory factory)
     : IClassFixture<StructaDocWebApplicationFactory>
 {
+    // Configuring a Provider means supplying an address and deciding whether two optional fields are
+    // worth filling in. An administrator can answer neither from the form alone: the hosted service
+    // has one published address they would otherwise retype from memory, and "optional" says nothing
+    // about what a blank field produces. Both answers are the service's, so it has to say them.
+    [Fact]
+    public async Task Provider_types_state_the_official_address_and_what_a_blank_setting_sends()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+
+        var types = await client.GetFromJsonAsync<ProviderTypeResponse[]>(
+            "/api/v1/admin/provider-types");
+
+        Assert.NotNull(types);
+        var cloud = Assert.Single(types, type => type.ProviderType == "mineru-cloud");
+        var local = Assert.Single(types, type => type.ProviderType == "mineru-local");
+
+        Assert.Equal("https://mineru.net", cloud.SuggestedBaseUrl);
+        Assert.Equal("pipeline", cloud.Model.AppliedDefault);
+        // Each type ignores one of the two settings, so a form told otherwise would offer a field
+        // that changes nothing about the request.
+        Assert.True(cloud.Model.IsUsed);
+        Assert.False(cloud.Backend.IsUsed);
+
+        // A self-hosted address is the deployment's, and the Local protocol omits a blank backend
+        // rather than substituting one, so there is no default to promise on its behalf.
+        Assert.Null(local.SuggestedBaseUrl);
+        Assert.True(local.Backend.IsUsed);
+        Assert.Null(local.Backend.AppliedDefault);
+        Assert.False(local.Model.IsUsed);
+    }
+
+    [Fact]
+    public async Task Provider_types_are_not_readable_without_administrator_sign_in()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/v1/admin/provider-types");
+
+        Assert.True(
+            response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+                or HttpStatusCode.Redirect or HttpStatusCode.Found,
+            $"Unauthenticated access returned {(int)response.StatusCode}.");
+    }
+
     [Fact]
     public async Task Administrator_can_version_provider_config_and_create_idempotent_parse_runs()
     {

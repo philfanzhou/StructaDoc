@@ -54,7 +54,21 @@ test('administrator can use the document workspace and administration area', asy
   await providers.getByText('新增提供方').click()
   const createForm = providers.locator('details .form-grid')
   await createForm.locator('input').first().fill(providerName)
+
+  // The hosted service has one published address, and an administrator who has to retype it from
+  // memory is being asked to get it wrong. Selecting the type fills it in, and the value comes from
+  // the service rather than from this bundle, so this also proves the descriptors were served.
+  await createForm.locator('select').selectOption('mineru-cloud')
+  await expect(createForm.locator('input[type="url"]')).toHaveValue('https://mineru.net')
+  // Each type reads one of the two optional settings, so the other is not offered at all: a field
+  // that changes nothing about the request is worse than a missing one.
+  await expect(createForm.getByText('模型（可选）')).toBeVisible()
+  await expect(createForm.getByText('后端（可选）')).toBeHidden()
+
   await createForm.locator('select').selectOption('mineru-local')
+  // A self-hosted address is the deployment's own, so switching away from the hosted type takes the
+  // suggestion back out rather than leaving a wrong address that looks deliberate.
+  await expect(createForm.locator('input[type="url"]')).toHaveValue('')
   await createForm.locator('input[type="url"]').fill(refusingProviderBaseUrl)
   await createForm.locator('input[type="checkbox"]').check()
   await createForm.getByRole('button', { name: '创建' }).click()

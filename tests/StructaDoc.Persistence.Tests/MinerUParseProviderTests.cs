@@ -203,6 +203,34 @@ public sealed class MinerUParseProviderTests
         Assert.Equal(3, requests);
     }
 
+    // The administration page tells an administrator what a blank Model field will send, and it reads
+    // that from the descriptor rather than from this request. Nothing else ties the two together, so
+    // an adapter that changed its fallback would leave the form confidently naming the old one.
+    [Fact]
+    public async Task Cloud_submit_sends_the_model_the_descriptor_advertises_when_none_is_configured()
+    {
+        string? sentModel = null;
+        var handler = new StubHandler(async request =>
+        {
+            using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            sentModel = payload.RootElement.GetProperty("model_version").GetString();
+            return JsonResponse(
+                HttpStatusCode.OK,
+                """
+                {"code":0,"data":{"batch_id":"batch-1","file_urls":["https://upload.example/signed?key=value"]}}
+                """);
+        });
+
+        await CloudProvider(handler).PrepareSubmissionAsync(
+            CloudConfiguration(credential: "cloud-secret", model: null),
+            Guid.NewGuid(),
+            Source("report.pdf", "document"u8.ToArray()),
+            "{}");
+
+        Assert.Equal(ProviderTypeDescriptors.MinerUCloudDefaultModel, sentModel);
+        Assert.Equal("pipeline", sentModel);
+    }
+
     [Fact]
     public async Task Cloud_submit_reuses_checkpoint_and_skips_upload_when_batch_started()
     {
