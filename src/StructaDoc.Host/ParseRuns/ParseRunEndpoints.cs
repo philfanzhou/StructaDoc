@@ -8,6 +8,7 @@ using StructaDoc.Application.ParseRuns;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Authentication;
+using StructaDoc.Host.Workers;
 
 namespace StructaDoc.Host.ParseRuns;
 
@@ -41,8 +42,22 @@ public static class ParseRunEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
+        // Queueing work before execution is turned on is a supported thing to do, so a run is
+        // accepted either way. What is not supportable is leaving the person watching it unable to
+        // tell a queue that is moving from one that never will. Anyone allowed to read Parse Runs
+        // may read this, because whoever is waiting is usually not the administrator who can act.
+        endpoints.MapGet("/api/v1/parse-execution", GetExecutionStatus)
+            .RequireAuthorization(AuthorizationPolicies.ParsesRead)
+            .Produces<ParseExecutionStatusResponse>();
         return endpoints;
     }
+
+    // The gate rather than the bound option: an administrator can open it while the service runs,
+    // and a page that reported the startup value would keep saying parsing is off after it was on.
+    private static IResult GetExecutionStatus(
+        ParseRunWorkerOptions options,
+        ParseExecutionGate executionGate) =>
+        Results.Ok(new ParseExecutionStatusResponse(options.Enabled, executionGate.IsOpen));
 
     private static async Task<IResult> CancelAsync(
         Guid id,

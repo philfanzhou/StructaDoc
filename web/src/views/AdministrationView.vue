@@ -64,6 +64,9 @@ const settings = ref<Setting[]>([])
 // The banner follows what the server reports rather than what this tab did, so a change another
 // administrator made is not silently forgotten by a reload.
 const restartPending = computed(() => settings.value.some(setting => setting.isPendingRestart))
+// The one setting whose "off" is invisible everywhere else: nothing fails, nothing is logged, and
+// documents simply queue. Surfaced as a banner rather than left as one row among thirty.
+const parseExecutionOff = computed(() => settings.value.find(setting => setting.key === 'Worker:ExecutionEnabled' && setting.value !== 'true'))
 const restarting = ref(false)
 const settingLabels: Record<string, string> = {
   'Worker:ExecutionEnabled': '启用解析执行',
@@ -427,6 +430,7 @@ onMounted(() => load())
     <section class="panel admin-card wide-card">
       <p class="eyebrow">SERVICE SETTINGS</p><h2>服务设置</h2>
       <div v-if="restartPending" class="notice-banner"><div>部分设置需重启服务后才会生效。</div><button :disabled="restarting" @click="restart">{{ restarting ? '正在重启…' : '立即重启' }}</button></div>
+      <div v-if="parseExecutionOff" class="notice-banner"><div>解析执行未启用：用户上传并创建的解析任务会一直停留在“排队中”，不会发送给解析提供方。</div><button v-if="!parseExecutionOff.isManagedExternally" @click="saveSetting(parseExecutionOff, 'true')">立即启用</button></div>
       <div class="admin-list">
         <div v-for="setting in serviceSettings" :key="setting.key">
           <span><strong>{{ settingLabels[setting.key] || setting.key }}</strong><small>{{ setting.key }}<template v-if="setting.isManagedExternally"> · 由部署环境变量固定</template><template v-else-if="!setting.isStored"> · 使用默认值</template><template v-if="setting.isPendingRestart"> · 待重启生效</template></small></span>

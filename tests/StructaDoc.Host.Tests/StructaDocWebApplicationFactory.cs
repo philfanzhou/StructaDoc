@@ -24,6 +24,10 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
         builder.UseSetting("Worker:RecoveryBatchSize", "20");
         builder.UseSetting("Worker:LeaseDuration", "00:00:30");
         builder.UseSetting("Worker:HeartbeatInterval", "00:00:00.100");
+        // Every test on this shared host signs in once, so the shipped limit is reached by adding a
+        // test rather than by anything the tests are about. The limiter itself is covered against a
+        // host configured for it in AdministratorSessionEndpointTests.
+        builder.UseSetting("Authentication:LoginPermitLimit", "1000");
         builder.UseSetting("Documents:UploadApiEnabled", "true");
         builder.UseSetting("Documents:MaxUploadBytes", "1048576");
         builder.UseSetting(

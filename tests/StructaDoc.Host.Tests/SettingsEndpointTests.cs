@@ -6,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Authentication;
+using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Contracts.Settings;
 using StructaDoc.Adapters.ControlPlane;
 
@@ -184,6 +185,17 @@ public sealed class SettingsEndpointTests
         // a caller comparing the two spellings would read one of them wrongly.
         Assert.Equal("false", (await GetAsync(client, SettingCatalog.ParseExecutionEnabled)).Value);
 
+        // What the workspace reads to explain a queue that is not moving. It has to follow the gate
+        // the Worker consults rather than the value bound at startup, or the notice telling someone
+        // parsing is off would stay up after they turned it on.
+        var beforeStatus = await client
+            .GetFromJsonAsync<ParseExecutionStatusResponse>("/api/v1/parse-execution");
+        // This deployment pins Worker:Enabled off, which is the case the two flags exist to keep
+        // apart: opening the switch below still leaves nothing running, and only one of the two can
+        // be acted on from a browser.
+        Assert.False(beforeStatus!.WorkerEnabled);
+        Assert.False(beforeStatus.ExecutionEnabled);
+
         using var response = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
             new SettingUpdateRequest(SettingCatalog.ParseExecutionEnabled, "true"));
@@ -192,6 +204,25 @@ public sealed class SettingsEndpointTests
         var result = await response.Content.ReadFromJsonAsync<SettingUpdateResponse>();
         Assert.False(result!.RestartRequired);
         Assert.Equal("true", (await GetAsync(client, SettingCatalog.ParseExecutionEnabled)).Value);
+
+        var afterStatus = await client
+            .GetFromJsonAsync<ParseExecutionStatusResponse>("/api/v1/parse-execution");
+        Assert.True(afterStatus!.ExecutionEnabled);
+    }
+
+    [Fact]
+    public async Task Parse_execution_status_is_not_readable_without_signing_in()
+    {
+        using var deployment = new SettingsTestDeployment();
+        using var factory = deployment.CreateFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/v1/parse-execution");
+
+        Assert.True(
+            response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+                or HttpStatusCode.Redirect or HttpStatusCode.Found,
+            $"Unauthenticated access returned {(int)response.StatusCode}.");
     }
 
     [Theory]

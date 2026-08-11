@@ -2,6 +2,7 @@ export type Session = { authenticated: boolean; subjectType?: string; subjectId?
 export type DocumentItem = { id: string; originalFileName: string; mediaType: string; extension: string; sizeBytes: number; sha256: string; createdAt: string; latestParseStatus?: string; ownedByCurrentUser: boolean }
 export type ParseRun = { id: string; documentId: string; status: string; stage?: string; providerType: string; attemptCount: number; maxAttempts: number; errorCode?: string; errorMessage?: string; createdAt: string; completedAt?: string }
 export type ParseBlock = { id: string; sequence: number; pageNumber?: number; type: string; subtype?: string; content?: string; contentFormat?: string; confidence?: number; assetId?: string }
+export type ParseExecutionStatus = { workerEnabled: boolean; executionEnabled: boolean }
 
 let csrf: { requestToken: string; headerName: string } | undefined
 

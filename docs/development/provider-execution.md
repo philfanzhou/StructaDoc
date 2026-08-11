@@ -52,7 +52,7 @@ If a conversion snapshot exists, recovery reuses its PDF. If an archive exists, 
 
 For a protocol without a durable submission checkpoint, an unknown submission outcome is not automatically resent; it fails with `provider-submission-outcome-unknown`. This deliberately favors avoiding duplicate external jobs over speculative resubmission.
 
-`Worker:ExecutionEnabled` must be explicitly enabled and defaults to `false`.
+`Worker:ExecutionEnabled` must be explicitly enabled and defaults to `false`. Queueing runs before it is opened is supported and nothing rejects them, so the state has to be visible instead: `GET /api/v1/parse-execution` reports it to anyone who may read Parse Runs, and both the workspace and the administration area say so rather than leaving a document at `queued` with no explanation. The endpoint reads the same gate the Worker consults, not the value bound at startup, so the notice clears as soon as the switch is opened.
 
 `Worker:MaxConcurrency` sets how many Parse Runs one Host executes at a time and defaults to `1`. Each slot claims under its own Worker ID, so slots never share a lease and one long-running Parse Run does not block the others. Raise it only within Provider rate limits and the independent `LibreOffice:MaxConcurrency` bound. Multiple Hosts can parallelize further through a server database; SQLite remains single-instance.
 

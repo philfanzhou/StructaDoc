@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { get, mutate, upload, type DocumentItem, type ParseBlock, type ParseRun } from '../api'
+import { get, mutate, upload, type DocumentItem, type ParseBlock, type ParseExecutionStatus, type ParseRun } from '../api'
 import { message } from '../messages'
 import { session } from '../session'
 
@@ -22,6 +22,31 @@ const statusText: Record<string, string> = { queued: '排队中', claimed: '已�
 const finalStatuses = ['succeeded', 'failed', 'cancelled']
 const canAdmin = computed(() => session.value?.isAdministrator === true)
 const canCancelRun = computed(() => selectedRun.value !== undefined && !finalStatuses.includes(selectedRun.value.status))
+
+// Nothing on this page can distinguish a queue that is moving from one that never will, and the
+// difference is a switch somewhere else entirely. Left unsaid, a document sits at 排队中 forever and
+// the only available reading is that parsing is broken.
+const parseExecution = ref<ParseExecutionStatus>()
+const enablingExecution = ref(false)
+const parsingHalted = computed(() =>
+  parseExecution.value !== undefined
+  && !(parseExecution.value.workerEnabled && parseExecution.value.executionEnabled))
+// Worker:Enabled is pinned by whoever starts the container, so an administrator reading this page
+// cannot act on it. Saying which of the two is shut is what makes the message actionable or not.
+const haltedByDeployment = computed(() => parseExecution.value?.workerEnabled === false)
+
+async function loadParseExecution() {
+  try { parseExecution.value = await get<ParseExecutionStatus>('/api/v1/parse-execution') }
+  catch { parseExecution.value = undefined }
+}
+
+// An administrator who is already looking at the stuck queue should not have to go and find the
+// switch. Same endpoint the administration page writes, so the same permission decides it.
+async function enableExecution() {
+  enablingExecution.value = true
+  try { await mutate('/api/v1/admin/settings', 'PUT', { key: 'Worker:ExecutionEnabled', value: 'true' }); await loadParseExecution(); message('解析执行已启用，排队中的任务会在几秒内开始') }
+  catch (e) { message((e as Error).message, true) } finally { enablingExecution.value = false }
+}
 
 // Parsing runs on the service and finishes without telling the browser, so anything unfinished on
 // screen has to be read again. Polling is tied to what is actually unfinished rather than left
@@ -103,6 +128,9 @@ async function refreshRuns(keepSelectedId?: string, quiet = false) {
 // A background pass keeps the selection where the user left it and stays silent on failure, so a
 // service that is briefly unreachable does not clear the screen or interrupt reading.
 async function pollProgress() {
+  // Only while the notice is up. Whoever opens the switch is on another page or another machine, and
+  // this is what takes the notice down without asking the user to reload.
+  if (parsingHalted.value) await loadParseExecution()
   const previous = selectedRun.value
   await refreshRuns(previous?.id, true)
   const current = selectedRun.value
@@ -137,11 +165,17 @@ async function grantAccess() {
   catch (e) { message((e as Error).message, true) }
 }
 
-onMounted(() => loadDocuments())
+onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
 </script>
 
 <template>
   <header class="page-header"><div><p class="eyebrow">WORKSPACE</p><h1>你的文档</h1><p>从原始文件到结构化结果，过程和产物都清晰可见。</p></div></header>
+
+  <div v-if="parsingHalted" class="notice-banner">
+    <div v-if="haltedByDeployment">本服务未启用解析 Worker，新建的解析任务会一直停留在“排队中”，不会发送给解析提供方。这一项由部署方在启动参数中固定（<code>Worker__Enabled</code>），无法在网页上修改。</div>
+    <div v-else>解析执行未启用，新建的解析任务会一直停留在“排队中”，不会发送给解析提供方。<template v-if="!canAdmin">请联系管理员在“系统管理 → 服务设置”中开启“启用解析执行”。</template></div>
+    <button v-if="!haltedByDeployment && canAdmin" :disabled="enablingExecution" @click="enableExecution">{{ enablingExecution ? '正在启用…' : '立即启用' }}</button>
+  </div>
 
   <section class="upload-zone" @dragover.prevent @drop.prevent="onFiles($event.dataTransfer?.files || null)">
     <div><strong>把文档拖到这里</strong><span>PDF、Word、PowerPoint、Excel；支持多文件</span></div>

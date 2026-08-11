@@ -48,6 +48,25 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         Assert.False(local.Model.IsUsed);
     }
 
+    // A Parse Run is accepted while execution is off and then queues indefinitely, which the product
+    // supports on purpose. What it cannot do is leave that indistinguishable from a queue about to
+    // move, so the state has to be readable by whoever is watching one.
+    [Fact]
+    public async Task Parse_execution_status_reports_both_switches_that_stop_a_queue_moving()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+
+        var status = await client
+            .GetFromJsonAsync<ParseExecutionStatusResponse>("/api/v1/parse-execution");
+
+        Assert.NotNull(status);
+        // Workers run here; the shipped default for execution is off. A run created below therefore
+        // stays queued, and this is the only thing that says why.
+        Assert.True(status.WorkerEnabled);
+        Assert.False(status.ExecutionEnabled);
+    }
+
     [Fact]
     public async Task Provider_types_are_not_readable_without_administrator_sign_in()
     {

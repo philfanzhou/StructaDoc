@@ -45,6 +45,8 @@ Callers may send one visible-ASCII `Idempotency-Key` up to 256 characters. Scope
 
 `GET /api/v1/parse-runs/{id}` requires corresponding resource access or `parses:read`. It returns stable status/stage, configuration snapshot facts, sanitized options, media types, attempt count, sanitized errors, and timestamps. It excludes leases, concurrency tokens, internal callers, credentials, checkpoints, and external task IDs.
 
+`GET /api/v1/parse-execution` requires `parses:read` and answers `workerEnabled` and `executionEnabled`. A run created while execution is closed is accepted and queues indefinitely, which is deliberate, but `queued` alone cannot distinguish that from a queue about to move. The two switches are reported separately because different people can act on them: `Worker:Enabled` belongs to whoever starts the container, `Worker:ExecutionEnabled` to an administrator with a browser. The value comes from the live gate rather than the bound option, so opening the switch takes the notice down without a restart or a reload.
+
 ## Cancellation
 
 `POST /api/v1/parse-runs/{parseRunId}/cancel` requires the same authorization as creating a Parse Run for the Document, and Cookie callers supply an antiforgery token. It moves a `queued`, `claimed`, `running`, or `retry-wait` run to `cancel-requested` with one conditional update, returns `202` with the updated record, stays idempotent through completion, returns `409` for a run that already reached `succeeded` or `failed`, and returns `404` for an unknown or inaccessible run. A run with no live lease may already be `cancelled` when the response is written, so callers depend on `status` finality rather than on observing `cancel-requested`. Completion to `cancelled` is durable and happens on the owning Worker or through Parse Run maintenance. See [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) section 13.
@@ -58,6 +60,8 @@ Choosing the hosted type fills the base URL with the published address of the ho
 The credential field starts empty on an edit, because the service never sends a stored credential back. An empty field means the stored value is kept; erasing one is a separate checkbox that sends `clearCredential`.
 
 Disabling the default configuration clears its default marker in the same write, since the service refuses a configuration that is disabled and default at once. The area also reports when no enabled default exists at all: the workspace starts a parse without naming a Provider, so that deployment has a button that can only fail.
+
+Parse execution being closed is reported the same way, as a banner rather than one boolean row among thirty. It is the only setting whose "off" is otherwise invisible from every direction: nothing fails, nothing is logged, and documents simply accumulate at `queued`. The workspace carries the same notice, with the switch itself for an administrator who is already looking at the stuck queue and would otherwise have to go and find it.
 
 ## Current Gaps
 

@@ -160,6 +160,8 @@ The default mapping is `http://localhost:8080`, and readiness is `/health/ready`
 
 Real Parse Run execution remains disabled until it is turned on. An administrator can do that under `/admin` without touching the container, and it takes effect immediately. Enabling it permits the Worker to send documents to the selected Provider and to start LibreOffice when conversion is required.
 
+A new deployment therefore parses nothing until someone does that, and until then an uploaded document sits at `queued` rather than failing. Both the workspace and the administration area say so, with the switch itself, so this is something an administrator is told rather than something a first deployment has to be warned about here. `GET /api/v1/parse-execution` answers the same question for anything that is not a browser.
+
 Setting it in the deployment instead pins it, which removes it from the administration page:
 
 ```bash
@@ -227,8 +229,12 @@ Named volumes inherit the image's non-root ownership. For bind mounts, grant the
 
 Backups must include the database, storage, and key ring as one consistent recovery set. Restoring the database without its objects breaks resource references; restoring encrypted Provider data without its key ring makes it unreadable.
 
+That cuts the other way too, and the service says so at every start: `No XML encryptor configured. Key … may be persisted to storage in unencrypted form.` The key ring under `/data/keys` is written in the clear, because a single container on Linux has nothing to encrypt it with that would not itself have to be stored somewhere — and it is the key that makes stored Provider tokens readable. Anyone holding a copy of `/data` holds those tokens. Treat the directory, and every backup and snapshot of it, as a secret: restrict it to the `APP_UID`, keep backups encrypted, and rotate a Provider credential that was in a copy which left the host. A deployment that needs the key ring itself encrypted at rest needs a master key held outside `/data`, which this image does not yet support.
+
 ## Runtime Limits
 
 Application code bounds conversion concurrency, execution time, file size, archive expansion, and temporary disk. These limits do not replace platform CPU, memory, process, filesystem, and log-rotation quotas. Production deployments should configure those quotas and capacity alerts for `/data`.
+
+The image logs database commands at `Warning`. At `Information` the two Workers alone write a few hundred lines a minute on a service doing nothing, which rotates away whatever an operator went looking for; the failures are what is worth keeping. Set `Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command=Information` to get the statements back while diagnosing something, and unset it afterwards.
 
 The container has a one-minute graceful shutdown window after `SIGTERM`. Remote Provider work remains governed by Parse Run leases and recovery semantics.
