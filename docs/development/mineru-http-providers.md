@@ -53,7 +53,8 @@ Local `backend` and Cloud `model` come from the immutable Provider configuration
 
 ## HTTP and Error Boundary
 
-- Response JSON is limited to 1 MiB and response bodies never enter logs or exceptions.
+- Response JSON is limited to 1 MiB and response bodies never enter logs or exceptions. The one exception is a Cloud rejection, where `code`, `msg`, and `trace_id` are carried into the recorded error — and only those three. MinerU answers a refused submission with HTTP 200 and a non-zero `code`, so an expired token, an unverified account, and an exhausted quota are otherwise indistinguishable from each other and from the service being broken. Each field is stripped of control characters and truncated, because it is someone else's string on its way into a database row and a browser; the rest of the body is not repeated, since a successful response from that same endpoint carries the presigned upload URL.
+- The `code` is checked for being a number before it is read as one. `JsonElement.TryGetInt32` throws rather than returning false for a non-number, and MinerU spells some codes as strings, so the unguarded read turned the responses that carry a reason into an exception outside every Provider failure category.
 - Provider API `400/422` is input failure, `401/403` is configuration failure, and `408/429/5xx` plus network timeout is transient.
 - A signed transfer `401/403` is not misreported as a Provider credential failure.
 - Private, loopback, link-local, reserved, multicast, or non-443 signed targets are security failures; temporary DNS/connection errors remain transient.

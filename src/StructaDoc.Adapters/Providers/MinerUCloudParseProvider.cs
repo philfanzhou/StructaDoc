@@ -8,6 +8,8 @@ public sealed class MinerUCloudParseProvider(
     HttpClient providerApiClient,
     HttpClient signedTransferClient) : IParseProvider
 {
+    private const int MaximumRejectionDetailLength = 200;
+
     private static readonly ProviderCapabilities Capabilities = new(
         [
             "application/pdf",
@@ -395,13 +397,23 @@ public sealed class MinerUCloudParseProvider(
 
     private static JsonElement ReadSuccessfulData(JsonElement root, string operation)
     {
+        // The kind is checked before the value because TryGetInt32 throws rather than returning false
+        // when the element is not a number, and MinerU spells some of its error codes as strings.
+        // Left unguarded, the one response that carries a reason is the one that crashes the adapter,
+        // and it escapes as an exception no Provider failure category applies to.
         if (!root.TryGetProperty("code", out var code)
+            || code.ValueKind != JsonValueKind.Number
             || !code.TryGetInt32(out var codeValue)
             || codeValue != 0)
         {
+            // The reason is the Provider's to give and the only part of this failure the service
+            // cannot work out for itself. Without it the run records that MinerU said no and nothing
+            // about why, which is indistinguishable to an administrator from the service being
+            // broken -- an expired token, an unverified account, and an exhausted quota all look the
+            // same.
             throw new ProviderException(
                 $"mineru-{operation}-rejected",
-                $"The MinerU {operation} request was rejected by the Provider.",
+                $"The MinerU {operation} request was rejected by the Provider. {DescribeRejection(root)}",
                 ProviderFailureCategory.Permanent);
         }
 
@@ -448,6 +460,60 @@ public sealed class MinerUCloudParseProvider(
         $"mineru-{operation}-response-invalid",
         message,
         ProviderFailureCategory.Permanent);
+
+    /// <summary>
+    /// What the Provider said when it refused, in the three fields that say it: its own code, its
+    /// message, and the trace identifier its support asks for.
+    ///
+    /// Only those three. A successful response from this same endpoint carries the presigned upload
+    /// URLs, so echoing a whole body would put a credential-bearing URL into a database row, a log
+    /// line, and a browser the first time the shape of a rejection changed.
+    /// </summary>
+    private static string DescribeRejection(JsonElement root)
+    {
+        string[] names = ["code", "msg", "trace_id"];
+        var described = names
+            .Select(name => (Name: name, Value: ReadRejectionScalar(root, name)))
+            .Where(field => field.Value is not null)
+            .Select(field => $"{field.Name}={field.Value}")
+            .ToArray();
+
+        return described.Length == 0
+            ? "It gave no code or message."
+            : string.Join(", ", described);
+    }
+
+    private static string? ReadRejectionScalar(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+
+        var text = value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => value.ToString(),
+            _ => null,
+        };
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        // Someone else's string, on its way into a stored error and onto a page. Control characters
+        // and an unbounded length are what a foreign string must not bring with it; the run's error
+        // column is bounded too, and truncating here keeps the rest of the sentence.
+        var sanitized = new string(text.Where(character => !char.IsControl(character)).ToArray()).Trim();
+        if (sanitized.Length == 0)
+        {
+            return null;
+        }
+
+        return sanitized.Length > MaximumRejectionDetailLength
+            ? string.Concat(sanitized.AsSpan(0, MaximumRejectionDetailLength), "…")
+            : sanitized;
+    }
 
     private sealed record CloudBatchResult(string State, string? FullZipUrl);
 }

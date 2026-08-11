@@ -203,6 +203,57 @@ public sealed class MinerUParseProviderTests
         Assert.Equal(3, requests);
     }
 
+    // A rejection is the Provider's answer and the service cannot reconstruct it. An expired token,
+    // an unverified account and an exhausted quota all arrive as HTTP 200 with a non-zero code, so a
+    // failure that dropped that code left an administrator with nothing to act on.
+    [Fact]
+    public async Task Cloud_submit_rejection_carries_the_reason_the_provider_gave()
+    {
+        var handler = new StubHandler(_ => Task.FromResult(JsonResponse(
+            HttpStatusCode.OK,
+            """
+            {"code":"A0211","msg":"token error","trace_id":"7f3c9a","data":null}
+            """)));
+
+        var exception = await Assert.ThrowsAsync<ProviderException>(() =>
+            CloudProvider(handler).PrepareSubmissionAsync(
+                CloudConfiguration(credential: "cloud-secret"),
+                Guid.NewGuid(),
+                Source("report.pdf", "document"u8.ToArray()),
+                "{}"));
+
+        Assert.Equal("mineru-cloud-submit-rejected", exception.ErrorCode);
+        Assert.Contains("code=A0211", exception.Message);
+        Assert.Contains("msg=token error", exception.Message);
+        Assert.Contains("trace_id=7f3c9a", exception.Message);
+    }
+
+    // The same endpoint answers a successful submission with the presigned upload URL. Describing a
+    // rejection by echoing whatever the body held would put that URL into a stored error, a log line
+    // and a browser the first time an upstream failure arrived shaped like a success.
+    [Fact]
+    public async Task Cloud_submit_rejection_does_not_repeat_anything_but_the_reason()
+    {
+        var handler = new StubHandler(_ => Task.FromResult(JsonResponse(
+            HttpStatusCode.OK,
+            """
+            {"code":-60012,"msg":"quota exceeded","data":{"file_urls":["https://upload.example/signed?key=secret-value"]}}
+            """)));
+
+        var exception = await Assert.ThrowsAsync<ProviderException>(() =>
+            CloudProvider(handler).PrepareSubmissionAsync(
+                CloudConfiguration(credential: "cloud-secret"),
+                Guid.NewGuid(),
+                Source("report.pdf", "document"u8.ToArray()),
+                "{}"));
+
+        Assert.Contains("code=-60012", exception.Message);
+        Assert.Contains("msg=quota exceeded", exception.Message);
+        Assert.DoesNotContain("secret-value", exception.Message);
+        Assert.DoesNotContain("upload.example", exception.Message);
+        Assert.DoesNotContain("cloud-secret", exception.Message);
+    }
+
     // The administration page tells an administrator what a blank Model field will send, and it reads
     // that from the descriptor rather than from this request. Nothing else ties the two together, so
     // an adapter that changed its fallback would leave the form confidently naming the old one.
