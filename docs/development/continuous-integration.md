@@ -46,6 +46,8 @@ What no test covers is a real MinerU service. Nothing in CI can supply one, so t
 
 ## Current Remote Status
 
+Tag `v0.1.3` exists and published nothing: its container job failed, so the publish job never ran. The failure was in the browser contract rather than the product — the administration area now opens the create-Provider form by itself while no Provider exists, and the test clicked the disclosure, which closed it. The tag was left where it is rather than moved onto the fix. A name that has been pushed is not repointed here even when it named nothing, and `v0.1.4` carries the release instead.
+
 The latest `main` run at the time of this update, workflow run `31475679356` for commit `dfa76a4`, completed successfully across all four jobs, as did run `31475683487` for the `v0.1.2` tag on the same commit.
 
 Those two are the first pair to run under the current tag rules, and they confirm them: the branch run published `sha-dfa76a4…` and nothing else, and the tag run published `0.1.2`, `0.1`, and `latest`. All three names now resolve to one manifest, which is the release build.

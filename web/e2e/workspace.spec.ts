@@ -50,9 +50,14 @@ test('administrator can use the document workspace and administration area', asy
 
   const providers = page.locator('section').filter({ has: page.getByText('PROVIDERS', { exact: true }) })
   // A deployment with no Provider cannot parse anything, so the administration area has to be able
-  // to create one and mark it default without a command line.
-  await providers.getByText('新增提供方').click()
-  const createForm = providers.locator('details .form-grid')
+  // to create one and mark it default without a command line. It is also the first thing on the page
+  // and opens itself while there are none, so this makes sure the form is open rather than clicking:
+  // a click on an open disclosure closes it.
+  const createDetails = providers.locator('details').first()
+  if (!await createDetails.evaluate(details => (details as HTMLDetailsElement).open)) {
+    await providers.getByText('新增提供方').click()
+  }
+  const createForm = createDetails.locator('.form-grid')
   await createForm.locator('input').first().fill(providerName)
 
   // The hosted service has one published address, and an administrator who has to retype it from
