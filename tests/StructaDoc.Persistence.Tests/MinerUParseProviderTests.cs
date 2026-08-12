@@ -254,6 +254,64 @@ public sealed class MinerUParseProviderTests
         Assert.DoesNotContain("cloud-secret", exception.Message);
     }
 
+    // The Provider's gateway spells the same three fields differently from its extraction API. Reading
+    // one spelling only is how a real rejection arrived with its trace identifier missing, which is
+    // the field its support asks for first.
+    [Fact]
+    public async Task Cloud_submit_rejection_reads_the_gateway_spelling_of_the_reason()
+    {
+        var handler = new StubHandler(_ => Task.FromResult(JsonResponse(
+            HttpStatusCode.OK,
+            """
+            {"traceId":"1b24375ed1e7","msgCode":"A0202","msg":"user authenticate failed","success":false}
+            """)));
+
+        var exception = await Assert.ThrowsAsync<ProviderException>(() =>
+            CloudProvider(handler).PrepareSubmissionAsync(
+                CloudConfiguration(credential: "cloud-secret"),
+                Guid.NewGuid(),
+                Source("report.pdf", "document"u8.ToArray()),
+                "{}"));
+
+        Assert.Equal("mineru-cloud-submit-rejected", exception.ErrorCode);
+        Assert.Contains("msgCode=A0202", exception.Message);
+        Assert.Contains("traceId=1b24375ed1e7", exception.Message);
+    }
+
+    // A body HttpClient cannot measure is sent chunked. These are a few hundred bytes, and a gateway
+    // that declines to read a chunked request body hands its handler an empty one -- which comes back
+    // as a complaint about the first required field and looks nothing like a framing problem.
+    [Fact]
+    public async Task Cloud_submit_states_the_length_and_type_of_its_request_body()
+    {
+        long? sentLength = null;
+        string? sentContentType = null;
+        var handler = new StubHandler(request =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                sentLength = request.Content!.Headers.ContentLength;
+                sentContentType = request.Content.Headers.ContentType?.ToString();
+            }
+
+            return Task.FromResult(JsonResponse(
+                HttpStatusCode.OK,
+                """
+                {"code":0,"data":{"batch_id":"batch-1","file_urls":["https://upload.example/signed?key=value"]}}
+                """));
+        });
+
+        await CloudProvider(handler).PrepareSubmissionAsync(
+            CloudConfiguration(credential: "cloud-secret"),
+            Guid.NewGuid(),
+            Source("report.pdf", "document"u8.ToArray()),
+            "{}");
+
+        Assert.NotNull(sentLength);
+        Assert.True(sentLength > 0);
+        Assert.Equal("application/json", sentContentType);
+    }
+
     // The administration page tells an administrator what a blank Model field will send, and it reads
     // that from the descriptor rather than from this request. Nothing else ties the two together, so
     // an adapter that changed its fallback would leave the form confidently naming the old one.

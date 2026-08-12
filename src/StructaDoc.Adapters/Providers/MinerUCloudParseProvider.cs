@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using System.Text.Json;
 using StructaDoc.Application.Providers;
 
@@ -71,7 +70,7 @@ public sealed class MinerUCloudParseProvider(
                 configuration.BaseUri,
                 "api/v4/file-urls/batch"))
         {
-            Content = JsonContent.Create(requestPayload),
+            Content = MinerUHttpProtocol.CreateJsonContent(requestPayload),
         };
         MinerUHttpProtocol.AddBearerCredential(
             request,
@@ -462,16 +461,21 @@ public sealed class MinerUCloudParseProvider(
         ProviderFailureCategory.Permanent);
 
     /// <summary>
-    /// What the Provider said when it refused, in the three fields that say it: its own code, its
-    /// message, and the trace identifier its support asks for.
+    /// What the Provider said when it refused, in the fields that say it: its own code, its message,
+    /// and the trace identifier its support asks for.
     ///
-    /// Only those three. A successful response from this same endpoint carries the presigned upload
-    /// URLs, so echoing a whole body would put a credential-bearing URL into a database row, a log
-    /// line, and a browser the first time the shape of a rejection changed.
+    /// Only those. A successful response from this same endpoint carries the presigned upload URLs,
+    /// so echoing a whole body would put a credential-bearing URL into a database row, a log line,
+    /// and a browser the first time the shape of a rejection changed.
+    ///
+    /// Each of the three is spelled two ways because the Provider spells them two ways: its gateway
+    /// answers with <c>msgCode</c> and <c>traceId</c>, its extraction API with <c>code</c> and
+    /// <c>trace_id</c>. Reading only one spelling loses the trace identifier from half of the
+    /// rejections, which is the one field that lets somebody else look the failure up.
     /// </summary>
     private static string DescribeRejection(JsonElement root)
     {
-        string[] names = ["code", "msg", "trace_id"];
+        string[] names = ["code", "msgCode", "msg", "trace_id", "traceId"];
         var described = names
             .Select(name => (Name: name, Value: ReadRejectionScalar(root, name)))
             .Where(field => field.Value is not null)

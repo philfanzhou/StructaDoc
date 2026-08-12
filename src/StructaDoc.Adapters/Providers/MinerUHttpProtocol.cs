@@ -45,6 +45,25 @@ internal static class MinerUHttpProtocol
         }
     }
 
+    /// <summary>
+    /// A request body MinerU can read before it reads anything else: serialized up front so the
+    /// request carries a Content-Length.
+    ///
+    /// <see cref="System.Net.Http.Json.JsonContent"/> cannot state a length, so HttpClient sends the
+    /// body chunked. These payloads are a few hundred bytes and gain nothing from streaming, while a
+    /// gateway that will not read a chunked request body hands the handler an empty one -- which
+    /// arrives as a complaint about the first required field rather than about the framing, and is
+    /// unrecognizable from the outside. The media type is written without a charset parameter for
+    /// the same reason: it is what the Provider documents, and its own parameter-error code covers
+    /// an unexpected Content-Type.
+    /// </summary>
+    public static HttpContent CreateJsonContent<TPayload>(TPayload payload)
+    {
+        var content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(payload));
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        return content;
+    }
+
     public static Uri BuildEndpoint(Uri baseUri, string relativePath)
     {
         ArgumentNullException.ThrowIfNull(baseUri);
