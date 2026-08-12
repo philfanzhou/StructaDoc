@@ -14,5 +14,6 @@ public sealed record ProviderSettingResponse(bool IsUsed, string? AppliedDefault
 public sealed record ProviderTypeResponse(
     string ProviderType,
     string? SuggestedBaseUrl,
+    bool RequiresCredential,
     ProviderSettingResponse Model,
     ProviderSettingResponse Backend);

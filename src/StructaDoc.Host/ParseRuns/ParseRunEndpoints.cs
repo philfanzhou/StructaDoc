@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.Extensions.Primitives;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.ParseRuns;
+using StructaDoc.Application.Providers;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Authentication;
@@ -51,8 +52,22 @@ public static class ParseRunEndpoints
         return endpoints;
     }
 
-    private static IResult GetExecutionStatus(ParseRunWorkerOptions options) =>
-        Results.Ok(new ParseExecutionStatusResponse(options.Enabled));
+    // The Provider configuration is read through the administration service because that is where it
+    // lives, but nothing about it crosses this boundary: the caller is any workspace user, and what
+    // they get back is one boolean about the Provider their next parse would use.
+    private static async Task<IResult> GetExecutionStatus(
+        ParseRunWorkerOptions options,
+        IProviderConfigAdministrationService providerConfigs,
+        CancellationToken cancellationToken)
+    {
+        var configs = await providerConfigs.ListAsync(cancellationToken);
+        var credentialMissing = configs.Any(config =>
+            config.IsDefault
+            && config.IsEnabled
+            && !config.HasCredential
+            && ProviderTypeDescriptors.RequiresCredential(config.ProviderType));
+        return Results.Ok(new ParseExecutionStatusResponse(options.Enabled, credentialMissing));
+    }
 
     private static async Task<IResult> CancelAsync(
         Guid id,
@@ -214,6 +229,10 @@ public static class ParseRunEndpoints
                 statusCode: StatusCodes.Status503ServiceUnavailable,
                 title: "Provider unavailable",
                 detail: "No enabled Provider Config is available for this Parse Run."),
+            ParseRunCreationStatus.ProviderCredentialMissing => Results.Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Provider credential missing",
+                detail: "The Provider this Parse Run would use authenticates every call and has no credential stored. An administrator supplies one under /admin."),
             _ => Results.Problem(
                 statusCode: StatusCodes.Status409Conflict,
                 title: "Parse Run cannot be created",

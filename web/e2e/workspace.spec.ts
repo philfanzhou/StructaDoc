@@ -49,6 +49,18 @@ test('administrator can use the document workspace and administration area', asy
   await expect(page.locator('.page-header code')).toHaveAttribute('title', reported)
 
   const providers = page.locator('section').filter({ has: page.getByText('PROVIDERS', { exact: true }) })
+
+  // The image arrives with the official endpoint already configured, so a first-run administrator
+  // supplies a token rather than assembling an address and a model from documentation. It is the
+  // default and deliberately has no credential, and both have to be legible on this page: the token
+  // is the one thing nobody but this deployment's administrator can provide.
+  // Being the default is asserted against a fresh Host in OfficialProviderSeedTests rather than
+  // here, because a retry runs against the deployment the previous attempt already made its own
+  // Provider the default in.
+  const officialRow = providers.locator('.admin-list > div').filter({ hasText: 'official' })
+  await expect(officialRow.getByText('缺少凭据', { exact: true })).toBeVisible()
+  await expect(officialRow.locator('small')).toContainText('https://mineru.net/')
+  await expect(officialRow.locator('small')).toContainText('模型 vlm')
   // A deployment with no Provider cannot parse anything, so the administration area has to be able
   // to create one and mark it default without a command line. It is also the first thing on the page
   // and opens itself while there are none, so this makes sure the form is open rather than clicking:
@@ -137,4 +149,15 @@ test('administrator can use the document workspace and administration area', asy
   await editor.locator('input').first().fill(correctedName)
   await editor.getByRole('button', { name: '保存' }).click()
   await expect(providers.getByText(correctedName)).toBeVisible()
+
+  // Filling the form in is the administrator saying they want this Provider used, so saving is what
+  // enables it. A stopped Provider that is edited and saved comes back enabled without a second
+  // click, and the form offers no switch to leave it off by accident.
+  const correctedRow = providers.locator('.admin-list > div').filter({ hasText: correctedName })
+  await correctedRow.getByRole('button', { name: '停用' }).click()
+  await expect(correctedRow.getByText('停用', { exact: true })).toBeVisible()
+  await correctedRow.getByRole('button', { name: '编辑' }).click()
+  await expect(editor.getByText('保存后会自动启用')).toBeVisible()
+  await editor.getByRole('button', { name: '保存' }).click()
+  await expect(correctedRow.getByText('启用', { exact: true })).toBeVisible()
 })

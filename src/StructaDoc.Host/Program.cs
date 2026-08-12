@@ -19,6 +19,7 @@ using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.Conversion;
 using StructaDoc.Adapters.Documents;
 using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Providers;
 using StructaDoc.Adapters.ProviderResults;
 using StructaDoc.Adapters.Providers;
 using StructaDoc.Adapters.Settings;
@@ -183,6 +184,22 @@ catch (Exception error) when (
 await app.Services.BootstrapStructaDocAdministratorAsync(
     authenticationOptions,
     app.Lifetime.ApplicationStopping);
+
+// A deployment with no Provider can accept documents and parse none of them, and assembling the
+// first one from documentation is the step a first-run administrator has no way to get right. The
+// official endpoint is therefore already configured, missing only its token. It needs the business
+// database, which the block above is allowed to leave unusable, so a failure here is recorded and
+// startup continues: the administration area is where both would be corrected.
+try
+{
+    await app.Services.SeedStructaDocOfficialProviderAsync(app.Lifetime.ApplicationStopping);
+}
+catch (Exception error) when (error is not OperationCanceledException)
+{
+    app.Logger.LogError(
+        error,
+        "The official Provider could not be configured. An administrator can create one under /admin.");
+}
 
 // First, because everything after it reads a scheme, a host, or a caller's address that is only
 // correct once the proxy in front has been believed: cookies decide `Secure` from the scheme, the

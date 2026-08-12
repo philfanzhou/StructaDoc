@@ -52,6 +52,7 @@ public enum ParseRunCreationStatus
     DocumentNotFound,
     ProviderConfigNotFound,
     ProviderUnavailable,
+    ProviderCredentialMissing,
     Conflict,
 }
 

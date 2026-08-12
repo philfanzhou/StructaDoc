@@ -23,7 +23,7 @@ cd StructaDoc
 sudo ./scripts/start-container.sh
 ```
 
-Then open `http://localhost:8080`. The first visitor is sent to `/setup` to create the administrator; parsing becomes available once that administrator configures and enables a Provider under `/admin`.
+Then open `http://localhost:8080`. The first visitor is sent to `/setup` to create the administrator. The official MinerU endpoint is already configured as the default Provider, with no token: parsing becomes available once that administrator enters an API token for it under `/admin`.
 
 `scripts/start-container.sh` is an example for Linux and WSL, and running it again is the normal way to apply a new image: it stops and removes an existing `structadoc` container before starting the current one. Documents, results, and the administrator live in `./data` on the host, which is what `sudo` is for — that directory has to belong to the image's non-root user. Change the image tag, the published port, the memory limit, or the data path by editing the variables at the top of the script.
 

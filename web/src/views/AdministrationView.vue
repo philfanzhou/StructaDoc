@@ -12,14 +12,14 @@ const providerTypes = [
   { value: 'mineru-local', label: 'MinerU 本地服务（自建，文档不出网）' },
   { value: 'mineru-cloud', label: 'MinerU 云端服务（文档会上传到外部）' },
 ]
-type ProviderDraft = { id?: string; name: string; providerType: string; baseUrl: string; model: string; backend: string; credential: string; clearCredential: boolean; isEnabled: boolean; isDefault: boolean; hasCredential: boolean }
-function blankProvider(): ProviderDraft { return { name: '', providerType: 'mineru-local', baseUrl: '', model: '', backend: '', credential: '', clearCredential: false, isEnabled: true, isDefault: false, hasCredential: false } }
+type ProviderDraft = { id?: string; name: string; providerType: string; baseUrl: string; model: string; backend: string; credential: string; clearCredential: boolean; wasEnabled: boolean; isDefault: boolean; hasCredential: boolean }
+function blankProvider(): ProviderDraft { return { name: '', providerType: 'mineru-local', baseUrl: '', model: '', backend: '', credential: '', clearCredential: false, wasEnabled: true, isDefault: false, hasCredential: false } }
 const newProvider = ref<ProviderDraft>(blankProvider())
 const providerDraft = ref<ProviderDraft | null>(null)
 // What each type needs and what a blank field turns into. The service owns these because the
 // adapters do; holding a copy here would go on claiming a default after the adapter changed it.
 type ProviderSetting = { isUsed: boolean; appliedDefault: string | null }
-type ProviderTypeInfo = { providerType: string; suggestedBaseUrl: string | null; model: ProviderSetting; backend: ProviderSetting }
+type ProviderTypeInfo = { providerType: string; suggestedBaseUrl: string | null; requiresCredential: boolean; model: ProviderSetting; backend: ProviderSetting }
 const providerTypeInfo = ref<ProviderTypeInfo[]>([])
 function typeInfo(providerType: string) { return providerTypeInfo.value.find(info => info.providerType === providerType) }
 // An optional field is worth showing only when the type reads it, and it is worth filling in only
@@ -44,6 +44,11 @@ function resetNewProvider() {
 // The workspace starts a parse without naming a Provider, so a deployment with no enabled default
 // has a button that can only fail. Saying so here is cheaper than reading that failure.
 const hasDefaultProvider = computed(() => providers.value.some(provider => provider.isDefault && provider.isEnabled))
+// The deployment ships with the official endpoint already configured and no token, because the token
+// belongs to this deployment's own MinerU account. Nothing else on the page shows that a Provider is
+// one field short of working, and the parse it would refuse happens on another page.
+function needsCredential(provider: any) { return typeInfo(provider.providerType)?.requiresCredential === true && !provider.hasCredential }
+const defaultProviderNeedingCredential = computed(() => providers.value.find(provider => provider.isDefault && provider.isEnabled && needsCredential(provider)))
 const newClient = ref({ name: '', scopes: ['documents:read', 'documents:write', 'parses:read', 'parses:write'] })
 const newAdministrator = ref({ username: '', displayName: '', password: '' })
 const ownPassword = ref({ currentPassword: '', newPassword: '', confirmPassword: '' })
@@ -362,10 +367,12 @@ function providerPayload(draft: ProviderDraft) {
     // Clearing and setting are mutually exclusive; sending both is refused.
     credential: draft.clearCredential ? null : draft.credential || null,
     clearCredential: draft.clearCredential,
-    isEnabled: draft.isEnabled,
-    // The service refuses a configuration that is disabled and default at once, so the form cannot
-    // submit that pair however the two boxes were left.
-    isDefault: draft.isEnabled && draft.isDefault,
+    // Filling this form in is the administrator saying they want this Provider used. Asking them to
+    // confirm that with a second tick adds a way to get it wrong and nothing else, so saving enables
+    // it. Whether the credential is right is not knowable here and is not what this decides;
+    // retiring a Provider is the row's own action, deliberately outside the form.
+    isEnabled: true,
+    isDefault: draft.isDefault,
   }
 }
 
@@ -377,7 +384,7 @@ async function createProvider() {
 // The stored credential never comes back from the service, so the field starts empty and an empty
 // field means "leave it as it is". Erasing one is a separate, deliberate checkbox.
 function editProvider(provider: any) {
-  providerDraft.value = { id: provider.id, name: provider.name, providerType: provider.providerType, baseUrl: provider.baseUrl, model: provider.model ?? '', backend: provider.backend ?? '', credential: '', clearCredential: false, isEnabled: provider.isEnabled, isDefault: provider.isDefault, hasCredential: provider.hasCredential }
+  providerDraft.value = { id: provider.id, name: provider.name, providerType: provider.providerType, baseUrl: provider.baseUrl, model: provider.model ?? '', backend: provider.backend ?? '', credential: '', clearCredential: false, wasEnabled: provider.isEnabled, isDefault: provider.isDefault, hasCredential: provider.hasCredential }
 }
 
 async function saveProvider() {
@@ -446,10 +453,12 @@ onMounted(() => load())
       <p class="eyebrow">PROVIDERS</p><h2>解析提供方</h2>
       <p class="hint">工作台的“开始新解析”总是使用默认提供方。选择云端类型意味着文档会被上传到外部服务。配置好并设为默认之后，上传的文档就会被解析，没有另外的开关。</p>
       <div v-if="providers.length && !hasDefaultProvider" class="notice-banner"><div>当前没有启用中的默认提供方，工作台的“开始新解析”会失败。请为其中一个提供方点击“设为默认”。</div></div>
+      <div v-if="defaultProviderNeedingCredential" class="notice-banner"><div>默认提供方“{{ defaultProviderNeedingCredential.name }}”还没有填写凭据。服务地址和模型已经配置好，只差这一项：在 <a href="https://mineru.net" target="_blank" rel="noreferrer">mineru.net</a> 申请 API Token，点击该提供方的“编辑”填入“凭据”并保存。在此之前，工作台的“开始新解析”会被拒绝。</div><button @click="editProvider(defaultProviderNeedingCredential)">填写凭据</button></div>
       <div class="admin-list">
         <div v-for="provider in providers" :key="provider.id">
-          <span><strong>{{ provider.name }}</strong><small>{{ providerTypeLabel(provider.providerType) }} · {{ provider.baseUrl }}<template v-if="provider.hasCredential"> · 已设置凭据</template> · 第 {{ provider.versionNumber }} 版</small></span>
+          <span><strong>{{ provider.name }}</strong><small>{{ providerTypeLabel(provider.providerType) }} · {{ provider.baseUrl }}<template v-if="provider.model"> · 模型 {{ provider.model }}</template><template v-if="provider.hasCredential"> · 已设置凭据</template> · 第 {{ provider.versionNumber }} 版</small></span>
           <span class="row-actions">
+            <span v-if="needsCredential(provider)" class="status failed">缺少凭据</span>
             <span v-if="provider.isDefault" class="status succeeded">默认</span>
             <span class="status" :class="provider.isEnabled ? 'succeeded' : ''">{{ provider.isEnabled ? '启用' : '停用' }}</span>
             <button @click="editProvider(provider)">编辑</button>
@@ -471,8 +480,8 @@ onMounted(() => load())
           <label v-if="typeInfo(providerDraft.providerType)?.backend.isUsed">后端（可选）<input v-model="providerDraft.backend" :placeholder="settingHint(typeInfo(providerDraft.providerType)?.backend)"><small>{{ settingHint(typeInfo(providerDraft.providerType)?.backend) }}</small></label>
           <label class="wide">凭据<input v-model="providerDraft.credential" type="password" autocomplete="new-password" :disabled="providerDraft.clearCredential" :placeholder="providerDraft.hasCredential ? '已设置（不回显），留空即保持不变' : '未设置'"></label>
           <label v-if="providerDraft.hasCredential"><input v-model="providerDraft.clearCredential" type="checkbox"> 清除已保存的凭据</label>
-          <label><input v-model="providerDraft.isEnabled" type="checkbox"> 启用</label>
-          <label><input v-model="providerDraft.isDefault" type="checkbox" :disabled="!providerDraft.isEnabled"> 设为默认</label>
+          <label><input v-model="providerDraft.isDefault" type="checkbox"> 设为默认</label>
+          <p v-if="!providerDraft.wasEnabled" class="hint wide">这个提供方当前是停用状态，保存后会自动启用。不想启用就先不要保存。</p>
           <span class="row-actions wide"><button class="primary" @click="saveProvider">保存</button><button class="secondary" @click="providerDraft = null">取消</button></span>
         </div>
       </div>

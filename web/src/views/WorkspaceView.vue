@@ -28,6 +28,10 @@ const canCancelRun = computed(() => selectedRun.value !== undefined && !finalSta
 // which is exactly why it has to be said rather than left to look like parsing being broken.
 const parseExecution = ref<ParseExecutionStatus>()
 const parsingHalted = computed(() => parseExecution.value?.workerEnabled === false)
+// The other reason a parse cannot start, and the one a fresh deployment starts in: the official
+// endpoint is configured as the default but nobody has entered its token yet. Only an administrator
+// can, so this is said here rather than left to a refusal in English on the next click.
+const providerCredentialMissing = computed(() => parseExecution.value?.providerCredentialMissing === true)
 
 async function loadParseExecution() {
   try { parseExecution.value = await get<ParseExecutionStatus>('/api/v1/parse-execution') }
@@ -134,7 +138,7 @@ async function refreshRuns(keepSelectedId?: string, quiet = false) {
 async function pollProgress() {
   // Only while the notice is up. Whoever opens the switch is on another page or another machine, and
   // this is what takes the notice down without asking the user to reload.
-  if (parsingHalted.value) await loadParseExecution()
+  if (parsingHalted.value || providerCredentialMissing.value) await loadParseExecution()
   const previous = selectedRun.value
   await refreshRuns(previous?.id, true)
   const current = selectedRun.value
@@ -177,6 +181,10 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
 
   <div v-if="parsingHalted" class="notice-banner">
     <div>本服务未启用解析 Worker，新建的解析任务会一直停留在“排队中”。这一项由部署方在启动参数中固定（<code>Worker__Enabled</code>），无法在网页上修改。</div>
+  </div>
+
+  <div v-if="providerCredentialMissing" class="notice-banner">
+    <div>默认解析提供方还没有填写凭据，“开始新解析”会被拒绝。文档可以正常上传和保存，等管理员在管理后台填入 API Token 之后再解析即可。</div>
   </div>
 
   <section class="upload-zone" @dragover.prevent @drop.prevent="onFiles($event.dataTransfer?.files || null)">

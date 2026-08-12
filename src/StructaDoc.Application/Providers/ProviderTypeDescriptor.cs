@@ -26,9 +26,15 @@ public sealed record ProviderSettingDescriptor(bool IsUsed, string? AppliedDefau
 /// The published address of the official service, or <see langword="null"/> when the address is
 /// site-specific and only the deployment knows it.
 /// </param>
+/// <param name="RequiresCredential">
+/// Whether every request this type makes carries a credential. A type that requires one is
+/// unusable without it, so a configuration missing it is refused before a Parse Run is created
+/// rather than left to fail against the service.
+/// </param>
 public sealed record ProviderTypeDescriptor(
     string ProviderType,
     string? SuggestedBaseUrl,
+    bool RequiresCredential,
     ProviderSettingDescriptor Model,
     ProviderSettingDescriptor Backend);
 
@@ -55,6 +61,9 @@ public static class ProviderTypeDescriptors
     public static readonly ProviderTypeDescriptor MinerUCloud = new(
         ProviderTypes.MinerUCloud,
         MinerUCloudBaseUrl,
+        // The hosted service authenticates every call, so a configuration without a token can only
+        // produce failed Parse Runs.
+        RequiresCredential: true,
         new ProviderSettingDescriptor(true, MinerUCloudDefaultModel),
         ProviderSettingDescriptor.Unused);
 
@@ -62,10 +71,23 @@ public static class ProviderTypeDescriptors
         ProviderTypes.MinerULocal,
         // A self-hosted service has no address anyone but its operator can know.
         null,
+        // A self-hosted deployment decides whether it sits behind a token at all.
+        RequiresCredential: false,
         ProviderSettingDescriptor.Unused,
         // The Local protocol omits the field entirely when it is blank, so the MinerU service picks.
         ProviderSettingDescriptor.DecidedByService);
 
     public static IReadOnlyList<ProviderTypeDescriptor> All { get; } =
         [MinerULocal, MinerUCloud];
+
+    /// <summary>
+    /// Whether a configuration of this type is unusable until a credential is stored. An unknown
+    /// type answers <see langword="false"/>: it is not this method's place to block a Parse Run
+    /// over a type it cannot describe.
+    /// </summary>
+    public static bool RequiresCredential(string providerType) =>
+        All.FirstOrDefault(descriptor => string.Equals(
+            descriptor.ProviderType,
+            providerType,
+            StringComparison.Ordinal))?.RequiresCredential == true;
 }

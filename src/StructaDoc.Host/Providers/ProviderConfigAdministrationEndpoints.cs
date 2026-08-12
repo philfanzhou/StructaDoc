@@ -202,6 +202,7 @@ public static class ProviderConfigAdministrationEndpoints
     private static ProviderTypeResponse ToResponse(ProviderTypeDescriptor descriptor) => new(
         descriptor.ProviderType,
         descriptor.SuggestedBaseUrl,
+        descriptor.RequiresCredential,
         new ProviderSettingResponse(descriptor.Model.IsUsed, descriptor.Model.AppliedDefault),
         new ProviderSettingResponse(descriptor.Backend.IsUsed, descriptor.Backend.AppliedDefault));
 

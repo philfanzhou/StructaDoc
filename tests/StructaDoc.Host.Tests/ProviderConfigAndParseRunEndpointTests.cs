@@ -35,6 +35,10 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
 
         Assert.Equal("https://mineru.net", cloud.SuggestedBaseUrl);
         Assert.Equal("pipeline", cloud.Model.AppliedDefault);
+        // The hosted service authenticates every call and a self-hosted one decides for itself, so
+        // the form can say which configurations are finished and which are a token short.
+        Assert.True(cloud.RequiresCredential);
+        Assert.False(local.RequiresCredential);
         // Each type ignores one of the two settings, so a form told otherwise would offer a field
         // that changes nothing about the request.
         Assert.True(cloud.Model.IsUsed);

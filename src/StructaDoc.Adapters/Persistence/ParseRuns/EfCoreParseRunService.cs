@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using StructaDoc.Application.ParseRuns;
+using StructaDoc.Application.Providers;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Adapters.Persistence.Entities;
 
@@ -50,11 +51,23 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
             return new(ParseRunCreationStatus.ProviderUnavailable);
         }
 
-        var versionExists = await dbContext.ProviderConfigVersions.AsNoTracking()
-            .AnyAsync(version => version.Id == config.CurrentVersionId, cancellationToken);
-        if (!versionExists)
+        var version = await dbContext.ProviderConfigVersions.AsNoTracking()
+            .Where(item => item.Id == config.CurrentVersionId)
+            .Select(item => new { HasCredential = item.ProtectedCredential != null })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (version is null)
         {
             return new(ParseRunCreationStatus.ProviderUnavailable);
+        }
+
+        // A Provider that authenticates every call cannot do anything without its credential. The
+        // deployment ships with the official endpoint already configured and deliberately without
+        // one, so this is the ordinary state of a service nobody has finished setting up: saying so
+        // here is what keeps it from becoming a queue of Parse Runs that were always going to fail.
+        if (!version.HasCredential
+            && ProviderTypeDescriptors.RequiresCredential(config.ProviderType))
+        {
+            return new(ParseRunCreationStatus.ProviderCredentialMissing);
         }
 
         var entity = new ParseRunEntity
