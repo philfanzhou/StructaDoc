@@ -11,6 +11,22 @@ Users can upload and manage PDF, Word, Excel, and PowerPoint files; start parsin
 
 MinerU Cloud and self-hosted MinerU are adapters behind a Provider-neutral boundary. Consumers never need to understand Provider task protocols, output layouts, or version-specific raw JSON.
 
+## Quick Start
+
+Pull the published image and start it with the example script:
+
+```bash
+docker pull ghcr.io/philfanzhou/structadoc:latest
+
+git clone https://github.com/philfanzhou/StructaDoc.git
+cd StructaDoc
+sudo ./scripts/start-container.sh
+```
+
+Then open `http://localhost:8080`. The first visitor is sent to `/setup` to create the administrator; parsing becomes available once that administrator configures and enables a Provider under `/admin`.
+
+`scripts/start-container.sh` is an example for Linux and WSL, and running it again is the normal way to apply a new image: it stops and removes an existing `structadoc` container before starting the current one. Documents, results, and the administrator live in `./data` on the host, which is what `sudo` is for — that directory has to belong to the image's non-root user. Change the image tag, the published port, the memory limit, or the data path by editing the variables at the top of the script.
+
 ## Project Status
 
 StructaDoc is in early development, but the main end-to-end platform is implemented:
@@ -115,7 +131,7 @@ docker run --detach --name structadoc `
   structadoc:local
 ```
 
-The default address is `http://localhost:8080`, with the workspace at `/` and the administration area at `/admin`. The bootstrap variables are optional: omit them and the first visitor is sent to `/setup` to create the administrator. The example values show the required shape and are not default credentials. Inject production secrets through the deployment platform and remove bootstrap credentials after the first administrator exists.
+To run the published image instead of a locally built one, use `scripts/start-container.sh` from [Quick Start](#quick-start). The default address is `http://localhost:8080`, with the workspace at `/` and the administration area at `/admin`. The bootstrap variables are optional: omit them and the first visitor is sent to `/setup` to create the administrator. The example values show the required shape and are not default credentials. Inject production secrets through the deployment platform and remove bootstrap credentials after the first administrator exists.
 
 For restricted networks, the repository includes explicit `official`, `china`, and connectivity-based `auto` build modes:
 

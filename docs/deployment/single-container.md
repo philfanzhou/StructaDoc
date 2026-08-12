@@ -148,6 +148,8 @@ docker run --detach --name structadoc `
   structadoc:local
 ```
 
+`scripts/start-container.sh` is that command written down for Linux and WSL, using the published image and the repository's own `data` directory. It removes an existing `structadoc` container before starting the current one, so re-running it is how a new image is applied, and it needs root only to give the data directory to UID 1654. It carries no bootstrap credentials, which is why it can live in the repository.
+
 The security flags are part of the supported configuration, not decoration: a read-only root filesystem, dropped Linux capabilities, no privilege escalation, a bounded `/tmp` `tmpfs`, and the non-root UID from the official .NET image. Everything the service writes goes to `/data` or that `tmpfs`.
 
 A host-directory bind mount is preferred over a named volume. `/data` is the entire recovery set, and a plain directory can be inspected and copied without Docker-specific tooling.
