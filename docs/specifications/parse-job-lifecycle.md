@@ -211,7 +211,8 @@ The complete upstream cancellation path remains an implementation gap because th
 ## 14. Deletion Interaction
 
 - A Document with non-final Parse Runs cannot enter deletion.
-- A non-final Parse Run cannot be deleted.
+- A non-final Parse Run cannot be deleted; cancelling it first is what makes it deletable.
+- Any final Parse Run can be deleted individually, whatever its final status and even as its Document's last one. Its Document survives with its original file and returns to being unparsed.
 - Execution never continues with a revoked storage reference.
 - Deletion marks resources pending and snapshots all objects into a persistent Cleanup Job.
 - Cleanup retries object deletion and removes relational rows only after objects are gone.

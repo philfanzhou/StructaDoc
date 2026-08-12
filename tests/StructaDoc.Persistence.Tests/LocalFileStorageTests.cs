@@ -75,6 +75,45 @@ public sealed class LocalFileStorageTests
         Assert.Equal(originalBytes, copy.ToArray());
     }
 
+    [Fact]
+    public async Task Delete_prunes_the_directories_the_object_left_behind()
+    {
+        using var directory = new TemporaryStorageDirectory();
+        var storage = directory.CreateStorage();
+        const string deletedRef = "parse-runs/abc/assets/image.png";
+        const string keptRef = "parse-runs/def/assets/image.png";
+
+        await using (var content = new MemoryStream("image"u8.ToArray()))
+        {
+            await storage.WriteAsync(deletedRef, content, maxBytes: 1024);
+        }
+
+        await using (var content = new MemoryStream("image"u8.ToArray()))
+        {
+            await storage.WriteAsync(keptRef, content, maxBytes: 1024);
+        }
+
+        await storage.DeleteIfExistsAsync(deletedRef);
+
+        Assert.False(Directory.Exists(Path.Combine(directory.Path, "parse-runs", "abc")));
+        // A sibling still holding an object stops the walk, and so does the storage root.
+        Assert.True(File.Exists(Path.Combine(directory.Path, "parse-runs", "def", "assets", "image.png")));
+        Assert.True(Directory.Exists(directory.Path));
+
+        // Deleting the last object leaves the root itself and the staging directory standing, so
+        // the storage stays usable without being constructed again.
+        await storage.DeleteIfExistsAsync(keptRef);
+        Assert.False(Directory.Exists(Path.Combine(directory.Path, "parse-runs")));
+        Assert.True(Directory.Exists(Path.Combine(directory.Path, ".staging")));
+
+        await using (var content = new MemoryStream("image"u8.ToArray()))
+        {
+            await storage.WriteAsync(keptRef, content, maxBytes: 1024);
+        }
+
+        Assert.True(File.Exists(Path.Combine(directory.Path, "parse-runs", "def", "assets", "image.png")));
+    }
+
     [Theory]
     [InlineData("../outside")]
     [InlineData("documents/../../outside")]

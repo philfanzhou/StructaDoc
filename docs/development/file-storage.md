@@ -1,7 +1,7 @@
 # File Storage
 
 - Status: Implementation note
-- Last updated: 2026-08-10
+- Last updated: 2026-08-12
 
 ## Storage Boundary
 
@@ -73,6 +73,8 @@ Changing storage does not move anything. Objects already written stay where they
 ## Deletion
 
 Deletion first marks a resource `deletion-pending` and snapshots all referenced objects into a persistent Cleanup Job. The cleanup Worker deletes each object idempotently, retries transient errors with backoff, and removes relational rows only after all storage work succeeds. It also recovers stale `running` jobs.
+
+The local implementation also removes the directories a delete emptied, up to but never including the storage root or its staging directory. Object keys are nested per Parse Run, so without this a deployment that deletes results would keep one empty tree per deleted run forever. A directory that still holds anything ends the walk, and the non-recursive delete is what makes a concurrent write into the same directory safe.
 
 ## Remaining Work
 

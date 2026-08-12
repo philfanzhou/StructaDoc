@@ -99,7 +99,7 @@ test('administrator can use the document workspace and administration area', asy
   await page.getByRole('button', { name: '开始新解析' }).click()
   const runStatus = page.locator('.run-list .status').first()
   await expect(runStatus).toBeVisible()
-  await page.locator('.run-list > button').first().click()
+  await page.locator('.run-list .run-open').first().click()
 
   // Nothing is clicked from here. The workspace polls while work is unfinished, so reaching a final
   // status on screen proves the Worker ran and the auto-refresh reported it. The error text
@@ -109,6 +109,14 @@ test('administrator can use the document workspace and administration area', asy
   await expect(page.locator('.inline-error')).toBeVisible()
   await expect(page.locator('.auto-refresh')).toBeHidden()
   await page.screenshot({ path: 'test-results/workspace.png', fullPage: true })
+
+  // A failed run is still a record the user has to be able to get rid of, including when it is the
+  // only one the Document has. What is left afterwards is the Document, unparsed and parseable
+  // again — the cleanup itself is covered against storage by UserWorkspaceFeatureTests.
+  page.once('dialog', dialog => dialog.accept())
+  await page.locator('.run-list .run-delete').first().click()
+  await expect(page.getByText('尚未创建解析任务。')).toBeVisible()
+  await expect(page.locator('.document-row.selected .status')).toHaveText('未解析')
 
   // A deep administration link survives a full reload, so the Host serves the SPA shell for
   // client-side routes rather than only for `/`.

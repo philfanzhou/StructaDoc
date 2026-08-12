@@ -135,7 +135,36 @@ public sealed class LocalFileStorage
             File.Delete(path);
         }
 
+        RemoveEmptyDirectories(Path.GetDirectoryName(path));
         return Task.CompletedTask;
+    }
+
+    // Deleting the last object under `parse-runs/<id>/assets` leaves the directory behind and
+    // nothing ever revisits it, so a deployment that deletes results would accumulate one empty
+    // tree per Parse Run forever. The walk stops at the storage root, at the staging directory the
+    // storage owns, and at the first directory that still holds something.
+    private void RemoveEmptyDirectories(string? directory)
+    {
+        while (directory is not null
+            && !string.Equals(directory, rootPath, StringComparison.Ordinal)
+            && !string.Equals(directory, stagingPath, StringComparison.Ordinal)
+            && directory.StartsWith(rootPath, StringComparison.Ordinal))
+        {
+            try
+            {
+                // The non-recursive overload is what makes this safe against a concurrent write:
+                // it fails on a directory that is no longer empty instead of taking the new file
+                // with it.
+                Directory.Delete(directory);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                return;
+            }
+
+            directory = Path.GetDirectoryName(directory);
+        }
     }
 
     private string ResolveStorageRef(string storageRef)

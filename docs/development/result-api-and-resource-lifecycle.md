@@ -14,6 +14,8 @@ GET    /api/v1/parse-runs/{parseRunId}/artifacts/{artifactId}/content
 GET    /api/v1/parse-runs/{parseRunId}/markdown
 GET    /api/v1/parse-runs/{parseRunId}/exports/{markdown|html|zip|pdf}
 POST   /api/v1/parse-runs/{parseRunId}/cancel
+DELETE /api/v1/parse-runs/{parseRunId}
+DELETE /api/v1/documents/{documentId}
 ```
 
 Blocks use `afterSequence` for stable cursor pagination. Their public DTO excludes `ProviderDataJson` and raw source locators.
@@ -40,6 +42,8 @@ Deletion is not a fragile synchronous transaction across a database and object s
 3. the cleanup Worker idempotently deletes originals, converted PDFs, Provider archives, PDF segments, segment archives, Assets, and Artifacts;
 4. only after all object deletions succeed does a database transaction remove relational rows and mark the job `completed`;
 5. transient failures enter exponential `retry-wait`, and stale `running` jobs are recovered.
+
+A Parse Run is deletable on its own terms once it is final, whether it succeeded, failed, or was cancelled, and whether or not it is the last one its Document has. Deleting a succeeded run removes everything that run produced — Pages, Blocks, Assets, Artifacts, and segments in the database, and the images, canonical Markdown, Provider archive, PDF segments, segment archives, and converted PDF in storage — while leaving the Document and its original file untouched. A Document that loses its last Parse Run is an unparsed Document again and can be parsed afresh. Local storage prunes the directories a deleted run emptied, so nothing survives the run but the tree it shared with others.
 
 A non-final Parse Run cannot be deleted, and a Document with active Parse Runs cannot be deleted. This prevents cleanup and execution Workers from racing for the same resources. Cancellation is therefore the supported way to release a Document whose Parse Run will never complete on its own, including every run created on a Host started without Workers. See [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) section 13.
 

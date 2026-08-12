@@ -104,6 +104,24 @@ async function cancelRun(run: ParseRun) {
   catch (e) { message((e as Error).message, true) } finally { busy.value = false }
 }
 
+// A record the user no longer wants is deletable whether it succeeded or failed, and down to the
+// last one — a Document with no Parse Runs is simply an unparsed Document again. Only an unfinished
+// run is held back, because the cleanup and the execution Worker would be after the same files;
+// cancelling it first is what makes it deletable.
+function canDeleteRun(run: ParseRun) { return finalStatuses.includes(run.status) }
+
+async function deleteRun(run: ParseRun) {
+  if (!confirm('确认删除这条解析记录？该次解析的结构化内容、图片、制品和原始结果归档都会被彻底清理，无法恢复。')) return
+  busy.value = true
+  try {
+    await mutate(`/api/v1/parse-runs/${run.id}`, 'DELETE')
+    if (selectedRun.value?.id === run.id) { selectedRun.value = undefined; blocks.value = []; pages.value = []; assets.value = []; artifacts.value = []; markdown.value = '' }
+    message('删除请求已进入清理队列')
+    await refreshRuns(selectedRun.value?.id)
+  }
+  catch (e) { message((e as Error).message, true) } finally { busy.value = false }
+}
+
 async function refreshRuns(keepSelectedId?: string, quiet = false) {
   if (!selectedDocument.value) return
   runs.value = await get(`/api/v1/documents/${selectedDocument.value.id}/parse-runs`)
@@ -176,7 +194,7 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
     <section class="panel detail" v-if="selectedDocument">
       <div class="detail-head"><div><p class="eyebrow">DOCUMENT</p><h2>{{ selectedDocument.originalFileName }}</h2><p>{{ selectedDocument.mediaType }} · SHA-256 {{ selectedDocument.sha256.slice(0, 12) }}…</p></div><button class="danger-link" @click="deleteCurrent">删除</button></div>
       <div class="actions"><button class="primary" :disabled="busy" @click="createParse">开始新解析</button><a class="secondary button-link" :href="`/api/v1/documents/${selectedDocument.id}/content`">下载原文</a></div>
-      <div class="run-list"><h3>解析记录</h3><button v-for="run in runs" :key="run.id" :class="{ selected: selectedRun?.id === run.id }" @click="openRun(run)"><span><strong>{{ run.providerType }}</strong><small>{{ prettyDate(run.createdAt) }} · 第 {{ run.attemptCount }}/{{ run.maxAttempts }} 次尝试</small></span><span class="status" :class="run.status">{{ statusText[run.status] || run.status }}</span></button><p v-if="!runs.length" class="muted">尚未创建解析任务。</p></div>
+      <div class="run-list"><h3>解析记录</h3><div v-for="run in runs" :key="run.id" class="run-row" :class="{ selected: selectedRun?.id === run.id }"><button class="run-open" @click="openRun(run)"><span><strong>{{ run.providerType }}</strong><small>{{ prettyDate(run.createdAt) }} · 第 {{ run.attemptCount }}/{{ run.maxAttempts }} 次尝试</small></span><span class="status" :class="run.status">{{ statusText[run.status] || run.status }}</span></button><button v-if="canDeleteRun(run)" class="danger-link run-delete" :disabled="busy" title="删除这条解析记录及其全部结果" @click="deleteRun(run)">删除</button></div><p v-if="!runs.length" class="muted">尚未创建解析任务。</p></div>
       <template v-if="selectedRun">
         <div v-if="selectedRun.errorMessage" class="inline-error">{{ selectedRun.errorCode }}：{{ selectedRun.errorMessage }}</div>
         <div v-if="canCancelRun" class="run-actions"><button class="secondary" :disabled="busy" @click="cancelRun(selectedRun)">取消解析</button><span>取消是尽力而为的：StructaDoc 会停止本地处理，但已提交给在线解析提供方的任务可能仍在上游继续消耗资源。</span></div>
@@ -190,5 +208,5 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
 </template>
 
 <style scoped>
-.auto-refresh{display:flex;align-items:center;font-size:11px;color:#57816e}.run-actions{display:flex;align-items:center;gap:10px;margin:12px 0}.run-actions span{font-size:11px;color:#5c6b62;line-height:1.5}.result-title{display:flex;align-items:center;gap:8px}.result-title h3{margin-right:auto}.result-title span{font-size:10px;color:#57816e;background:#e7eee9;padding:4px 7px;border-radius:20px}.resource-list{border-top:1px solid #d8ded9;padding-top:12px;margin-top:14px}.resource-list summary{font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px}.resource-list a{display:block;color:#123c2b;font-size:12px;padding:8px 0;border-bottom:1px solid #e8ebe8;text-decoration:none}.share-box fieldset{border:0;padding:8px 0 14px;display:flex;flex-wrap:wrap;gap:8px 14px}.share-box legend{font-size:12px;font-weight:700}.share-box fieldset label{display:flex;align-items:center;gap:5px;font-size:11px}.share-box fieldset input{width:auto}
+.auto-refresh{display:flex;align-items:center;font-size:11px;color:#57816e}.run-row{display:flex;align-items:center;border:1px solid var(--line);background:#fff;margin-bottom:7px}.run-row.selected{border-color:#4d8268;background:#f0f6f2}.run-open{flex:1;min-width:0;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:0;background:transparent;padding:12px}.run-delete{align-self:center;font-size:11px;padding:6px 12px}.run-delete:disabled{opacity:.5;cursor:default}.run-actions{display:flex;align-items:center;gap:10px;margin:12px 0}.run-actions span{font-size:11px;color:#5c6b62;line-height:1.5}.result-title{display:flex;align-items:center;gap:8px}.result-title h3{margin-right:auto}.result-title span{font-size:10px;color:#57816e;background:#e7eee9;padding:4px 7px;border-radius:20px}.resource-list{border-top:1px solid #d8ded9;padding-top:12px;margin-top:14px}.resource-list summary{font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px}.resource-list a{display:block;color:#123c2b;font-size:12px;padding:8px 0;border-bottom:1px solid #e8ebe8;text-decoration:none}.share-box fieldset{border:0;padding:8px 0 14px;display:flex;flex-wrap:wrap;gap:8px 14px}.share-box legend{font-size:12px;font-weight:700}.share-box fieldset label{display:flex;align-items:center;gap:5px;font-size:11px}.share-box fieldset input{width:auto}
 </style>
