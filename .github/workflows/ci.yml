@@ -25,6 +25,32 @@ env:
   NUGET_XMLDOC_MODE: skip
 
 jobs:
+  # Split out of `build-and-test`, where it sat ahead of the .NET build and ended the job before a
+  # single project compiled. An advisory is published on the security world's clock rather than this
+  # repository's, so the day one lands every open branch turns red at once, and not one of them has
+  # been built, let alone tested. Kept apart the two failures stay readable: this job going red says
+  # the supply chain moved underneath us, `build-and-test` going red says the change under review
+  # broke something, and neither answer hides the other any more.
+  audit-web:
+    name: Web dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+
+      # No install precedes this and none is needed: `npm audit` resolves the dependency tree out of
+      # package-lock.json, which is also the file that decides the answer. Skipping the install is
+      # what keeps a gate this job exists to run cheap enough to run on its own.
+      - name: Audit web dependencies
+        working-directory: web
+        run: npm audit --audit-level=high
+
   build-and-test:
     name: Build and unit tests
     runs-on: ubuntu-24.04
@@ -51,10 +77,6 @@ jobs:
       - name: Install web dependencies
         working-directory: web
         run: npm ci
-
-      - name: Audit web dependencies
-        working-directory: web
-        run: npm audit --audit-level=high
 
       - name: Build web workspace
         working-directory: web
@@ -248,7 +270,12 @@ jobs:
     # browser flow against it, so an image that reaches the registry is one that started, answered
     # readiness, and served the workspace. Publishing ahead of that would mean the newest tag is the
     # least tested thing in the registry.
-    needs: [build-and-test, database-contracts, container-and-browser]
+    #
+    # The audit is listed for the same reason even though it compiles nothing. It moved out of
+    # `build-and-test` and would otherwise have quietly stopped gating anything, which is the one
+    # way this split could have made the pipeline weaker: an image carrying a high-severity advisory
+    # is exactly what should not acquire a registry tag.
+    needs: [audit-web, build-and-test, database-contracts, container-and-browser]
     # A pull request builds the image in the job above and stops there: a fork's token cannot write
     # packages, and a branch nobody has merged is not what `latest` means.
     if: >-
