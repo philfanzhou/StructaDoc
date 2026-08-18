@@ -32,6 +32,8 @@ Both image-building jobs pass `SOURCE_REVISION`, and the container job then asks
 
 Publishing waits on all four jobs above it, so a tag in the registry is an image that built, started under the production security flags, answered readiness, and served a browser flow. An image that failed any of that is never pushed, which is what keeps `latest` from being the least tested thing in the registry. The release job waits on publishing in turn, so a release never names an image nobody can pull.
 
+A tag whose run failed that way is not moved onto the fix. A name that has been pushed stays where it is even when it published nothing, and the next tag carries the release instead. A tag that can be repointed is not something a deployment can be pinned to, and the run that failed stays legible as what it was rather than being overwritten by a later attempt.
+
 Note that a release builds rather than promotes: the tag run compiles the source again and stamps the version the tag names into it. No image from an earlier run is retagged, and none is kept waiting for a release to claim it.
 
 The push is authenticated with the workflow's own `GITHUB_TOKEN` rather than a stored credential; no registry secret exists in this repository. Each image carries a signed build provenance attestation naming the workflow, commit, and build parameters that produced it, and an SBOM. `gh attestation verify oci://ghcr.io/philfanzhou/structadoc:latest --owner philfanzhou` checks one against this repository.
@@ -47,20 +49,6 @@ Parsing is the part of the product that is hardest to reach from a test, and the
 - The browser job runs the production image as shipped and points a Provider at an address the Host itself refuses. That covers what is specific to the image: the resident Worker starts, claims a queued run, calls out over HTTP, records a final status, and the workspace shows it without anyone pressing refresh. It passes no `Worker__` variable, so it also holds that a configured Provider is the only thing standing between an upload and an execution attempt.
 
 What no test covers is a real MinerU service. Nothing in CI can supply one, so the first real parse remains a deployment step rather than a verified one; everything up to the Provider's own behaviour is verified.
-
-## Current Remote Status
-
-Tag `v0.1.3` exists and published nothing: its container job failed, so the publish job never ran. The failure was in the browser contract rather than the product — the administration area now opens the create-Provider form by itself while no Provider exists, and the test clicked the disclosure, which closed it. The tag was left where it is rather than moved onto the fix. A name that has been pushed is not repointed here even when it named nothing, and `v0.1.4` carries the release instead.
-
-The latest `main` run at the time of this update, workflow run `31475679356` for commit `dfa76a4`, completed successfully across all four jobs, as did run `31475683487` for the `v0.1.2` tag on the same commit.
-
-Those two are the first pair to run under the current tag rules, and they confirm them: the branch run published `sha-dfa76a4…` and nothing else, and the tag run published `0.1.2`, `0.1`, and `latest`. All three names now resolve to one manifest, which is the release build.
-
-The rules were changed because of the preceding pair, run `31467581430` for `dc9ccbb` and run `31467584970` for `v0.1.1`. Both published under the previous rules, both claimed `latest`, and the branch run finished later, so `latest` named an image reporting `0.0.0-dev` while `0.1.1` named the identical source stamped as the release. Nothing was retagged to correct it; the next release moved `latest` back onto a release build on its own, which is what the rules are for.
-
-One preceding run remains visible as a failure in Actions history and is superseded rather than still active: run `31324328532` for commit `4fced2a` failed the container job on a read-only `/app/data`, because the image shipped its own defaults file and then ignored it. Commit `b2ea5c2` fixed the precedence and the next run passed.
-
-Historical red runs should not be mistaken for the current branch status. Always compare the run's head SHA with `origin/main` and inspect the newest run.
 
 ## Test Runner
 
@@ -101,5 +89,6 @@ Browser tests default to `http://127.0.0.1:8080`. Override it with `STRUCTADOC_E
 
 - Local build success does not substitute for the real database or production-container jobs.
 - A workflow definition is not proof that its jobs passed; use the run associated with the current commit.
+- A red run in the history is not the current status. Compare a run's head SHA with `origin/main` and read the newest one; an older failure is usually one a later commit already fixed.
 - Do not weaken tests or suppress package audits to make CI green.
 - Preserve failure artifacts long enough to diagnose database, browser, and container regressions.
