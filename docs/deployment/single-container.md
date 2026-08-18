@@ -16,25 +16,26 @@ Ubuntu 24.04 Noble is explicit because the official .NET 10 image does not provi
 
 ## Published Image
 
-CI publishes the image to GitHub Container Registry after every push to `main` and every `v*` tag that passes all three test jobs, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
+CI publishes the image to GitHub Container Registry for every `v*` tag that passes all four test jobs, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
 
 ```bash
 docker pull ghcr.io/philfanzhou/structadoc:latest
 ```
 
-The repository is public and so is the package, so this needs no registry sign-in. Tags are:
+The repository is public and so is the package, so this needs no registry sign-in. Every tag comes from a release:
 
-| Tag | Published by | Points at |
-|---|---|---|
-| `latest` | a `v*` tag | the newest release |
-| `<version>`, `<major>.<minor>` | a `v*` tag | that release |
-| `sha-<commit>` | a push to `main` | that commit, reporting `0.0.0-dev` |
+| Tag | Points at |
+|---|---|
+| `latest` | the newest release |
+| `<version>`, `<major>.<minor>` | that release |
 
-`latest` follows releases rather than the default branch, because whoever pulls it is whoever did not choose a tag and should not be handed a development build. It still moves under a deployment that restarts, so name a version tag in production, or a digest to pin exactly.
+Because only a release is published, there is no development build for `latest` to hand to whoever did not choose a tag. It still moves under a deployment that restarts, so name a version tag in production, or a digest to pin exactly.
 
-A commit tag is published only by the branch build. A release cut on a commit already published would otherwise move `sha-<commit>` onto a differently stamped image; only a digest is immutable in any case.
+Builds from `main` are not published. A deployment that followed `sha-<commit>` follows a version tag instead; images published under a commit name before this rule remain in the registry, but no new ones appear.
 
-The registry also holds tags of the form `sha256-<digest>`. Those are not images. They are the provenance attestations described below, stored under the fallback name the OCI referrers specification gives them, and the package page lists them beside the real tags. One pulls in about eleven kilobytes and produces something with no platform, no layers, and no entrypoint. The image tag for a commit is `sha-<commit>`; anything beginning `sha256-` is not one.
+Each release is also listed under [Releases](https://github.com/philfanzhou/StructaDoc/releases), with the same pull command and the changes since the previous tag.
+
+The registry also holds tags of the form `sha256-<digest>`. Those are not images. They are the provenance attestations described below, stored under the fallback name the OCI referrers specification gives them, and the package page lists them beside the real tags. One pulls in about eleven kilobytes and produces something with no platform, no layers, and no entrypoint. Anything beginning `sha256-` is an attestation rather than an image.
 
 Each image carries a signed build provenance attestation and an SBOM. Verify one before a deployment trusts it:
 
@@ -56,7 +57,7 @@ curl --silent http://127.0.0.1:8080/api/v1/system/info
 {"name":"StructaDoc","version":"0.1.0+9fc05ce62bbaa17e0aac4de712c66ba0a53dcb22"}
 ```
 
-The part after `+` is the commit, at the same length as the `sha-` tag, so it names the exact image to pin. The version before it comes from the `v*` release tag that built it; a build from the default branch reports `0.0.0-dev`, which is honest about a build no release named rather than a version number that separates nothing. The administration area shows the same string in its header, for an administrator who does not use a terminal.
+The part after `+` is the commit the image was built from. The version before it comes from the `v*` release tag that built it; a build made outside a release, locally or on the default branch, reports `0.0.0-dev`, which is honest about a build no release named rather than a version number that separates nothing. The administration area shows the same string in its header, for an administrator who does not use a terminal.
 
 Nothing inside the image can work this out for itself: `.dockerignore` excludes `.git`, so the SourceLink the .NET SDK ships finds no repository. The `SOURCE_REVISION` build argument carries it, and both the CI workflow and the build wrappers below pass it. An image built from a working copy with uncommitted changes reports the commit with `-dirty` appended, because an image that names a commit it was not built from is worse than one that admits it.
 
