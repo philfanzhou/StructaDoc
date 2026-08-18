@@ -58,6 +58,12 @@ One preceding run remains visible as a failure in Actions history and is superse
 
 Historical red runs should not be mistaken for the current branch status. Always compare the run's head SHA with `origin/main` and inspect the newest run.
 
+## Test Runner
+
+Tests run on Microsoft.Testing.Platform rather than VSTest. `global.json` selects it for the whole repository, so the commands below need no extra argument and no project opts in on its own. Each test project builds as its own executable, and xunit v3 supplies the runner directly instead of a separate VSTest adapter.
+
+The difference shows up in reporting: a TRX file comes from `--report-trx` rather than `--logger "trx;..."`. The .NET 10 SDK cannot drive Microsoft.Testing.Platform through VSTest at all, so the old form is an error rather than a slower path to the same result.
+
 ## Local Reproduction
 
 Without Docker:
