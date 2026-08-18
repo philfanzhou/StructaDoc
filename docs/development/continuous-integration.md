@@ -11,25 +11,28 @@ Four jobs run independently:
 3. **PostgreSQL, MySQL, and MariaDB contracts** sets `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`; Testcontainers starts PostgreSQL 17, MySQL 8.4, and MariaDB 11.4 and runs the same migration, persistence, lease, recovery, and canonical-commit contracts.
 4. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, checks that the running image reports the commit that built it, checks that a forwarded header from a peer nothing trusts is refused and reported, and uses Chromium to exercise administrator sign-in, Provider configuration, PDF upload, parsing, and the administration area.
 
-A fifth waits for all four:
+Two more run for a `v*` tag and nothing else:
 
-5. **Publish image to GitHub Container Registry** builds the same Dockerfile and pushes it to `ghcr.io`. It runs only for pushes to `main` and `v*` tags, never for a pull request. See [Published Images](#published-images).
+5. **Publish image to GitHub Container Registry** waits for all four, builds the same Dockerfile, and pushes it to `ghcr.io`. See [Published Images](#published-images).
+6. **Publish GitHub release** waits for the image, then creates the release the tag names. Its notes are the ones GitHub generates from the pull requests merged since the previous tag, with the `docker pull` line placed above them.
 
 TRX results, Playwright HTML reports, screenshots, failure traces/videos, and container logs are uploaded as Actions artifacts. Temporary administrator credentials exist only in the isolated runner environment and are not repository secrets or production defaults.
 
 ## Published Images
 
-`ghcr.io/philfanzhou/structadoc` receives `sha-<commit>` from a push to the default branch, and `latest` plus `<version>` and `<major>.<minor>` from a `v*` tag.
+`ghcr.io/philfanzhou/structadoc` receives `latest`, `<version>`, and `<major>.<minor>`, all of them from a `v*` tag. Nothing else publishes. A push to the default branch runs every test job and stops there.
 
-`latest` follows releases rather than the default branch. Whoever pulls it did not choose a tag, so what they get should be the newest build a release named rather than the newest commit, which reports `0.0.0-dev`. The rule cannot be `{{is_default_branch}}`: that is also true for a tag push, so both builds of one commit claimed the name and whichever finished last kept it. Commit tags belong to the branch build for the same reason — a release cut on a published commit would move `sha-<commit>` onto a differently stamped image. Only a digest is immutable.
+`latest` names the newest release, which is now the only kind of build that reaches the registry at all. Whoever pulls it did not choose a tag, and a `latest` reporting `0.0.0-dev` would be a development build handed to someone who never asked for one.
 
-Releasing is one push. `git tag -a v0.1.0 && git push origin v0.1.0` is what turns the semver rules on; nothing else in the workflow distinguishes a release. The tag also supplies the `VERSION` build argument, so the version the registry advertises and the version the running service reports come from the same place and cannot drift. A push to the default branch leaves the placeholder `Directory.Build.props` declares.
+`sha-<commit>` is no longer published. It came from the branch build, and there is no branch build to produce it. A deployment that named a commit names a version instead, or a digest, which is the only immutable name in either case. Images already published under a commit name stay in the registry; no new ones appear.
+
+Releasing is one push. `git tag -a v0.1.0 && git push origin v0.1.0` is what causes any publishing to happen at all, rather than only what turns the semver rules on. The tag also supplies the `VERSION` build argument, so the version the registry advertises and the version the running service reports come from the same place and cannot drift. A build from the default branch keeps the placeholder `Directory.Build.props` declares and never leaves the runner.
 
 Both image-building jobs pass `SOURCE_REVISION`, and the container job then asks the running image for it. This is checked rather than assumed because nothing inside the image can derive it: `.dockerignore` excludes `.git`, so the SourceLink the SDK ships finds no repository and stamps nothing. A build argument that quietly stopped being passed would leave every deployment unable to say which commit it is, while every health check still passed.
 
-Publishing waits on every other job, so a tag in the registry is an image that built, started under the production security flags, answered readiness, and served a browser flow. An image that failed any of that is never pushed, which is what keeps `latest` from being the least tested thing in the registry.
+Publishing waits on all four jobs above it, so a tag in the registry is an image that built, started under the production security flags, answered readiness, and served a browser flow. An image that failed any of that is never pushed, which is what keeps `latest` from being the least tested thing in the registry. The release job waits on publishing in turn, so a release never names an image nobody can pull.
 
-Note that a release rebuilds rather than retags: the tag run produces its own image, so `<version>` and the `sha-<commit>` of the same commit are different bytes even though the source is identical. Only the version stamped into them differs.
+Note that a release builds rather than promotes: the tag run compiles the source again and stamps the version the tag names into it. No image from an earlier run is retagged, and none is kept waiting for a release to claim it.
 
 The push is authenticated with the workflow's own `GITHUB_TOKEN` rather than a stored credential; no registry secret exists in this repository. Each image carries a signed build provenance attestation naming the workflow, commit, and build parameters that produced it, and an SBOM. `gh attestation verify oci://ghcr.io/philfanzhou/structadoc:latest --owner philfanzhou` checks one against this repository.
 
