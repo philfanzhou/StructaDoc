@@ -31,7 +31,7 @@ public sealed class SqliteParseRunLeaseStoreTests
         await using var verificationContext = new StructaDocDbContext(database.Options);
         var persistedRuns = await verificationContext.ParseRuns
             .AsNoTracking()
-            .ToListAsync();
+            .ToListAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.All(persistedRuns, parseRun =>
         {
@@ -56,11 +56,13 @@ public sealed class SqliteParseRunLeaseStoreTests
         var renewedLease = await store.TryRenewLeaseAsync(
             originalLease,
             nowUtc.AddSeconds(10),
-            TimeSpan.FromMinutes(1));
+            TimeSpan.FromMinutes(1),
+            TestContext.Current.CancellationToken);
         var staleRenewal = await store.TryRenewLeaseAsync(
             originalLease,
             nowUtc.AddSeconds(20),
-            TimeSpan.FromMinutes(1));
+            TimeSpan.FromMinutes(1),
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(renewedLease);
         Assert.Equal(originalLease.ConcurrencyVersion + 1, renewedLease.ConcurrencyVersion);
@@ -84,13 +86,15 @@ public sealed class SqliteParseRunLeaseStoreTests
             var store = new EfCoreParseRunLeaseStore(dbContext);
             var recoveredCount = await store.RequeueExpiredUnstartedClaimsAsync(
                 nowUtc.AddSeconds(2),
-                maxCount: 10);
+                maxCount: 10,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(1, recoveredCount);
         }
 
         await using var verificationContext = new StructaDocDbContext(database.Options);
-        var recoveredRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync();
+        var recoveredRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Queued, recoveredRun.Status);
         Assert.Null(recoveredRun.ClaimedBy);
         Assert.Null(recoveredRun.LeaseExpiresAtUtc);
@@ -111,18 +115,21 @@ public sealed class SqliteParseRunLeaseStoreTests
                 .SetProperty(parseRun => parseRun.ExternalTaskId, "provider-task-1")
                 .SetProperty(
                     parseRun => parseRun.LeaseExpiresAtUtc,
-                    nowUtc.AddSeconds(-1)));
+                    nowUtc.AddSeconds(-1)),
+            cancellationToken: TestContext.Current.CancellationToken);
 
             var store = new EfCoreParseRunLeaseStore(dbContext);
             var recoveredCount = await store.RequeueExpiredUnstartedClaimsAsync(
                 nowUtc,
-                maxCount: 10);
+                maxCount: 10,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(0, recoveredCount);
         }
 
         await using var verificationContext = new StructaDocDbContext(database.Options);
-        var persistedRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Claimed, persistedRun.Status);
         Assert.Equal("provider-task-1", persistedRun.ExternalTaskId);
         Assert.Equal("worker-1", persistedRun.ClaimedBy);
@@ -142,18 +149,21 @@ public sealed class SqliteParseRunLeaseStoreTests
             var runningLease = await stateStore.TryStartAsync(
                 claimedLease,
                 ParseRunStages.Submitting,
-                nowUtc.AddSeconds(1));
+                nowUtc.AddSeconds(1),
+                TestContext.Current.CancellationToken);
             Assert.NotNull(runningLease);
             var submittedLease = await stateStore.TryRecordProviderSubmissionAsync(
                 runningLease,
                 "provider-task-1",
-                nowUtc.AddSeconds(2));
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken);
             Assert.NotNull(submittedLease);
 
             await dbContext.ParseRuns.ExecuteUpdateAsync(setters => setters
                 .SetProperty(
                     parseRun => parseRun.LeaseExpiresAtUtc,
-                    nowUtc.AddSeconds(-1)));
+                    nowUtc.AddSeconds(-1)),
+            cancellationToken: TestContext.Current.CancellationToken);
         }
 
         var recoveries = await Task.WhenAll(
@@ -171,7 +181,8 @@ public sealed class SqliteParseRunLeaseStoreTests
         Assert.NotNull(recoveredLease);
 
         await using var verificationContext = new StructaDocDbContext(database.Options);
-        var persistedRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Running, persistedRun.Status);
         Assert.Equal(ParseRunStages.WaitingProvider, persistedRun.Stage);
         Assert.Equal("provider-task-1", persistedRun.ExternalTaskId);
@@ -206,7 +217,8 @@ public sealed class SqliteParseRunLeaseStoreTests
             Assert.NotNull(await stateStore.TryStartAsync(
                 claimedLease,
                 stage,
-                nowUtc.AddMilliseconds(100)));
+                nowUtc.AddMilliseconds(100),
+                TestContext.Current.CancellationToken));
         }
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
@@ -214,14 +226,16 @@ public sealed class SqliteParseRunLeaseStoreTests
             var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
             var recovery = await leaseStore.RecoverExpiredUnsubmittedRunsAsync(
                 nowUtc.AddSeconds(2),
-                maxCount: 10);
+                maxCount: 10,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(expectedStatus == ParseRunStatuses.Queued ? 1 : 0, recovery.RequeuedCount);
             Assert.Equal(expectedStatus == ParseRunStatuses.Failed ? 1 : 0, recovery.FailedUnknownSubmissionCount);
         }
 
         await using var verificationContext = new StructaDocDbContext(database.Options);
-        var persistedRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(expectedStatus, persistedRun.Status);
         Assert.Equal(expectedErrorCode, persistedRun.ErrorCode);
         Assert.Null(persistedRun.ClaimedBy);

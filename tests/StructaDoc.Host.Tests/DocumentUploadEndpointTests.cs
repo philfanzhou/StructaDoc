@@ -24,9 +24,14 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
         var contentBytes = "%PDF-1.7\nStructaDoc test\n%%EOF"u8.ToArray();
         using var requestContent = CreateUpload(contentBytes, "../unsafe.PDF", "text/plain");
 
-        using var response = await client.PostAsync("/api/v1/documents", requestContent);
-        var responseJson = await response.Content.ReadAsStringAsync();
-        var document = await response.Content.ReadFromJsonAsync<DocumentResponse>();
+        using var response = await client.PostAsync(
+            "/api/v1/documents",
+            requestContent,
+            TestContext.Current.CancellationToken);
+        var responseJson = await response.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
+        var document = await response.Content.ReadFromJsonAsync<DocumentResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.NotNull(document);
@@ -48,14 +53,16 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
         var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
         var persisted = await dbContext.Documents
             .AsNoTracking()
-            .SingleAsync(entity => entity.Id == document.Id);
+            .SingleAsync(
+                entity => entity.Id == document.Id,
+                cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(document.Sha256, persisted.Sha256);
         Assert.StartsWith("administrator:", persisted.CreatedBy, StringComparison.Ordinal);
 
         await using var storedContent = File.OpenRead(
             Path.Combine(factory.StorageRootPath, persisted.StorageRef.Replace('/', Path.DirectorySeparatorChar)));
         using var storedCopy = new MemoryStream();
-        await storedContent.CopyToAsync(storedCopy);
+        await storedContent.CopyToAsync(storedCopy, TestContext.Current.CancellationToken);
         Assert.Equal(contentBytes, storedCopy.ToArray());
     }
 
@@ -68,7 +75,10 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
         var fileCountBefore = CountStoredFiles();
         using var requestContent = CreateUpload("plain text"u8.ToArray(), "notes.txt", "text/plain");
 
-        using var response = await client.PostAsync("/api/v1/documents", requestContent);
+        using var response = await client.PostAsync(
+            "/api/v1/documents",
+            requestContent,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
         Assert.Equal(countBefore, await CountDocumentsAsync());
@@ -85,7 +95,10 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
             "large.pdf",
             "application/pdf");
 
-        using var response = await client.PostAsync("/api/v1/documents", requestContent);
+        using var response = await client.PostAsync(
+            "/api/v1/documents",
+            requestContent,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
     }
@@ -101,7 +114,10 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
             "sample.pdf",
             "application/pdf");
 
-        using var response = await client.PostAsync("/api/v1/documents", requestContent);
+        using var response = await client.PostAsync(
+            "/api/v1/documents",
+            requestContent,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
     }
@@ -115,7 +131,10 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
             "sample.pdf",
             "application/pdf");
 
-        using var response = await client.PostAsync("/api/v1/documents", requestContent);
+        using var response = await client.PostAsync(
+            "/api/v1/documents",
+            requestContent,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -131,7 +150,10 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
             "sample.pdf",
             "application/pdf");
 
-        using var response = await client.PostAsync("/api/v1/documents", requestContent);
+        using var response = await client.PostAsync(
+            "/api/v1/documents",
+            requestContent,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -153,8 +175,9 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
             "ApiKey",
             apiKey.Credential);
 
-        using var response = await client.SendAsync(request);
-        var document = await response.Content.ReadFromJsonAsync<DocumentResponse>();
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        var document = await response.Content.ReadFromJsonAsync<DocumentResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.NotNull(document);
@@ -164,7 +187,7 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
         var createdBy = await dbContext.Documents
             .Where(entity => entity.Id == document.Id)
             .Select(entity => entity.CreatedBy)
-            .SingleAsync();
+            .SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal($"api-client:{apiKey.ClientId:D}", createdBy);
     }
 
@@ -185,7 +208,7 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
             "ApiKey",
             apiKey.Credential);
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -208,7 +231,7 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
             "ApiKey",
             apiKey.Credential);
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -223,9 +246,10 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
             var apiClient = await dbContext.ApiClients.SingleAsync(
-                entity => entity.Id == apiKey.ClientId);
+                entity => entity.Id == apiKey.ClientId,
+                cancellationToken: TestContext.Current.CancellationToken);
             apiClient.RevokedAtUtc = DateTime.UtcNow;
-            await dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         using var requestContent = CreateUpload(
@@ -240,7 +264,7 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
             "ApiKey",
             apiKey.Credential);
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

@@ -19,15 +19,19 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
         var initialLease = await AddRunningParseRunAsync();
         var heartbeat = factory.Services.GetRequiredService<ParseRunLeaseHeartbeat>();
 
-        await using var session = heartbeat.StartSession(initialLease);
-        var submittingLease = await session.TryUpdateStageAsync(ParseRunStages.Submitting);
+        await using var session = heartbeat.StartSession(
+            initialLease,
+            TestContext.Current.CancellationToken);
+        var submittingLease = await session.TryUpdateStageAsync(
+            ParseRunStages.Submitting,
+            TestContext.Current.CancellationToken);
         Assert.NotNull(submittingLease);
 
         var deadlineUtc = DateTime.UtcNow.AddSeconds(3);
         while (DateTime.UtcNow < deadlineUtc
             && session.CurrentLease.ConcurrencyVersion == submittingLease.ConcurrencyVersion)
         {
-            await Task.Delay(25);
+            await Task.Delay(25, TestContext.Current.CancellationToken);
         }
 
         Assert.False(session.IsLeaseLost);
@@ -35,7 +39,9 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
             session.CurrentLease.ConcurrencyVersion > submittingLease.ConcurrencyVersion,
             "The heartbeat did not renew the lease within three seconds.");
         Assert.True(session.CurrentLease.LeaseExpiresAtUtc > submittingLease.LeaseExpiresAtUtc);
-        var preparingLease = await session.TryUpdateStageAsync(ParseRunStages.PreparingSource);
+        var preparingLease = await session.TryUpdateStageAsync(
+            ParseRunStages.PreparingSource,
+            TestContext.Current.CancellationToken);
         Assert.NotNull(preparingLease);
         await session.DisposeAsync();
         var finalLease = session.CurrentLease;
@@ -44,7 +50,9 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
         var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
         var persistedRun = await dbContext.ParseRuns
             .AsNoTracking()
-            .SingleAsync(parseRun => parseRun.Id == initialLease.ParseRunId);
+            .SingleAsync(
+                parseRun => parseRun.Id == initialLease.ParseRunId,
+                cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStages.PreparingSource, persistedRun.Stage);
         Assert.Equal(finalLease.ConcurrencyVersion, persistedRun.ConcurrencyVersion);
     }
@@ -56,7 +64,9 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
         var initialLease = await AddRunningParseRunAsync();
         var heartbeat = factory.Services.GetRequiredService<ParseRunLeaseHeartbeat>();
 
-        await using var session = heartbeat.StartSession(initialLease);
+        await using var session = heartbeat.StartSession(
+            initialLease,
+            TestContext.Current.CancellationToken);
 
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -67,14 +77,17 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
                     .SetProperty(parseRun => parseRun.Status, ParseRunStatuses.CancelRequested)
                     .SetProperty(
                         parseRun => parseRun.ConcurrencyVersion,
-                        parseRun => parseRun.ConcurrencyVersion + 1));
+                        parseRun => parseRun.ConcurrencyVersion + 1),
+                cancellationToken: TestContext.Current.CancellationToken);
         }
 
         var leaseLost = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = session.ExecutionCancellationToken.Register(
             () => leaseLost.TrySetResult());
-        await Task.WhenAny(leaseLost.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        await Task.WhenAny(leaseLost.Task, Task.Delay(
+            TimeSpan.FromSeconds(10),
+            TestContext.Current.CancellationToken));
 
         Assert.True(
             session.IsLeaseLost,

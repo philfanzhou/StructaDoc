@@ -34,10 +34,12 @@ public sealed class SettingsEndpointTests
 
             using var response = await client.PutAsJsonAsync(
                 "/api/v1/admin/settings",
-                new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "4"));
+                new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "4"),
+                cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-            var written = await response.Content.ReadFromJsonAsync<SettingUpdateResponse>();
+            var written = await response.Content.ReadFromJsonAsync<SettingUpdateResponse>(
+                cancellationToken: TestContext.Current.CancellationToken);
             Assert.True(written!.RestartRequired);
         }
 
@@ -60,13 +62,15 @@ public sealed class SettingsEndpointTests
 
         using var stored = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.MaxUploadBytes, "2048"));
+            new SettingUpdateRequest(SettingCatalog.MaxUploadBytes, "2048"),
+            cancellationToken: TestContext.Current.CancellationToken);
         stored.EnsureSuccessStatusCode();
         Assert.Equal("2048", (await GetAsync(client, SettingCatalog.MaxUploadBytes)).Value);
 
         using var cleared = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.MaxUploadBytes, string.Empty));
+            new SettingUpdateRequest(SettingCatalog.MaxUploadBytes, string.Empty),
+            cancellationToken: TestContext.Current.CancellationToken);
         cleared.EnsureSuccessStatusCode();
 
         var restored = await GetAsync(client, SettingCatalog.MaxUploadBytes);
@@ -88,7 +92,8 @@ public sealed class SettingsEndpointTests
         {
             using var stored = await client.PutAsJsonAsync(
                 "/api/v1/admin/settings",
-                new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "4"));
+                new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "4"),
+                cancellationToken: TestContext.Current.CancellationToken);
             stored.EnsureSuccessStatusCode();
         }
 
@@ -102,7 +107,8 @@ public sealed class SettingsEndpointTests
 
             using var cleared = await client.PutAsJsonAsync(
                 "/api/v1/admin/settings",
-                new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, string.Empty));
+                new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, string.Empty),
+                cancellationToken: TestContext.Current.CancellationToken);
             cleared.EnsureSuccessStatusCode();
 
             var state = await GetAsync(client, SettingCatalog.ParseMaxConcurrency);
@@ -121,13 +127,15 @@ public sealed class SettingsEndpointTests
 
         using var stored = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "4"));
+            new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "4"),
+            cancellationToken: TestContext.Current.CancellationToken);
         stored.EnsureSuccessStatusCode();
         Assert.True((await GetAsync(client, SettingCatalog.ParseMaxConcurrency)).IsPendingRestart);
 
         using var cleared = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, string.Empty));
+            new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, string.Empty),
+            cancellationToken: TestContext.Current.CancellationToken);
         cleared.EnsureSuccessStatusCode();
 
         // Clearing restores the default, and the default is what the running process is already
@@ -168,7 +176,8 @@ public sealed class SettingsEndpointTests
 
         using var response = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "2"));
+            new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "2"),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // Storing a value the service would never use reads as a change that did not happen.
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
@@ -187,7 +196,9 @@ public sealed class SettingsEndpointTests
         // can do is report it -- and it has to, or a queue that will never move looks like one that
         // is about to.
         var status = await client
-            .GetFromJsonAsync<ParseExecutionStatusResponse>("/api/v1/parse-execution");
+            .GetFromJsonAsync<ParseExecutionStatusResponse>(
+                "/api/v1/parse-execution",
+                cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(status!.WorkerEnabled);
     }
@@ -199,7 +210,9 @@ public sealed class SettingsEndpointTests
         using var factory = deployment.CreateFactory();
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/v1/parse-execution");
+        using var response = await client.GetAsync(
+            "/api/v1/parse-execution",
+            TestContext.Current.CancellationToken);
 
         Assert.True(
             response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
@@ -221,7 +234,8 @@ public sealed class SettingsEndpointTests
 
         using var response = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(key, value));
+            new SettingUpdateRequest(key, value),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.False((await GetAsync(client, key)).IsStored);
@@ -242,7 +256,8 @@ public sealed class SettingsEndpointTests
             "/api/v1/admin/settings",
             new SettingUpdateRequest(
                 "Authentication:DataProtectionKeysPath",
-                "/tmp/somewhere-else"));
+                "/tmp/somewhere-else"),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -254,14 +269,17 @@ public sealed class SettingsEndpointTests
         using var factory = deployment.CreateFactory();
 
         using var anonymous = factory.CreateClient();
-        using var anonymousResponse = await anonymous.GetAsync("/api/v1/admin/settings");
+        using var anonymousResponse = await anonymous.GetAsync(
+            "/api/v1/admin/settings",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, anonymousResponse.StatusCode);
 
         using var client = await SignedInClientAsync(factory);
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
         using var withoutToken = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.UploadApiEnabled, "false"));
+            new SettingUpdateRequest(SettingCatalog.UploadApiEnabled, "false"),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, withoutToken.StatusCode);
     }
 
@@ -272,14 +290,21 @@ public sealed class SettingsEndpointTests
         using var factory = deployment.CreateFactory();
 
         using var anonymous = factory.CreateClient();
-        using var refused = await anonymous.PostAsync("/api/v1/admin/system/restart", null);
+        using var refused = await anonymous.PostAsync(
+            "/api/v1/admin/system/restart",
+            null,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
 
         using var client = await SignedInClientAsync(factory);
-        using var accepted = await client.PostAsync("/api/v1/admin/system/restart", null);
+        using var accepted = await client.PostAsync(
+            "/api/v1/admin/system/restart",
+            null,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
-        var body = await accepted.Content.ReadFromJsonAsync<RestartAcceptedResponse>();
+        var body = await accepted.Content.ReadFromJsonAsync<RestartAcceptedResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains("restart policy", body!.Detail, StringComparison.OrdinalIgnoreCase);
     }
 

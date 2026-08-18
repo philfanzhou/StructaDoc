@@ -27,7 +27,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         await client.LoginAsAdministratorAsync();
 
         var types = await client.GetFromJsonAsync<ProviderTypeResponse[]>(
-            "/api/v1/admin/provider-types");
+            "/api/v1/admin/provider-types",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(types);
         var cloud = Assert.Single(types, type => type.ProviderType == "mineru-cloud");
@@ -62,7 +63,9 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         await client.LoginAsAdministratorAsync();
 
         var status = await client
-            .GetFromJsonAsync<ParseExecutionStatusResponse>("/api/v1/parse-execution");
+            .GetFromJsonAsync<ParseExecutionStatusResponse>(
+                "/api/v1/parse-execution",
+                cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(status);
         Assert.True(status.WorkerEnabled);
@@ -73,7 +76,9 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
     {
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/v1/admin/provider-types");
+        using var response = await client.GetAsync(
+            "/api/v1/admin/provider-types",
+            TestContext.Current.CancellationToken);
 
         Assert.True(
             response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
@@ -96,8 +101,10 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
                 "https://mineru.example.test/api/",
                 Model: "pipeline-v1",
                 Credential: credential,
-                IsDefault: true));
-        var createConfigJson = await createConfigResponse.Content.ReadAsStringAsync();
+                IsDefault: true),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var createConfigJson = await createConfigResponse.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
         var config = JsonSerializer.Deserialize<ProviderConfigResponse>(
             createConfigJson,
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -112,8 +119,11 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         Assert.Contains("\"createdAt\"", createConfigJson, StringComparison.Ordinal);
         Assert.DoesNotContain("createdAtUtc", createConfigJson, StringComparison.Ordinal);
 
-        using var listConfigResponse = await client.GetAsync("/api/v1/admin/provider-configs");
-        var listConfigJson = await listConfigResponse.Content.ReadAsStringAsync();
+        using var listConfigResponse = await client.GetAsync(
+            "/api/v1/admin/provider-configs",
+            TestContext.Current.CancellationToken);
+        var listConfigJson = await listConfigResponse.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
         var listedConfigs = JsonSerializer.Deserialize<ProviderConfigResponse[]>(
             listConfigJson,
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -126,7 +136,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
             Options: JsonSerializer.Deserialize<JsonElement>("{\"language\":\"zh\"}"),
             MaxAttempts: 4);
         using var firstResponse = await CreateParseRunAsync(client, document.Id, firstRequest, "parse-one");
-        var firstJson = await firstResponse.Content.ReadAsStringAsync();
+        var firstJson = await firstResponse.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
         var first = JsonSerializer.Deserialize<ParseRunResponse>(
             firstJson,
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -142,7 +153,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         Assert.DoesNotContain("nextAttemptAtUtc", firstJson, StringComparison.Ordinal);
 
         using var replayResponse = await CreateParseRunAsync(client, document.Id, firstRequest, "parse-one");
-        var replay = await replayResponse.Content.ReadFromJsonAsync<ParseRunResponse>();
+        var replay = await replayResponse.Content.ReadFromJsonAsync<ParseRunResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, replayResponse.StatusCode);
         Assert.Equal("true", replayResponse.Headers.GetValues("Idempotency-Replayed").Single());
         Assert.Equal(first.Id, replay!.Id);
@@ -154,8 +166,10 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
                 "mineru-cloud",
                 "https://mineru.example.test/v2/",
                 Model: "pipeline-v2",
-                IsDefault: true));
-        var updated = await updateResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+                IsDefault: true),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var updated = await updateResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
         Assert.NotNull(updated);
@@ -168,7 +182,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
             document.Id,
             new StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest(),
             "parse-two");
-        var second = await secondResponse.Content.ReadFromJsonAsync<ParseRunResponse>();
+        var second = await secondResponse.Content.ReadFromJsonAsync<ParseRunResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, secondResponse.StatusCode);
         Assert.Equal(updated.CurrentVersionId, second!.ProviderConfigVersionId);
         Assert.Equal(config.CurrentVersionId, first.ProviderConfigVersionId);
@@ -177,13 +192,17 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         // busiest read in the product. It is also the one where a condition applied to the projected
         // record rather than to the entity fails only at run time, as a 500.
         var documentRuns = await client.GetFromJsonAsync<ParseRunResponse[]>(
-            $"/api/v1/documents/{document.Id:D}/parse-runs");
+            $"/api/v1/documents/{document.Id:D}/parse-runs",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, documentRuns!.Length);
         Assert.Equal(second.Id, documentRuns[0].Id);
         Assert.Equal(first.Id, documentRuns[1].Id);
 
-        using var getResponse = await client.GetAsync($"/api/v1/parse-runs/{first.Id:D}");
-        var fetched = await getResponse.Content.ReadFromJsonAsync<ParseRunResponse>();
+        using var getResponse = await client.GetAsync(
+            $"/api/v1/parse-runs/{first.Id:D}",
+            TestContext.Current.CancellationToken);
+        var fetched = await getResponse.Content.ReadFromJsonAsync<ParseRunResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
         Assert.NotNull(fetched);
         Assert.Equal(first.Id, fetched.Id);
@@ -195,12 +214,14 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         var versions = await dbContext.ProviderConfigVersions.AsNoTracking()
             .Where(version => version.ProviderConfigId == config.Id)
             .OrderBy(version => version.VersionNumber)
-            .ToArrayAsync();
+            .ToArrayAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, versions.Length);
         Assert.NotNull(versions[0].ProtectedCredential);
         Assert.NotEqual(credential, versions[0].ProtectedCredential);
         Assert.Equal(versions[0].ProtectedCredential, versions[1].ProtectedCredential);
-        Assert.Equal(2, await dbContext.ParseRuns.CountAsync(run => run.DocumentId == document.Id));
+        Assert.Equal(2, await dbContext.ParseRuns.CountAsync(
+            run => run.DocumentId == document.Id,
+            cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -208,10 +229,13 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
     {
         using var client = factory.CreateClient();
 
-        using var providerResponse = await client.GetAsync("/api/v1/admin/provider-configs");
+        using var providerResponse = await client.GetAsync(
+            "/api/v1/admin/provider-configs",
+            TestContext.Current.CancellationToken);
         using var parseResponse = await client.PostAsJsonAsync(
             $"/api/v1/documents/{Guid.NewGuid():D}/parse-runs",
-            new StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest());
+            new StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest(),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, providerResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, parseResponse.StatusCode);
@@ -225,7 +249,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
 
         using var unsafeEndpoint = await client.PostAsJsonAsync(
             "/api/v1/admin/provider-configs",
-            new ProviderConfigRequest("Unsafe", "mineru-cloud", "file:///etc/passwd"));
+            new ProviderConfigRequest("Unsafe", "mineru-cloud", "file:///etc/passwd"),
+            cancellationToken: TestContext.Current.CancellationToken);
         using var conflictingCredential = await client.PostAsJsonAsync(
             "/api/v1/admin/provider-configs",
             new ProviderConfigRequest(
@@ -233,7 +258,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
                 "mineru-local",
                 "http://localhost:8000/",
                 Credential: "secret",
-                ClearCredential: true));
+                ClearCredential: true),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, unsafeEndpoint.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, conflictingCredential.StatusCode);
@@ -251,8 +277,10 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
                 "Mistyped MinerU",
                 "mineru-local",
                 "http://wrong-host.test:8000/",
-                Credential: "typed-by-mistake"));
-        var created = await createResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+                Credential: "typed-by-mistake"),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         Assert.True(created!.HasCredential);
 
@@ -265,8 +293,10 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
                 "mineru-local",
                 "http://right-host.test:8000/",
                 Model: "pipeline",
-                Backend: "vlm-http-client"));
-        var corrected = await correctResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+                Backend: "vlm-http-client"),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var corrected = await correctResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, correctResponse.StatusCode);
         Assert.Equal("Corrected MinerU", corrected!.Name);
@@ -284,8 +314,10 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
                 "http://right-host.test:8000/",
                 Model: "pipeline",
                 Backend: "vlm-http-client",
-                ClearCredential: true));
-        var cleared = await clearResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+                ClearCredential: true),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var cleared = await clearResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, clearResponse.StatusCode);
         Assert.False(cleared!.HasCredential);
@@ -304,8 +336,10 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
                 "Deletable MinerU",
                 "mineru-local",
                 "http://deletable.test:8000/",
-                IsDefault: true));
-        var config = await createResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+                IsDefault: true),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var config = await createResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
 
         var document = await UploadDocumentAsync(client);
@@ -314,27 +348,36 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
             document.Id,
             new StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest(),
             $"delete-guard-{Guid.NewGuid():N}");
-        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>();
+        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, createParse.StatusCode);
 
         // A Parse Run reads its Provider configuration version while it executes, so removing the
         // configuration under it would break a run already under way.
         using var deleteWhileActive = await client.DeleteAsync(
-            $"/api/v1/admin/provider-configs/{config!.Id:D}");
+            $"/api/v1/admin/provider-configs/{config!.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Conflict, deleteWhileActive.StatusCode);
 
-        using var cancel = await client.PostAsync($"/api/v1/parse-runs/{parseRun!.Id:D}/cancel", null);
+        using var cancel = await client.PostAsync(
+            $"/api/v1/parse-runs/{parseRun!.Id:D}/cancel",
+            null,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Accepted, cancel.StatusCode);
         await WaitForStatusAsync(client, parseRun.Id, "cancelled");
 
         // Finishing does not release it: the run keeps the configuration version as the record of
         // how it was produced, and deleting the rows would erase that rather than free anything.
         using var deleteWithHistory = await client.DeleteAsync(
-            $"/api/v1/admin/provider-configs/{config.Id:D}");
+            $"/api/v1/admin/provider-configs/{config.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Conflict, deleteWithHistory.StatusCode);
 
-        using var stillListed = await client.GetAsync("/api/v1/admin/provider-configs");
-        var configs = await stillListed.Content.ReadFromJsonAsync<ProviderConfigResponse[]>();
+        using var stillListed = await client.GetAsync(
+            "/api/v1/admin/provider-configs",
+            TestContext.Current.CancellationToken);
+        var configs = await stillListed.Content.ReadFromJsonAsync<ProviderConfigResponse[]>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(configs!, listed => listed.Id == config.Id);
     }
 
@@ -346,30 +389,38 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
 
         using var createResponse = await client.PostAsJsonAsync(
             "/api/v1/admin/provider-configs",
-            new ProviderConfigRequest("Unused MinerU", "mineru-local", "http://unused.test:8000/"));
-        var config = await createResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>();
+            new ProviderConfigRequest("Unused MinerU", "mineru-local", "http://unused.test:8000/"),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var config = await createResponse.Content.ReadFromJsonAsync<ProviderConfigResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
 
         using var updateResponse = await client.PutAsJsonAsync(
             $"/api/v1/admin/provider-configs/{config!.Id:D}",
-            new ProviderConfigRequest("Unused MinerU", "mineru-local", "http://unused.test:9000/"));
+            new ProviderConfigRequest("Unused MinerU", "mineru-local", "http://unused.test:9000/"),
+            cancellationToken: TestContext.Current.CancellationToken);
         updateResponse.EnsureSuccessStatusCode();
 
         using var deleteResponse = await client.DeleteAsync(
-            $"/api/v1/admin/provider-configs/{config.Id:D}");
+            $"/api/v1/admin/provider-configs/{config.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
         using var repeatResponse = await client.DeleteAsync(
-            $"/api/v1/admin/provider-configs/{config.Id:D}");
+            $"/api/v1/admin/provider-configs/{config.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, repeatResponse.StatusCode);
 
         await using var scope = factory.Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
-        Assert.False(await dbContext.ProviderConfigs.AnyAsync(item => item.Id == config.Id));
+        Assert.False(await dbContext.ProviderConfigs.AnyAsync(
+            item => item.Id == config.Id,
+            cancellationToken: TestContext.Current.CancellationToken));
         // Both versions go with it. A version row left behind would keep a credential alive under a
         // configuration the administrator believes is gone.
         Assert.False(await dbContext.ProviderConfigVersions.AnyAsync(
-            version => version.ProviderConfigId == config.Id));
+            version => version.ProviderConfigId == config.Id,
+            cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -378,7 +429,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         using var client = factory.CreateClient();
 
         using var response = await client.DeleteAsync(
-            $"/api/v1/admin/provider-configs/{Guid.NewGuid():D}");
+            $"/api/v1/admin/provider-configs/{Guid.NewGuid():D}",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -394,14 +446,17 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
                 "Scoped provider",
                 "mineru-local",
                 "http://mineru-local.test/",
-                IsDefault: true));
+                IsDefault: true),
+            cancellationToken: TestContext.Current.CancellationToken);
         providerCreate.EnsureSuccessStatusCode();
         using var apiClientCreate = await client.PostAsJsonAsync(
             "/api/v1/admin/api-clients",
             new ApiClientRequest(
                 "Parse writer",
-                [AuthenticationScopes.DocumentsWrite, AuthenticationScopes.ParsesWrite]));
-        var issued = await apiClientCreate.Content.ReadFromJsonAsync<ApiClientCredentialResponse>();
+                [AuthenticationScopes.DocumentsWrite, AuthenticationScopes.ParsesWrite]),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var issued = await apiClientCreate.Content.ReadFromJsonAsync<ApiClientCredentialResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(issued);
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
@@ -411,14 +466,20 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         var document = await UploadDocumentAsync(client);
         using var createParse = await client.PostAsJsonAsync(
             $"/api/v1/documents/{document.Id:D}/parse-runs",
-            new StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest());
-        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>();
+            new StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest(),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, createParse.StatusCode);
         Assert.NotNull(parseRun);
 
-        using var readParse = await client.GetAsync($"/api/v1/parse-runs/{parseRun.Id:D}");
-        using var manageProviders = await client.GetAsync("/api/v1/admin/provider-configs");
+        using var readParse = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRun.Id:D}",
+            TestContext.Current.CancellationToken);
+        using var manageProviders = await client.GetAsync(
+            "/api/v1/admin/provider-configs",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, readParse.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, manageProviders.StatusCode);
     }
@@ -434,7 +495,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
                 "Cancellation provider",
                 "mineru-local",
                 "http://mineru-local.test/",
-                IsDefault: true));
+                IsDefault: true),
+            cancellationToken: TestContext.Current.CancellationToken);
         providerCreate.EnsureSuccessStatusCode();
 
         var document = await UploadDocumentAsync(client);
@@ -443,24 +505,34 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
             document.Id,
             new StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest(),
             $"cancel-{Guid.NewGuid():N}");
-        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>();
+        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, createParse.StatusCode);
         Assert.Equal("queued", parseRun!.Status);
 
         // This Host runs no execution worker, so without cancellation this run — and its Document —
         // would stay non-final for as long as the test does.
-        using var blockedDelete = await client.DeleteAsync($"/api/v1/documents/{document.Id:D}");
+        using var blockedDelete = await client.DeleteAsync(
+            $"/api/v1/documents/{document.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Conflict, blockedDelete.StatusCode);
 
-        using var cancel = await client.PostAsync($"/api/v1/parse-runs/{parseRun.Id:D}/cancel", null);
-        var cancelling = await cancel.Content.ReadFromJsonAsync<ParseRunResponse>();
+        using var cancel = await client.PostAsync(
+            $"/api/v1/parse-runs/{parseRun.Id:D}/cancel",
+            null,
+            TestContext.Current.CancellationToken);
+        var cancelling = await cancel.Content.ReadFromJsonAsync<ParseRunResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Accepted, cancel.StatusCode);
         // An unleased run carries no lease to wait out, so maintenance may already have completed
         // the cancellation. Only finality is promised, never the intermediate status.
         Assert.Contains(cancelling!.Status, new[] { "cancel-requested", "cancelled" });
 
         // Cancellation is idempotent through completion.
-        using var replayCancel = await client.PostAsync($"/api/v1/parse-runs/{parseRun.Id:D}/cancel", null);
+        using var replayCancel = await client.PostAsync(
+            $"/api/v1/parse-runs/{parseRun.Id:D}/cancel",
+            null,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Accepted, replayCancel.StatusCode);
 
         var cancelled = await WaitForStatusAsync(client, parseRun.Id, "cancelled");
@@ -468,10 +540,13 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
 
         using var repeatAfterCancelled = await client.PostAsync(
             $"/api/v1/parse-runs/{parseRun.Id:D}/cancel",
-            null);
+            null,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Accepted, repeatAfterCancelled.StatusCode);
 
-        using var acceptedDelete = await client.DeleteAsync($"/api/v1/documents/{document.Id:D}");
+        using var acceptedDelete = await client.DeleteAsync(
+            $"/api/v1/documents/{document.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Accepted, acceptedDelete.StatusCode);
     }
 
@@ -483,7 +558,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
 
         using var response = await client.PostAsync(
             $"/api/v1/parse-runs/{Guid.NewGuid():D}/cancel",
-            null);
+            null,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -495,7 +571,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
 
         using var response = await client.PostAsync(
             $"/api/v1/parse-runs/{Guid.NewGuid():D}/cancel",
-            null);
+            null,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -508,7 +585,8 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/documents/{Guid.NewGuid():D}/parse-runs",
             new StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest(
-                Options: JsonSerializer.Deserialize<JsonElement>("{\"nested\":{\"apiKey\":\"do-not-store\"}}")));
+                Options: JsonSerializer.Deserialize<JsonElement>("{\"nested\":{\"apiKey\":\"do-not-store\"}}")),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

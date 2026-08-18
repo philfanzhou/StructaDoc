@@ -76,7 +76,8 @@ public sealed class AdministratorAccountEndpointTests
         await SignInAsOwnerAsync(client);
 
         var accounts = await client.GetFromJsonAsync<AdministratorAccountResponse[]>(
-            "/api/v1/admin/administrators");
+            "/api/v1/admin/administrators",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var current = Assert.Single(accounts!, account => account.IsCurrent);
         Assert.Equal(AdministratorAccountTestFactory.AdministratorUsername, current.Username);
@@ -92,18 +93,21 @@ public sealed class AdministratorAccountEndpointTests
 
         using var created = await client.PostAsJsonAsync(
             "/api/v1/admin/administrators",
-            new CreateAdministratorRequest(username, SecondPassword, "Second operator"));
+            new CreateAdministratorRequest(username, SecondPassword, "Second operator"),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
         using var newClient = factory.CreateClient();
         await SignInAsync(newClient, username, SecondPassword);
         var session = await newClient.GetFromJsonAsync<AdministratorSessionResponse>(
-            "/api/v1/admin/session");
+            "/api/v1/admin/session",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(username, session!.Username);
 
         using var duplicate = await client.PostAsJsonAsync(
             "/api/v1/admin/administrators",
-            new CreateAdministratorRequest(username.ToUpperInvariant(), SecondPassword, null));
+            new CreateAdministratorRequest(username.ToUpperInvariant(), SecondPassword, null),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
     }
 
@@ -120,7 +124,8 @@ public sealed class AdministratorAccountEndpointTests
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/administrators",
-            new CreateAdministratorRequest(username, password, null));
+            new CreateAdministratorRequest(username, password, null),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -133,7 +138,8 @@ public sealed class AdministratorAccountEndpointTests
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/administrators",
-            new CreateAdministratorRequest(UniqueUsername(), "8-char-x", null));
+            new CreateAdministratorRequest(UniqueUsername(), "8-char-x", null),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
@@ -146,7 +152,8 @@ public sealed class AdministratorAccountEndpointTests
         await SignInAsOwnerAsync(administrator);
         using var created = await administrator.PostAsJsonAsync(
             "/api/v1/admin/administrators",
-            new CreateAdministratorRequest(username, SecondPassword, null));
+            new CreateAdministratorRequest(username, SecondPassword, null),
+            cancellationToken: TestContext.Current.CancellationToken);
         created.EnsureSuccessStatusCode();
 
         using var first = factory.CreateClient();
@@ -157,14 +164,19 @@ public sealed class AdministratorAccountEndpointTests
         var replacement = SecondPassword + "-changed";
         using var change = await first.PostAsJsonAsync(
             "/api/v1/admin/administrators/me/password",
-            new ChangeOwnPasswordRequest(SecondPassword, replacement));
+            new ChangeOwnPasswordRequest(SecondPassword, replacement),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, change.StatusCode);
 
         // The stamp rotated, so the session that made the change is re-issued and the other one is
         // not: a password change that left old sessions alive would not be a revocation.
-        using var callerSession = await first.GetAsync("/api/v1/admin/session");
+        using var callerSession = await first.GetAsync(
+            "/api/v1/admin/session",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, callerSession.StatusCode);
-        using var otherSession = await second.GetAsync("/api/v1/admin/session");
+        using var otherSession = await second.GetAsync(
+            "/api/v1/admin/session",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, otherSession.StatusCode);
 
         using var withOldPassword = factory.CreateClient();
@@ -185,7 +197,8 @@ public sealed class AdministratorAccountEndpointTests
         await SignInAsOwnerAsync(administrator);
         using var created = await administrator.PostAsJsonAsync(
             "/api/v1/admin/administrators",
-            new CreateAdministratorRequest(username, SecondPassword, null));
+            new CreateAdministratorRequest(username, SecondPassword, null),
+            cancellationToken: TestContext.Current.CancellationToken);
         created.EnsureSuccessStatusCode();
 
         using var client = factory.CreateClient();
@@ -193,10 +206,13 @@ public sealed class AdministratorAccountEndpointTests
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/administrators/me/password",
-            new ChangeOwnPasswordRequest("not-the-current-password", SecondPassword + "-changed"));
+            new ChangeOwnPasswordRequest("not-the-current-password", SecondPassword + "-changed"),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        using var stillSignedIn = await client.GetAsync("/api/v1/admin/session");
+        using var stillSignedIn = await client.GetAsync(
+            "/api/v1/admin/session",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, stillSignedIn.StatusCode);
     }
 
@@ -213,10 +229,13 @@ public sealed class AdministratorAccountEndpointTests
 
         using var reset = await administrator.PostAsJsonAsync(
             $"/api/v1/admin/administrators/{account.Id:D}/password",
-            new ResetAdministratorPasswordRequest(SecondPassword + "-reset"));
+            new ResetAdministratorPasswordRequest(SecondPassword + "-reset"),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
 
-        using var afterReset = await victim.GetAsync("/api/v1/admin/session");
+        using var afterReset = await victim.GetAsync(
+            "/api/v1/admin/session",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, afterReset.StatusCode);
     }
 
@@ -226,12 +245,14 @@ public sealed class AdministratorAccountEndpointTests
         using var client = factory.CreateClient();
         await SignInAsOwnerAsync(client);
         var accounts = await client.GetFromJsonAsync<AdministratorAccountResponse[]>(
-            "/api/v1/admin/administrators");
+            "/api/v1/admin/administrators",
+            cancellationToken: TestContext.Current.CancellationToken);
         var self = accounts!.Single(account => account.IsCurrent);
 
         using var response = await client.PostAsJsonAsync(
             $"/api/v1/admin/administrators/{self.Id:D}/password",
-            new ResetAdministratorPasswordRequest(SecondPassword));
+            new ResetAdministratorPasswordRequest(SecondPassword),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -249,10 +270,13 @@ public sealed class AdministratorAccountEndpointTests
 
         using var response = await administrator.PutAsJsonAsync(
             $"/api/v1/admin/administrators/{account.Id:D}/active",
-            new SetAdministratorActiveRequest(false));
+            new SetAdministratorActiveRequest(false),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
-        using var afterDisable = await disabled.GetAsync("/api/v1/admin/session");
+        using var afterDisable = await disabled.GetAsync(
+            "/api/v1/admin/session",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, afterDisable.StatusCode);
         using var signIn = factory.CreateClient();
         Assert.Equal(
@@ -261,7 +285,8 @@ public sealed class AdministratorAccountEndpointTests
 
         using var enable = await administrator.PutAsJsonAsync(
             $"/api/v1/admin/administrators/{account.Id:D}/active",
-            new SetAdministratorActiveRequest(true));
+            new SetAdministratorActiveRequest(true),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, enable.StatusCode);
         using var reEnabled = factory.CreateClient();
         Assert.Equal(
@@ -275,18 +300,24 @@ public sealed class AdministratorAccountEndpointTests
         using var client = factory.CreateClient();
         await SignInAsOwnerAsync(client);
         var accounts = await client.GetFromJsonAsync<AdministratorAccountResponse[]>(
-            "/api/v1/admin/administrators");
+            "/api/v1/admin/administrators",
+            cancellationToken: TestContext.Current.CancellationToken);
         var self = accounts!.Single(account => account.IsCurrent);
 
         using var disable = await client.PutAsJsonAsync(
             $"/api/v1/admin/administrators/{self.Id:D}/active",
-            new SetAdministratorActiveRequest(false));
+            new SetAdministratorActiveRequest(false),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, disable.StatusCode);
 
-        using var delete = await client.DeleteAsync($"/api/v1/admin/administrators/{self.Id:D}");
+        using var delete = await client.DeleteAsync(
+            $"/api/v1/admin/administrators/{self.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, delete.StatusCode);
 
-        using var stillSignedIn = await client.GetAsync("/api/v1/admin/session");
+        using var stillSignedIn = await client.GetAsync(
+            "/api/v1/admin/session",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, stillSignedIn.StatusCode);
     }
 
@@ -299,11 +330,13 @@ public sealed class AdministratorAccountEndpointTests
         var account = await CreateAsync(administrator, username);
 
         using var response = await administrator.DeleteAsync(
-            $"/api/v1/admin/administrators/{account.Id:D}");
+            $"/api/v1/admin/administrators/{account.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var accounts = await administrator.GetFromJsonAsync<AdministratorAccountResponse[]>(
-            "/api/v1/admin/administrators");
+            "/api/v1/admin/administrators",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.DoesNotContain(accounts!, candidate => candidate.Id == account.Id);
 
         using var signIn = factory.CreateClient();
@@ -312,7 +345,8 @@ public sealed class AdministratorAccountEndpointTests
             await SignInStatusAsync(signIn, username, SecondPassword));
 
         using var again = await administrator.DeleteAsync(
-            $"/api/v1/admin/administrators/{account.Id:D}");
+            $"/api/v1/admin/administrators/{account.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, again.StatusCode);
     }
 
@@ -328,7 +362,8 @@ public sealed class AdministratorAccountEndpointTests
         await SignInAsOwnerAsync(owner);
         var ownerAccount = Assert.Single(
             (await owner.GetFromJsonAsync<AdministratorAccountResponse[]>(
-                "/api/v1/admin/administrators"))!);
+                "/api/v1/admin/administrators",
+                cancellationToken: TestContext.Current.CancellationToken))!);
 
         var deputyName = UniqueUsername();
         var deputyAccount = await CreateAsync(owner, deputyName);
@@ -337,10 +372,12 @@ public sealed class AdministratorAccountEndpointTests
 
         var ownerDisablesDeputy = owner.PutAsJsonAsync(
             $"/api/v1/admin/administrators/{deputyAccount.Id:D}/active",
-            new SetAdministratorActiveRequest(false));
+            new SetAdministratorActiveRequest(false),
+            cancellationToken: TestContext.Current.CancellationToken);
         var deputyDisablesOwner = deputy.PutAsJsonAsync(
             $"/api/v1/admin/administrators/{ownerAccount.Id:D}/active",
-            new SetAdministratorActiveRequest(false));
+            new SetAdministratorActiveRequest(false),
+            cancellationToken: TestContext.Current.CancellationToken);
         var responses = await Task.WhenAll(ownerDisablesDeputy, deputyDisablesOwner);
 
         try
@@ -368,7 +405,8 @@ public sealed class AdministratorAccountEndpointTests
         }
 
         var remaining = await survivor.GetFromJsonAsync<AdministratorAccountResponse[]>(
-            "/api/v1/admin/administrators");
+            "/api/v1/admin/administrators",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Single(remaining!, account => account.IsActive);
     }
 
@@ -382,12 +420,14 @@ public sealed class AdministratorAccountEndpointTests
 
         using var disable = await administrator.PutAsJsonAsync(
             $"/api/v1/admin/administrators/{account.Id:D}/active",
-            new SetAdministratorActiveRequest(false));
+            new SetAdministratorActiveRequest(false),
+            cancellationToken: TestContext.Current.CancellationToken);
         disable.EnsureSuccessStatusCode();
 
         // An inactive account is never the last active one, so the guard must not hold it hostage.
         using var delete = await administrator.DeleteAsync(
-            $"/api/v1/admin/administrators/{account.Id:D}");
+            $"/api/v1/admin/administrators/{account.Id:D}",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
     }
@@ -401,7 +441,8 @@ public sealed class AdministratorAccountEndpointTests
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/administrators",
-            new CreateAdministratorRequest(UniqueUsername(), SecondPassword, null));
+            new CreateAdministratorRequest(UniqueUsername(), SecondPassword, null),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -411,7 +452,9 @@ public sealed class AdministratorAccountEndpointTests
     {
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/v1/admin/administrators");
+        using var response = await client.GetAsync(
+            "/api/v1/admin/administrators",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

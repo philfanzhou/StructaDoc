@@ -31,7 +31,8 @@ public sealed class MinerUParseProviderTests
             Guid.NewGuid(),
             Source("sample.pdf", "document"u8.ToArray()),
             """{"ocr":true,"formula":false,"language":"en","effort":"high"}""",
-            checkpoint: null);
+            checkpoint: null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("local-task-1", submission.ExternalTaskId);
         Assert.Equal(TimeSpan.FromSeconds(5), submission.SuggestedPollDelay);
@@ -67,7 +68,8 @@ public sealed class MinerUParseProviderTests
 
         var status = await provider.GetStatusAsync(
             LocalConfiguration(baseUri: "https://local.example/"),
-            "task/id");
+            "task/id",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(expectedState, status.State);
         Assert.Equal(
@@ -96,7 +98,8 @@ public sealed class MinerUParseProviderTests
 
         var result = await provider.OpenResultAsync(
             LocalConfiguration(baseUri: "https://local.example/"),
-            "task-1");
+            "task-1",
+            TestContext.Current.CancellationToken);
         Assert.False(stream.IsDisposed);
         Assert.Equal("application/zip", result.MediaType);
 
@@ -116,7 +119,8 @@ public sealed class MinerUParseProviderTests
         var exception = await Assert.ThrowsAsync<ProviderException>(() =>
             provider.OpenResultAsync(
                 LocalConfiguration(baseUri: "https://local.example/"),
-                "task-1"));
+                "task-1",
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("mineru-local-result-not-ready", exception.ErrorCode);
         Assert.True(exception.Retryable);
@@ -189,7 +193,8 @@ public sealed class MinerUParseProviderTests
             configuration,
             parseRunId,
             source,
-            optionsJson);
+            optionsJson,
+            TestContext.Current.CancellationToken);
         Assert.NotNull(checkpoint);
 
         var submission = await provider.SubmitAsync(
@@ -197,7 +202,8 @@ public sealed class MinerUParseProviderTests
             parseRunId,
             source,
             optionsJson,
-            checkpoint);
+            checkpoint,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal("batch-1", submission.ExternalTaskId);
         Assert.Equal(3, requests);
@@ -220,7 +226,8 @@ public sealed class MinerUParseProviderTests
                 CloudConfiguration(credential: "cloud-secret"),
                 Guid.NewGuid(),
                 Source("report.pdf", "document"u8.ToArray()),
-                "{}"));
+                "{}",
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("mineru-cloud-submit-rejected", exception.ErrorCode);
         Assert.Contains("code=A0211", exception.Message);
@@ -245,7 +252,8 @@ public sealed class MinerUParseProviderTests
                 CloudConfiguration(credential: "cloud-secret"),
                 Guid.NewGuid(),
                 Source("report.pdf", "document"u8.ToArray()),
-                "{}"));
+                "{}",
+                TestContext.Current.CancellationToken));
 
         Assert.Contains("code=-60012", exception.Message);
         Assert.Contains("msg=quota exceeded", exception.Message);
@@ -271,7 +279,8 @@ public sealed class MinerUParseProviderTests
                 CloudConfiguration(credential: "cloud-secret"),
                 Guid.NewGuid(),
                 Source("report.pdf", "document"u8.ToArray()),
-                "{}"));
+                "{}",
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("mineru-cloud-submit-rejected", exception.ErrorCode);
         Assert.Contains("msgCode=A0202", exception.Message);
@@ -305,7 +314,8 @@ public sealed class MinerUParseProviderTests
             CloudConfiguration(credential: "cloud-secret"),
             Guid.NewGuid(),
             Source("report.pdf", "document"u8.ToArray()),
-            "{}");
+            "{}",
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(sentLength);
         Assert.True(sentLength > 0);
@@ -334,7 +344,8 @@ public sealed class MinerUParseProviderTests
             CloudConfiguration(credential: "cloud-secret", model: null),
             Guid.NewGuid(),
             Source("report.pdf", "document"u8.ToArray()),
-            "{}");
+            "{}",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(ProviderTypeDescriptors.MinerUCloudDefaultModel, sentModel);
         Assert.Equal("pipeline", sentModel);
@@ -363,7 +374,8 @@ public sealed class MinerUParseProviderTests
             Guid.NewGuid(),
             Source("report.pdf", "document"u8.ToArray()),
             "{}",
-            checkpoint);
+            checkpoint,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal("batch-1", submission.ExternalTaskId);
         Assert.Equal(1, handler.RequestCount);
@@ -382,7 +394,8 @@ public sealed class MinerUParseProviderTests
                 Guid.NewGuid(),
                 Source("report.pdf", "document"u8.ToArray()),
                 "{}",
-                checkpoint: null));
+                checkpoint: null,
+                cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("mineru-cloud-checkpoint-required", exception.ErrorCode);
         Assert.Equal(0, handler.RequestCount);
@@ -410,7 +423,8 @@ public sealed class MinerUParseProviderTests
 
         var status = await provider.GetStatusAsync(
             CloudConfiguration(credential: "cloud-secret"),
-            "batch-1");
+            "batch-1",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(expectedState, status.State);
     }
@@ -444,7 +458,8 @@ public sealed class MinerUParseProviderTests
 
         var result = await provider.OpenResultAsync(
             CloudConfiguration(credential: "cloud-secret"),
-            "batch-1");
+            "batch-1",
+            TestContext.Current.CancellationToken);
         Assert.False(resultStream.IsDisposed);
 
         await result.DisposeAsync();
@@ -468,7 +483,8 @@ public sealed class MinerUParseProviderTests
         var exception = await Assert.ThrowsAsync<ProviderException>(() =>
             provider.GetStatusAsync(
                 CloudConfiguration(credential: credential),
-                "batch-1"));
+                "batch-1",
+                TestContext.Current.CancellationToken));
 
         Assert.True(exception.Retryable);
         Assert.Equal("mineru-cloud-status-http-429", exception.ErrorCode);
@@ -493,7 +509,8 @@ public sealed class MinerUParseProviderTests
                 Guid.NewGuid(),
                 Source("sample.pdf", "document"u8.ToArray()),
                 optionsJson,
-                checkpoint: null));
+                checkpoint: null,
+                cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(ProviderFailureCategory.Input, exception.Category);
         Assert.Equal(0, handler.RequestCount);
@@ -522,13 +539,15 @@ public sealed class MinerUParseProviderTests
                 configuration,
                 Guid.NewGuid(),
                 unsupported,
-                "{}"));
+                "{}",
+                TestContext.Current.CancellationToken));
         var oversizedException = await Assert.ThrowsAsync<ProviderException>(() =>
             provider.PrepareSubmissionAsync(
                 configuration,
                 Guid.NewGuid(),
                 oversized,
-                "{}"));
+                "{}",
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("provider-source-media-type-unsupported", unsupportedException.ErrorCode);
         Assert.Equal("provider-source-file-too-large", oversizedException.ErrorCode);
@@ -547,7 +566,8 @@ public sealed class MinerUParseProviderTests
                 CloudConfiguration(credential: "cloud-secret"),
                 Guid.NewGuid(),
                 Source("sample.pdf", "document"u8.ToArray()),
-                "{\"parseMethod\":\"ocr\"}"));
+                "{\"parseMethod\":\"ocr\"}",
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("mineru-options-invalid", exception.ErrorCode);
         Assert.Equal(0, handler.RequestCount);
@@ -603,7 +623,8 @@ public sealed class MinerUParseProviderTests
                 CloudConfiguration(credential: "cloud-secret"),
                 Guid.NewGuid(),
                 Source("report.pdf", "document"u8.ToArray()),
-                "{}"));
+                "{}",
+                TestContext.Current.CancellationToken));
 
         Assert.Equal(ProviderFailureCategory.Security, exception.Category);
     }
@@ -636,7 +657,8 @@ public sealed class MinerUParseProviderTests
                 Guid.NewGuid(),
                 Source("report.pdf", "document"u8.ToArray()),
                 "{}",
-                checkpoint));
+                checkpoint,
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("mineru-cloud-upload-destination-denied", exception.ErrorCode);
         Assert.Equal(ProviderFailureCategory.Security, exception.Category);

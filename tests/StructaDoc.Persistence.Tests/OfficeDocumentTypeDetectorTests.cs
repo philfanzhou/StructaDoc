@@ -23,7 +23,10 @@ public sealed class OfficeDocumentTypeDetectorTests
 
         content.Position = 0;
         var detector = new OfficeDocumentTypeDetector();
-        var detected = await detector.DetectAsync(content, "misleading.bin");
+        var detected = await detector.DetectAsync(
+            content,
+            "misleading.bin",
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(detected);
         Assert.Equal(expectedExtension, detected.Extension);
@@ -42,7 +45,10 @@ public sealed class OfficeDocumentTypeDetectorTests
         content.Position = 0;
         var detector = new OfficeDocumentTypeDetector();
 
-        Assert.Null(await detector.DetectAsync(content, "archive.docx"));
+        Assert.Null(await detector.DetectAsync(
+            content,
+            "archive.docx",
+            TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -60,7 +66,10 @@ public sealed class OfficeDocumentTypeDetectorTests
         content.Position = 0;
         var detector = new OfficeDocumentTypeDetector();
 
-        Assert.Null(await detector.DetectAsync(content, "macros.docm"));
+        Assert.Null(await detector.DetectAsync(
+            content,
+            "macros.docm",
+            TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -70,6 +79,9 @@ public sealed class OfficeDocumentTypeDetectorTests
         await using var content = new MemoryStream(signature);
         var detector = new OfficeDocumentTypeDetector();
 
-        Assert.Null(await detector.DetectAsync(content, "truncated.doc"));
+        Assert.Null(await detector.DetectAsync(
+            content,
+            "truncated.doc",
+            TestContext.Current.CancellationToken));
     }
 }

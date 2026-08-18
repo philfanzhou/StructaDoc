@@ -52,7 +52,7 @@ public sealed class ParseRunMaintenanceWorkerTests(StructaDocWebApplicationFacto
                 CreatedAtUtc = nowUtc,
                 ConcurrencyVersion = 1,
             });
-            await dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         var deadlineUtc = DateTime.UtcNow.AddSeconds(5);
@@ -69,7 +69,7 @@ public sealed class ParseRunMaintenanceWorkerTests(StructaDocWebApplicationFacto
                 .AsNoTracking()
                 .Where(parseRun => parseRun.Id == parseRunId)
                 .Select(parseRun => parseRun.Status)
-                .SingleAsync();
+                .SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
 
             if (status != ParseRunStatuses.RetryWait)
             {
@@ -77,7 +77,7 @@ public sealed class ParseRunMaintenanceWorkerTests(StructaDocWebApplicationFacto
                 return;
             }
 
-            await Task.Delay(50);
+            await Task.Delay(50, TestContext.Current.CancellationToken);
         }
 
         Assert.Fail("The maintenance worker did not requeue the due retry within five seconds.");

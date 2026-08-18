@@ -14,7 +14,9 @@ public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicatio
     {
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/v1/admin/api-clients");
+        using var response = await client.GetAsync(
+            "/api/v1/admin/api-clients",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -28,7 +30,8 @@ public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicatio
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/api-clients",
-            new ApiClientRequest("Integration client", [AuthenticationScopes.DocumentsRead]));
+            new ApiClientRequest("Integration client", [AuthenticationScopes.DocumentsRead]),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -43,7 +46,8 @@ public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicatio
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/api-clients",
-            new ApiClientRequest(name, [scope]));
+            new ApiClientRequest(name, [scope]),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -58,9 +62,11 @@ public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicatio
             "/api/v1/admin/api-clients",
             new ApiClientRequest(
                 "  Integration client  ",
-                [AuthenticationScopes.DocumentsWrite, AuthenticationScopes.DocumentsWrite]));
+                [AuthenticationScopes.DocumentsWrite, AuthenticationScopes.DocumentsWrite]),
+            cancellationToken: TestContext.Current.CancellationToken);
         var created = await createResponse.Content
-            .ReadFromJsonAsync<ApiClientCredentialResponse>();
+            .ReadFromJsonAsync<ApiClientCredentialResponse>(
+                cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         Assert.Equal("no-store", createResponse.Headers.CacheControl?.ToString());
@@ -69,10 +75,14 @@ public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicatio
         Assert.Equal([AuthenticationScopes.DocumentsWrite], created.Client.Scopes);
         Assert.True(created.Client.IsActive);
 
-        using var listResponse = await client.GetAsync("/api/v1/admin/api-clients");
-        var listJson = await listResponse.Content.ReadAsStringAsync();
+        using var listResponse = await client.GetAsync(
+            "/api/v1/admin/api-clients",
+            TestContext.Current.CancellationToken);
+        var listJson = await listResponse.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
         var listed = await listResponse.Content
-            .ReadFromJsonAsync<ApiClientResponse[]>();
+            .ReadFromJsonAsync<ApiClientResponse[]>(
+                cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
         Assert.Contains(listed!, candidate => candidate.Id == created.Client.Id);
@@ -83,8 +93,10 @@ public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicatio
             $"/api/v1/admin/api-clients/{created.Client.Id:D}",
             new ApiClientRequest(
                 "Read-only integration",
-                [AuthenticationScopes.DocumentsRead]));
-        var updated = await updateResponse.Content.ReadFromJsonAsync<ApiClientResponse>();
+                [AuthenticationScopes.DocumentsRead]),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var updated = await updateResponse.Content.ReadFromJsonAsync<ApiClientResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
         Assert.NotNull(updated);
@@ -96,9 +108,11 @@ public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicatio
 
         using var rotateResponse = await client.PostAsync(
             $"/api/v1/admin/api-clients/{created.Client.Id:D}/rotate",
-            content: null);
+            content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
         var rotated = await rotateResponse.Content
-            .ReadFromJsonAsync<ApiClientCredentialResponse>();
+            .ReadFromJsonAsync<ApiClientCredentialResponse>(
+                cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, rotateResponse.StatusCode);
         Assert.Equal("no-store", rotateResponse.Headers.CacheControl?.ToString());
@@ -112,11 +126,13 @@ public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicatio
         Assert.Equal(HttpStatusCode.Forbidden, rotatedCredentialUpload.StatusCode);
 
         using var revokeResponse = await client.DeleteAsync(
-            $"/api/v1/admin/api-clients/{created.Client.Id:D}");
+            $"/api/v1/admin/api-clients/{created.Client.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, revokeResponse.StatusCode);
 
         using var repeatedRevokeResponse = await client.DeleteAsync(
-            $"/api/v1/admin/api-clients/{created.Client.Id:D}");
+            $"/api/v1/admin/api-clients/{created.Client.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, repeatedRevokeResponse.StatusCode);
 
         using var revokedCredentialUpload = await UploadAsync(client, rotated.Credential);
@@ -124,12 +140,16 @@ public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicatio
 
         using var rotateRevokedResponse = await client.PostAsync(
             $"/api/v1/admin/api-clients/{created.Client.Id:D}/rotate",
-            content: null);
+            content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Conflict, rotateRevokedResponse.StatusCode);
 
-        using var finalListResponse = await client.GetAsync("/api/v1/admin/api-clients");
+        using var finalListResponse = await client.GetAsync(
+            "/api/v1/admin/api-clients",
+            TestContext.Current.CancellationToken);
         var finalList = await finalListResponse.Content
-            .ReadFromJsonAsync<ApiClientResponse[]>();
+            .ReadFromJsonAsync<ApiClientResponse[]>(
+                cancellationToken: TestContext.Current.CancellationToken);
         var revokedClient = Assert.Single(
             finalList!,
             candidate => candidate.Id == created.Client.Id);
@@ -144,15 +164,19 @@ public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicatio
         await client.LoginAsAdministratorAsync();
         using var createResponse = await client.PostAsJsonAsync(
             "/api/v1/admin/api-clients",
-            new ApiClientRequest("Non-administrator", [AuthenticationScopes.DocumentsWrite]));
+            new ApiClientRequest("Non-administrator", [AuthenticationScopes.DocumentsWrite]),
+            cancellationToken: TestContext.Current.CancellationToken);
         var created = await createResponse.Content
-            .ReadFromJsonAsync<ApiClientCredentialResponse>();
+            .ReadFromJsonAsync<ApiClientCredentialResponse>(
+                cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(created);
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "ApiKey",
             created.Credential);
-        using var response = await client.GetAsync("/api/v1/admin/api-clients");
+        using var response = await client.GetAsync(
+            "/api/v1/admin/api-clients",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

@@ -11,7 +11,7 @@ public sealed class HealthEndpointTests(StructaDocWebApplicationFactory factory)
     {
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync(path);
+        using var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }

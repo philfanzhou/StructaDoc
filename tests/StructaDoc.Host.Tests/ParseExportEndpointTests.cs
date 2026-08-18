@@ -26,12 +26,15 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         await client.LoginAsAdministratorAsync();
         var parseRunId = await SeedSucceededRunAsync(sourceIsPdf: true);
 
-        using var response = await client.GetAsync($"/api/v1/parse-runs/{parseRunId:D}/exports/zip");
+        using var response = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRunId:D}/exports/zip",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        await using var content = await response.Content.ReadAsStreamAsync();
+        await using var content = await response.Content.ReadAsStreamAsync(
+            TestContext.Current.CancellationToken);
         using var buffer = new MemoryStream();
-        await content.CopyToAsync(buffer);
+        await content.CopyToAsync(buffer, TestContext.Current.CancellationToken);
         buffer.Position = 0;
         using var archive = new ZipArchive(buffer, ZipArchiveMode.Read);
 
@@ -41,7 +44,7 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
 
         await using var documentEntry = archive.GetEntry("document.md")!.Open();
         using var reader = new StreamReader(documentEntry);
-        var markdown = await reader.ReadToEndAsync();
+        var markdown = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
 
         // The Provider-relative path resolves to nothing outside its archive; the export must point
         // the Markdown at the copy it actually bundles.
@@ -58,9 +61,11 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         await client.LoginAsAdministratorAsync();
         var parseRunId = await SeedSucceededRunAsync(sourceIsPdf: true);
 
-        using var response = await client.GetAsync($"/api/v1/parse-runs/{parseRunId:D}/exports/html");
+        using var response = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRunId:D}/exports/html",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var html = await response.Content.ReadAsStringAsync();
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Contains(
             $"data:image/png;base64,{Convert.ToBase64String(ImageBytes)}",
@@ -77,11 +82,14 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         await client.LoginAsAdministratorAsync();
         var parseRunId = await SeedSucceededRunAsync(sourceIsPdf: true);
 
-        using var response = await client.GetAsync($"/api/v1/parse-runs/{parseRunId:D}/exports/pdf");
+        using var response = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRunId:D}/exports/pdf",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
-        var bytes = await response.Content.ReadAsByteArrayAsync();
+        var bytes = await response.Content.ReadAsByteArrayAsync(
+            TestContext.Current.CancellationToken);
         Assert.StartsWith("%PDF-1.7", Encoding.UTF8.GetString(bytes), StringComparison.Ordinal);
     }
 
@@ -92,7 +100,9 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         await client.LoginAsAdministratorAsync();
         var parseRunId = await SeedSucceededRunAsync(sourceIsPdf: false);
 
-        using var response = await client.GetAsync($"/api/v1/parse-runs/{parseRunId:D}/exports/pdf");
+        using var response = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRunId:D}/exports/pdf",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }

@@ -23,17 +23,20 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await store.TryStartAsync(
             claimedLease,
             ParseRunStages.Validating,
-            nowUtc.AddSeconds(1));
+            nowUtc.AddSeconds(1),
+            TestContext.Current.CancellationToken);
         var staleStart = await store.TryStartAsync(
             claimedLease,
             ParseRunStages.Validating,
-            nowUtc.AddSeconds(2));
+            nowUtc.AddSeconds(2),
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(runningLease);
         Assert.Equal(claimedLease.ConcurrencyVersion + 1, runningLease.ConcurrencyVersion);
         Assert.Null(staleStart);
 
-        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Running, persistedRun.Status);
         Assert.Equal(ParseRunStages.Validating, persistedRun.Stage);
         Assert.NotNull(persistedRun.StartedAtUtc);
@@ -52,32 +55,38 @@ public sealed class SqliteParseRunStateStoreTests
         var submittingLease = await store.TryUpdateStageAsync(
             runningLease,
             ParseRunStages.Submitting,
-            nowUtc.AddSeconds(2));
+            nowUtc.AddSeconds(2),
+            TestContext.Current.CancellationToken);
         Assert.NotNull(submittingLease);
 
         var staleSubmission = await store.TryRecordProviderSubmissionAsync(
             runningLease,
             "provider-task-stale",
-            nowUtc.AddSeconds(3));
+            nowUtc.AddSeconds(3),
+            TestContext.Current.CancellationToken);
         Assert.Null(staleSubmission);
 
         var submittedLease = await store.TryRecordProviderSubmissionAsync(
             submittingLease,
             "provider-task-1",
-            nowUtc.AddSeconds(3));
+            nowUtc.AddSeconds(3),
+            TestContext.Current.CancellationToken);
         Assert.NotNull(submittedLease);
 
         var downloadingLease = await store.TryUpdateStageAsync(
             submittedLease,
             ParseRunStages.Downloading,
-            nowUtc.AddSeconds(4));
+            nowUtc.AddSeconds(4),
+            TestContext.Current.CancellationToken);
         Assert.NotNull(downloadingLease);
         Assert.Null(await store.TryUpdateStageAsync(
             downloadingLease,
             ParseRunStages.Submitting,
-            nowUtc.AddSeconds(5)));
+            nowUtc.AddSeconds(5),
+            TestContext.Current.CancellationToken));
 
-        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Running, persistedRun.Status);
         Assert.Equal(ParseRunStages.Downloading, persistedRun.Stage);
         Assert.Equal("provider-task-1", persistedRun.ExternalTaskId);
@@ -102,7 +111,8 @@ public sealed class SqliteParseRunStateStoreTests
             await stateStore.TryUpdateStageAsync(
                 runningLease,
                 ParseRunStages.Converting,
-                nowUtc.AddSeconds(2)));
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken));
         var conversion = new ParseRunConversion(
             "libreoffice",
             "LibreOffice 25.2.4.2",
@@ -119,15 +129,18 @@ public sealed class SqliteParseRunStateStoreTests
         var staleSave = await store.TrySaveAsync(
             runningLease,
             conversion,
-            nowUtc.AddSeconds(3));
+            nowUtc.AddSeconds(3),
+            TestContext.Current.CancellationToken);
         var savedLease = await store.TrySaveAsync(
             convertingLease,
             conversion,
-            nowUtc.AddSeconds(3));
+            nowUtc.AddSeconds(3),
+            TestContext.Current.CancellationToken);
 
         Assert.Null(staleSave);
         Assert.NotNull(savedLease);
-        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStages.PreparingSource, persistedRun.Stage);
         Assert.Equal("application/pdf", persistedRun.SubmittedMediaType);
         Assert.Equal(conversion, ParseRunConversion.FromJson(persistedRun.ConversionJson!));
@@ -147,17 +160,20 @@ public sealed class SqliteParseRunStateStoreTests
             store.TryRecordProviderSubmissionAsync(
                 runningLease,
                 " provider-task ",
-                nowUtc.AddSeconds(2)));
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<ArgumentException>(() =>
             store.TryRecordProviderSubmissionAsync(
                 runningLease,
                 new string('x', 513),
-                nowUtc.AddSeconds(2)));
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<ArgumentException>(() =>
             store.TryRecordProviderSubmissionAsync(
                 runningLease,
                 "provider\ntask",
-                nowUtc.AddSeconds(2)));
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -180,7 +196,8 @@ public sealed class SqliteParseRunStateStoreTests
             await stateStore.TryUpdateStageAsync(
                 runningLease,
                 ParseRunStages.Submitting,
-                nowUtc.AddSeconds(2)));
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken));
         var checkpointStore = new EfCoreParseRunSubmissionCheckpointStore(
             dbContext,
             new TestSecretProtector());
@@ -188,7 +205,8 @@ public sealed class SqliteParseRunStateStoreTests
             await checkpointStore.TrySaveAsync(
                 submittingLease,
                 checkpoint,
-                nowUtc.AddSeconds(3)));
+                nowUtc.AddSeconds(3),
+                TestContext.Current.CancellationToken));
 
         var transition = await stateStore.TryRecordFailureAsync(
             checkpointedLease,
@@ -196,10 +214,12 @@ public sealed class SqliteParseRunStateStoreTests
             "The submission failed.",
             retryable,
             nowUtc.AddMinutes(1),
-            nowUtc.AddSeconds(4));
+            nowUtc.AddSeconds(4),
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(transition);
-        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(
             expectedToRemain,
             persistedRun.ProtectedSubmissionContinuation is not null);
@@ -221,20 +241,24 @@ public sealed class SqliteParseRunStateStoreTests
             "The provider is temporarily unavailable.",
             retryable: true,
             retryAtUtc,
-            nowUtc.AddSeconds(5));
+            nowUtc.AddSeconds(5),
+            cancellationToken: TestContext.Current.CancellationToken);
         var queuedEarly = await store.QueueDueRetriesAsync(
             retryAtUtc.AddTicks(-1),
-            maxCount: 10);
+            maxCount: 10,
+            cancellationToken: TestContext.Current.CancellationToken);
         var queuedWhenDue = await store.QueueDueRetriesAsync(
             retryAtUtc,
-            maxCount: 10);
+            maxCount: 10,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(transition);
         Assert.Equal(ParseRunStatuses.RetryWait, transition.Status);
         Assert.Equal(0, queuedEarly);
         Assert.Equal(1, queuedWhenDue);
 
-        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Queued, persistedRun.Status);
         Assert.Null(persistedRun.ClaimedBy);
         Assert.Null(persistedRun.LeaseExpiresAtUtc);
@@ -257,22 +281,26 @@ public sealed class SqliteParseRunStateStoreTests
                 await store.TryUpdateStageAsync(
                     runningLease,
                     ParseRunStages.Submitting,
-                    nowUtc.AddSeconds(2)));
+                    nowUtc.AddSeconds(2),
+                    TestContext.Current.CancellationToken));
             var submittedLease = Assert.IsType<ParseRunLease>(
                 await store.TryRecordProviderSubmissionAsync(
                     submittingLease,
                     "provider-task-1",
-                    nowUtc.AddSeconds(3)));
+                    nowUtc.AddSeconds(3),
+                    TestContext.Current.CancellationToken));
             Assert.NotNull(await store.TryRecordFailureAsync(
                 submittedLease,
                 "provider-temporary-error",
                 "The Provider is temporarily unavailable.",
                 retryable: true,
                 nowUtc.AddMinutes(1),
-                nowUtc.AddSeconds(4)));
+                nowUtc.AddSeconds(4),
+                cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(1, await store.QueueDueRetriesAsync(
                 nowUtc.AddMinutes(1),
-                maxCount: 1));
+                maxCount: 1,
+                cancellationToken: TestContext.Current.CancellationToken));
         }
 
         ParseRunLease claimedRetry;
@@ -283,7 +311,8 @@ public sealed class SqliteParseRunStateStoreTests
                 await leaseStore.TryClaimNextAsync(
                     "retry-worker",
                     nowUtc.AddMinutes(1),
-                    TimeSpan.FromMinutes(5)));
+                    TimeSpan.FromMinutes(5),
+                    TestContext.Current.CancellationToken));
         }
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
@@ -292,9 +321,11 @@ public sealed class SqliteParseRunStateStoreTests
             Assert.NotNull(await store.TryStartAsync(
                 claimedRetry,
                 ParseRunStages.Validating,
-                nowUtc.AddMinutes(1).AddSeconds(1)));
+                nowUtc.AddMinutes(1).AddSeconds(1),
+                TestContext.Current.CancellationToken));
 
-            var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+            var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+                cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(ParseRunStatuses.Running, persistedRun.Status);
             Assert.Equal(ParseRunStages.WaitingProvider, persistedRun.Stage);
             Assert.Equal("provider-task-1", persistedRun.ExternalTaskId);
@@ -321,12 +352,14 @@ public sealed class SqliteParseRunStateStoreTests
             "The input cannot be parsed.",
             retryable,
             nowUtc.AddMinutes(1),
-            nowUtc.AddSeconds(5));
+            nowUtc.AddSeconds(5),
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(transition);
         Assert.Equal(ParseRunStatuses.Failed, transition.Status);
 
-        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Failed, persistedRun.Status);
         Assert.NotNull(persistedRun.CompletedAtUtc);
         Assert.Null(persistedRun.ClaimedBy);
@@ -340,21 +373,32 @@ public sealed class SqliteParseRunStateStoreTests
         var nowUtc = DateTime.UtcNow;
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var parseRunId = await dbContext.ParseRuns.AsNoTracking().Select(run => run.Id).SingleAsync();
+        var parseRunId = await dbContext.ParseRuns.AsNoTracking().Select(run => run.Id).SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         var service = new EfCoreParseRunService(dbContext);
         var store = new EfCoreParseRunStateStore(dbContext);
 
-        var requested = await service.RequestCancellationAsync(parseRunId, nowUtc);
+        var requested = await service.RequestCancellationAsync(
+            parseRunId,
+            nowUtc,
+            TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunCancellationStatus.Requested, requested.Status);
         Assert.Equal(ParseRunStatuses.CancelRequested, requested.ParseRun!.Status);
 
-        var replay = await service.RequestCancellationAsync(parseRunId, nowUtc.AddSeconds(1));
+        var replay = await service.RequestCancellationAsync(
+            parseRunId,
+            nowUtc.AddSeconds(1),
+            TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunCancellationStatus.AlreadyRequested, replay.Status);
 
-        var cancelledCount = await store.FinalizeAbandonedCancellationsAsync(nowUtc.AddSeconds(2), 10);
+        var cancelledCount = await store.FinalizeAbandonedCancellationsAsync(
+            nowUtc.AddSeconds(2),
+            10,
+            TestContext.Current.CancellationToken);
         Assert.Equal(1, cancelledCount);
 
-        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Cancelled, persistedRun.Status);
         Assert.Equal(nowUtc.AddSeconds(2), persistedRun.CompletedAtUtc);
         Assert.Null(persistedRun.ClaimedBy);
@@ -374,7 +418,10 @@ public sealed class SqliteParseRunStateStoreTests
         var store = new EfCoreParseRunStateStore(dbContext);
         var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
 
-        var requested = await service.RequestCancellationAsync(runningLease.ParseRunId, nowUtc.AddSeconds(2));
+        var requested = await service.RequestCancellationAsync(
+            runningLease.ParseRunId,
+            nowUtc.AddSeconds(2),
+            TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunCancellationStatus.Requested, requested.Status);
 
         // The lease deliberately survives the request so the owning Worker can observe it, but
@@ -382,22 +429,29 @@ public sealed class SqliteParseRunStateStoreTests
         var renewedLease = await leaseStore.TryRenewLeaseAsync(
             runningLease,
             nowUtc.AddSeconds(3),
-            TimeSpan.FromMinutes(5));
+            TimeSpan.FromMinutes(5),
+            TestContext.Current.CancellationToken);
         Assert.Null(renewedLease);
 
         // A live lease belongs to its Worker, so maintenance must not finalize it yet.
-        Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(nowUtc.AddSeconds(4), 10));
+        Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(
+            nowUtc.AddSeconds(4),
+            10,
+            TestContext.Current.CancellationToken));
         Assert.False(await store.TryFinalizeOwnedCancellationAsync(
             runningLease.ParseRunId,
             "another-worker",
-            nowUtc.AddSeconds(5)));
+            nowUtc.AddSeconds(5),
+            TestContext.Current.CancellationToken));
 
         Assert.True(await store.TryFinalizeOwnedCancellationAsync(
             runningLease.ParseRunId,
             runningLease.WorkerId,
-            nowUtc.AddSeconds(6)));
+            nowUtc.AddSeconds(6),
+            TestContext.Current.CancellationToken));
 
-        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Cancelled, persistedRun.Status);
         Assert.Null(persistedRun.ClaimedBy);
         Assert.Null(persistedRun.LeaseExpiresAtUtc);
@@ -414,15 +468,21 @@ public sealed class SqliteParseRunStateStoreTests
         await using var dbContext = new StructaDocDbContext(database.Options);
         await new EfCoreParseRunService(dbContext).RequestCancellationAsync(
             runningLease.ParseRunId,
-            nowUtc.AddSeconds(2));
+            nowUtc.AddSeconds(2),
+            TestContext.Current.CancellationToken);
         var store = new EfCoreParseRunStateStore(dbContext);
 
-        Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(nowUtc.AddSeconds(3), 10));
+        Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(
+            nowUtc.AddSeconds(3),
+            10,
+            TestContext.Current.CancellationToken));
         Assert.Equal(1, await store.FinalizeAbandonedCancellationsAsync(
             runningLease.LeaseExpiresAtUtc.AddSeconds(1),
-            10));
+            10,
+            TestContext.Current.CancellationToken));
 
-        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Cancelled, persistedRun.Status);
     }
 
@@ -441,16 +501,21 @@ public sealed class SqliteParseRunStateStoreTests
             "The Provider task failed.",
             retryable: false,
             nowUtc.AddSeconds(30),
-            nowUtc.AddSeconds(2));
+            nowUtc.AddSeconds(2),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStatuses.Failed, Assert.IsType<ParseRunFailureTransition>(failure).Status);
 
         var result = await new EfCoreParseRunService(dbContext).RequestCancellationAsync(
             runningLease.ParseRunId,
-            nowUtc.AddSeconds(3));
+            nowUtc.AddSeconds(3),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(ParseRunCancellationStatus.AlreadyFinal, result.Status);
         Assert.Equal(ParseRunStatuses.Failed, result.ParseRun!.Status);
-        Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(nowUtc.AddSeconds(4), 10));
+        Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(
+            nowUtc.AddSeconds(4),
+            10,
+            TestContext.Current.CancellationToken));
     }
 
     private sealed class StateTestDatabase : IAsyncDisposable

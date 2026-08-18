@@ -20,7 +20,8 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
             "/api/v1/admin/session",
             new AdministratorLoginRequest(
                 StructaDocWebApplicationFactory.AdministratorUsername,
-                StructaDocWebApplicationFactory.AdministratorPassword));
+                StructaDocWebApplicationFactory.AdministratorPassword),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -38,7 +39,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
         };
         request.Headers.Add(token.HeaderName, token.RequestToken);
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -75,18 +76,25 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
         using var client = factory.CreateClient();
         await client.LoginAsAdministratorAsync();
 
-        using var sessionResponse = await client.GetAsync("/api/v1/admin/session");
+        using var sessionResponse = await client.GetAsync(
+            "/api/v1/admin/session",
+            TestContext.Current.CancellationToken);
         var session = await sessionResponse.Content
-            .ReadFromJsonAsync<AdministratorSessionResponse>();
+            .ReadFromJsonAsync<AdministratorSessionResponse>(
+                cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, sessionResponse.StatusCode);
         Assert.NotNull(session);
         Assert.Equal(StructaDocWebApplicationFactory.AdministratorUsername, session.Username);
 
-        using var logoutResponse = await client.DeleteAsync("/api/v1/admin/session");
+        using var logoutResponse = await client.DeleteAsync(
+            "/api/v1/admin/session",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, logoutResponse.StatusCode);
 
-        using var afterLogout = await client.GetAsync("/api/v1/admin/session");
+        using var afterLogout = await client.GetAsync(
+            "/api/v1/admin/session",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, afterLogout.StatusCode);
     }
 
@@ -101,24 +109,28 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
         await using (var scope = isolatedFactory.Services.CreateAsyncScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<ControlPlaneDbContext>();
-            var administrator = await dbContext.AdminUsers.SingleAsync();
+            var administrator = await dbContext.AdminUsers.SingleAsync(
+                cancellationToken: TestContext.Current.CancellationToken);
             originalStamp = administrator.SecurityStamp;
             administrator.SecurityStamp = Guid.NewGuid();
-            await dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         try
         {
-            using var response = await client.GetAsync("/api/v1/admin/session");
+            using var response = await client.GetAsync(
+                "/api/v1/admin/session",
+                TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         }
         finally
         {
             await using var scope = isolatedFactory.Services.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<ControlPlaneDbContext>();
-            var administrator = await dbContext.AdminUsers.SingleAsync();
+            var administrator = await dbContext.AdminUsers.SingleAsync(
+                cancellationToken: TestContext.Current.CancellationToken);
             administrator.SecurityStamp = originalStamp;
-            await dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
     }
 }

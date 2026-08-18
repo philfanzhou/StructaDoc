@@ -91,7 +91,8 @@ public sealed class ProviderExecutionAbstractionTests
 
             await using (var dbContext = new StructaDocDbContext(options))
             {
-                await dbContext.Database.MigrateAsync();
+                await dbContext.Database.MigrateAsync(
+                    cancellationToken: TestContext.Current.CancellationToken);
                 var document = new DocumentEntity
                 {
                     Id = Guid.NewGuid(),
@@ -150,7 +151,7 @@ public sealed class ProviderExecutionAbstractionTests
                     NextAttemptAtUtc = nowUtc,
                     CreatedAtUtc = nowUtc,
                 });
-                await dbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
             ParseRunLease runningLease;
@@ -160,14 +161,16 @@ public sealed class ProviderExecutionAbstractionTests
                 var claimedLease = await leaseStore.TryClaimNextAsync(
                     "execution-test-worker",
                     nowUtc,
-                    TimeSpan.FromMinutes(5));
+                    TimeSpan.FromMinutes(5),
+                    TestContext.Current.CancellationToken);
                 Assert.NotNull(claimedLease);
 
                 var stateStore = new EfCoreParseRunStateStore(dbContext);
                 runningLease = Assert.IsType<ParseRunLease>(await stateStore.TryStartAsync(
                     claimedLease,
                     ParseRunStages.Validating,
-                    nowUtc.AddSeconds(1)));
+                    nowUtc.AddSeconds(1),
+                    TestContext.Current.CancellationToken));
             }
 
             await using (var dbContext = new StructaDocDbContext(options))
@@ -178,7 +181,8 @@ public sealed class ProviderExecutionAbstractionTests
                     new TestSecretProtector());
                 var context = await store.LoadAsync(
                     runningLease,
-                    nowUtc.AddSeconds(2));
+                    nowUtc.AddSeconds(2),
+                    TestContext.Current.CancellationToken);
 
                 Assert.NotNull(context);
                 Assert.Equal(parseRunId, context.ParseRunId);
@@ -195,7 +199,8 @@ public sealed class ProviderExecutionAbstractionTests
 
                 var staleContext = await store.LoadAsync(
                     runningLease with { ConcurrencyVersion = runningLease.ConcurrencyVersion - 1 },
-                    nowUtc.AddSeconds(2));
+                    nowUtc.AddSeconds(2),
+                    TestContext.Current.CancellationToken);
                 Assert.Null(staleContext);
             }
 
@@ -210,7 +215,8 @@ public sealed class ProviderExecutionAbstractionTests
                     await stateStore.TryUpdateStageAsync(
                         runningLease,
                         ParseRunStages.Submitting,
-                        nowUtc.AddSeconds(3)));
+                        nowUtc.AddSeconds(3),
+                        TestContext.Current.CancellationToken));
                 var checkpointStore = new EfCoreParseRunSubmissionCheckpointStore(
                     dbContext,
                     new TestSecretProtector());
@@ -218,9 +224,11 @@ public sealed class ProviderExecutionAbstractionTests
                     await checkpointStore.TrySaveAsync(
                         submittingLease,
                         checkpoint,
-                        nowUtc.AddSeconds(4)));
+                        nowUtc.AddSeconds(4),
+                        TestContext.Current.CancellationToken));
 
-                var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+                var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+                    cancellationToken: TestContext.Current.CancellationToken);
                 Assert.Equal(ParseRunStages.Submitting, persistedRun.Stage);
                 Assert.Equal("batch-1", persistedRun.ExternalTaskId);
                 Assert.Equal(
@@ -236,7 +244,8 @@ public sealed class ProviderExecutionAbstractionTests
                     new TestSecretProtector());
                 var context = await contextStore.LoadAsync(
                     checkpointedLease,
-                    nowUtc.AddSeconds(5));
+                    nowUtc.AddSeconds(5),
+                    TestContext.Current.CancellationToken);
 
                 Assert.NotNull(context?.SubmissionCheckpoint);
                 Assert.Equal("batch-1", context.SubmissionCheckpoint.ExternalTaskId);
@@ -254,10 +263,12 @@ public sealed class ProviderExecutionAbstractionTests
                 var completedLease = await checkpointStore.TryCompleteAsync(
                     checkpointedLease,
                     checkpoint,
-                    nowUtc.AddSeconds(6));
+                    nowUtc.AddSeconds(6),
+                    TestContext.Current.CancellationToken);
                 Assert.NotNull(completedLease);
 
-                var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+                var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+                    cancellationToken: TestContext.Current.CancellationToken);
                 Assert.Equal(ParseRunStages.WaitingProvider, persistedRun.Stage);
                 Assert.Equal("batch-1", persistedRun.ExternalTaskId);
                 Assert.Null(persistedRun.ProtectedSubmissionContinuation);
