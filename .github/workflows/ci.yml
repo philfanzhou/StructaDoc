@@ -280,11 +280,11 @@ jobs:
     # way this split could have made the pipeline weaker: an image carrying a high-severity advisory
     # is exactly what should not acquire a registry tag.
     needs: [audit-web, build-and-test, database-contracts, container-and-browser]
-    # A pull request builds the image in the job above and stops there: a fork's token cannot write
-    # packages, and a branch nobody has merged is not what `latest` means.
-    if: >-
-      github.event_name == 'push'
-      && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    # A release tag is the only thing that publishes. A push to the default branch still runs every
+    # test job above it, so the branch is still verified; what it no longer does is put a name in the
+    # registry for a build no release asked for. A pull request could not publish in any case, since
+    # a fork's token cannot write packages.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
       packages: write
@@ -303,12 +303,9 @@ jobs:
         run: |
           echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-          # A release tag is the only thing that names a version. A push to the default branch keeps
-          # the placeholder Directory.Build.props declares and is identified by its commit, which the
-          # build stamps either way -- saying 0.0.0-dev is honest about a build no release named.
-          if [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then
-            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-          fi
+          # Only a release tag reaches this job, so the version is always the one the tag names and
+          # the placeholder Directory.Build.props declares never reaches the registry.
+          echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4.2.0
@@ -320,18 +317,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # `latest` follows releases rather than the default branch. Whoever pulls it is whoever did not
-      # choose a tag, and what they should get is the newest build a release named, not the newest
-      # commit: a `latest` reporting `0.0.0-dev` is a development build handed to someone who never
-      # asked for one. `{{is_default_branch}}` cannot express this, because it is also true for a tag
-      # push -- both builds of one commit claimed the name and whichever finished last kept it.
+      # Every name here belongs to one release build, because a release tag is the only thing that
+      # reaches this job. `latest` means the newest release for the same reason it always did:
+      # whoever pulls it is whoever did not choose a tag, and handing them a build no release named
+      # would be handing them a development build they never asked for.
       #
-      # A commit tag belongs to the branch build alone for the same reason. A release cut on a commit
-      # already published would otherwise move `sha-<commit>` onto a differently stamped image, and a
-      # name that moves is not one a deployment can be pinned to.
-      #
-      # A push to the default branch therefore publishes `sha-<commit>` and nothing else, which is
-      # what such a build can honestly be called.
+      # There is no `sha-<commit>` rule any more. It was published by the branch build, and there is
+      # no branch build to publish it. A deployment that named a commit now names a version, or a
+      # digest, which is the only immutable name in any case.
       - name: Decide tags
         id: metadata
         uses: docker/metadata-action@v6.2.0
@@ -342,8 +335,7 @@ jobs:
           # here next to the reasoning for it.
           flavor: latest=false
           tags: |
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=sha,format=long,enable=${{ github.ref_type == 'branch' }}
+            type=raw,value=latest
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
           labels: |
@@ -379,3 +371,4 @@ jobs:
           subject-name: ${{ steps.image.outputs.name }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
