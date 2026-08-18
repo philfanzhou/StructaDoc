@@ -280,11 +280,12 @@ jobs:
     # way this split could have made the pipeline weaker: an image carrying a high-severity advisory
     # is exactly what should not acquire a registry tag.
     needs: [audit-web, build-and-test, database-contracts, container-and-browser]
-    # A release tag is the only thing that publishes. A push to the default branch still runs every
-    # test job above it, so the branch is still verified; what it no longer does is put a name in the
-    # registry for a build no release asked for. A pull request could not publish in any case, since
-    # a fork's token cannot write packages.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # Two things publish and they publish different kinds of name. A release tag produces the names a
+    # deployment is pinned to. A push to the default branch produces `edge`, which is one mutable name
+    # meaning whatever `main` currently is; it exists so that a change can be pulled and tried before
+    # anyone has decided on a version for it. A pull request publishes nothing, and could not in any
+    # case, since a fork's token cannot write packages.
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
     permissions:
       contents: read
       packages: write
@@ -303,9 +304,14 @@ jobs:
         run: |
           echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-          # Only a release tag reaches this job, so the version is always the one the tag names and
-          # the placeholder Directory.Build.props declares never reaches the registry.
-          echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          # Empty for anything that is not a release tag. The Dockerfile treats an empty VERSION as
+          # absent and keeps the placeholder Directory.Build.props declares, which is why `edge`
+          # reports `0.0.0-dev`: no release named a version for it, so it does not claim one.
+          version=''
+          case "$GITHUB_REF" in
+            refs/tags/v*) version="${GITHUB_REF#refs/tags/v}" ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4.2.0
@@ -317,14 +323,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Every name here belongs to one release build, because a release tag is the only thing that
-      # reaches this job. `latest` means the newest release for the same reason it always did:
-      # whoever pulls it is whoever did not choose a tag, and handing them a build no release named
-      # would be handing them a development build they never asked for.
+      # `latest` is gated on the tag rather than left unconditional, and that gate is what keeps the
+      # default branch from taking it. Whoever pulls `latest` is whoever did not choose a tag, and
+      # handing them a build no release named would be handing them a development build they never
+      # asked for.
       #
-      # There is no `sha-<commit>` rule any more. It was published by the branch build, and there is
-      # no branch build to publish it. A deployment that named a commit now names a version, or a
-      # digest, which is the only immutable name in any case.
+      # `edge` is the opposite kind of name and is meant to move. It is overwritten by every push to
+      # `main`, which is what makes it usable for trying a change and useless for a deployment. The
+      # semver rules below produce nothing on a branch push, so `main` publishes `edge` alone.
+      #
+      # There is still no `sha-<commit>` rule. The branch build is back but the per-commit name is
+      # not: it left one permanent tag per push in a public registry and the old ones were never
+      # pulled again. A deployment that named a commit names a version, or a digest, which is the
+      # only immutable name in any case.
       - name: Decide tags
         id: metadata
         uses: docker/metadata-action@v6.2.0
@@ -335,9 +346,10 @@ jobs:
           # here next to the reasoning for it.
           flavor: latest=false
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=edge,branch=main
           labels: |
             org.opencontainers.image.title=StructaDoc
             org.opencontainers.image.description=Document parsing and structured result service in one container.
@@ -380,8 +392,8 @@ jobs:
     # might still fail to produce, and a release whose `docker pull` line does not resolve is worse
     # than a release that arrives a few minutes later.
     needs: [publish-image]
-    # Redundant beside that `needs`, which already skips this job when publishing is skipped, and
-    # kept so that reading this job alone answers when it runs.
+    # Load-bearing rather than a restatement of `needs`: the job above runs for the default branch
+    # too, so this is what keeps a push to `main` from announcing a release. Only a tag names one.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write

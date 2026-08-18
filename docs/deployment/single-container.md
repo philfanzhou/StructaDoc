@@ -16,22 +16,25 @@ Ubuntu 24.04 Noble is explicit because the official .NET 10 image does not provi
 
 ## Published Image
 
-CI publishes the image to GitHub Container Registry for every `v*` tag that passes all four test jobs, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
+CI publishes the image to GitHub Container Registry for every `v*` tag and every push to `main`, and only after all four test jobs pass, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
 
 ```bash
 docker pull ghcr.io/philfanzhou/structadoc:latest
 ```
 
-The repository is public and so is the package, so this needs no registry sign-in. Every tag comes from a release:
+The repository is public and so is the package, so this needs no registry sign-in:
 
 | Tag | Points at |
 |---|---|
 | `latest` | the newest release |
 | `<version>`, `<major>.<minor>` | that release |
+| `edge` | the current `main`, which is not a release |
 
-Because only a release is published, there is no development build for `latest` to hand to whoever did not choose a tag. It still moves under a deployment that restarts, so name a version tag in production, or a digest to pin exactly.
+`latest` is produced by a release tag alone, so no development build can take it. It still moves under a deployment that restarts, so name a version tag in production, or a digest to pin exactly.
 
-Builds from `main` are not published. A deployment that followed `sha-<commit>` follows a version tag instead; images published under a commit name before this rule remain in the registry, but no new ones appear.
+`edge` is for trying `main` before a release names it. Every push to the default branch overwrites it and it reports `0.0.0-dev`, so it answers whether a change works and nothing a deployment should rest on.
+
+`sha-<commit>` is not published. A deployment that followed one follows a version tag instead; images published under a commit name before this rule remain in the registry, but no new ones appear.
 
 Each release is also listed under [Releases](https://github.com/philfanzhou/StructaDoc/releases), with the same pull command and the changes since the previous tag.
 
