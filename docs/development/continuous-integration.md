@@ -4,15 +4,16 @@ The repository [CI workflow](../../.github/workflows/ci.yml) runs on pushes, pul
 
 ## Jobs
 
-Three jobs run independently:
+Four jobs run independently:
 
-1. **Build and unit tests** installs .NET 10 and Node.js 24, restores and builds the backend and frontend, audits npm dependencies, and runs tests that do not require Docker.
-2. **PostgreSQL, MySQL, and MariaDB contracts** sets `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`; Testcontainers starts PostgreSQL 17, MySQL 8.4, and MariaDB 11.4 and runs the same migration, persistence, lease, recovery, and canonical-commit contracts.
-3. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, checks that the running image reports the commit that built it, checks that a forwarded header from a peer nothing trusts is refused and reported, and uses Chromium to exercise administrator sign-in, Provider configuration, PDF upload, parsing, and the administration area.
+1. **Web dependency audit** runs `npm audit` against `web/package-lock.json`. It is its own job so that an advisory published upstream cannot end the run before anything has been built.
+2. **Build and unit tests** installs .NET 10 and Node.js 24, restores and builds the backend and frontend, and runs tests that do not require Docker.
+3. **PostgreSQL, MySQL, and MariaDB contracts** sets `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`; Testcontainers starts PostgreSQL 17, MySQL 8.4, and MariaDB 11.4 and runs the same migration, persistence, lease, recovery, and canonical-commit contracts.
+4. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, checks that the running image reports the commit that built it, checks that a forwarded header from a peer nothing trusts is refused and reported, and uses Chromium to exercise administrator sign-in, Provider configuration, PDF upload, parsing, and the administration area.
 
-A fourth waits for all three:
+A fifth waits for all four:
 
-4. **Publish image to GitHub Container Registry** builds the same Dockerfile and pushes it to `ghcr.io`. It runs only for pushes to `main` and `v*` tags, never for a pull request. See [Published Images](#published-images).
+5. **Publish image to GitHub Container Registry** builds the same Dockerfile and pushes it to `ghcr.io`. It runs only for pushes to `main` and `v*` tags, never for a pull request. See [Published Images](#published-images).
 
 TRX results, Playwright HTML reports, screenshots, failure traces/videos, and container logs are uploaded as Actions artifacts. Temporary administrator credentials exist only in the isolated runner environment and are not repository secrets or production defaults.
 
@@ -26,7 +27,7 @@ Releasing is one push. `git tag -a v0.1.0 && git push origin v0.1.0` is what tur
 
 Both image-building jobs pass `SOURCE_REVISION`, and the container job then asks the running image for it. This is checked rather than assumed because nothing inside the image can derive it: `.dockerignore` excludes `.git`, so the SourceLink the SDK ships finds no repository and stamps nothing. A build argument that quietly stopped being passed would leave every deployment unable to say which commit it is, while every health check still passed.
 
-Publishing waits on all three test jobs, so a tag in the registry is an image that built, started under the production security flags, answered readiness, and served a browser flow. An image that failed any of that is never pushed, which is what keeps `latest` from being the least tested thing in the registry.
+Publishing waits on every other job, so a tag in the registry is an image that built, started under the production security flags, answered readiness, and served a browser flow. An image that failed any of that is never pushed, which is what keeps `latest` from being the least tested thing in the registry.
 
 Note that a release rebuilds rather than retags: the tag run produces its own image, so `<version>` and the `sha-<commit>` of the same commit are different bytes even though the source is identical. Only the version stamped into them differs.
 
