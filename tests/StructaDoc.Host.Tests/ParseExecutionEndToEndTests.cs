@@ -40,14 +40,17 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
                 "mineru-local",
                 provider.BaseUrl,
                 Backend: "pipeline",
-                IsDefault: true));
+                IsDefault: true),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, createConfig.StatusCode);
 
         var document = await UploadDocumentAsync(client);
         using var createParse = await client.PostAsJsonAsync(
             $"/api/v1/documents/{document.Id:D}/parse-runs",
-            new ParseRunCreateRequest());
-        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>();
+            new ParseRunCreateRequest(),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, createParse.StatusCode);
         Assert.Equal("queued", parseRun!.Status);
 
@@ -68,13 +71,17 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
         Assert.Equal("pipeline", provider.ReceivedBackend);
 
         var blocks = await client.GetFromJsonAsync<ParseBlockListResponse>(
-            $"/api/v1/parse-runs/{parseRun.Id:D}/blocks?limit=100");
+            $"/api/v1/parse-runs/{parseRun.Id:D}/blocks?limit=100",
+            cancellationToken: TestContext.Current.CancellationToken);
         var pages = await client.GetFromJsonAsync<ParsePageResponse[]>(
-            $"/api/v1/parse-runs/{parseRun.Id:D}/pages");
+            $"/api/v1/parse-runs/{parseRun.Id:D}/pages",
+            cancellationToken: TestContext.Current.CancellationToken);
         var assets = await client.GetFromJsonAsync<ParseAssetResponse[]>(
-            $"/api/v1/parse-runs/{parseRun.Id:D}/assets");
+            $"/api/v1/parse-runs/{parseRun.Id:D}/assets",
+            cancellationToken: TestContext.Current.CancellationToken);
         var artifacts = await client.GetFromJsonAsync<ParseArtifactResponse[]>(
-            $"/api/v1/parse-runs/{parseRun.Id:D}/artifacts");
+            $"/api/v1/parse-runs/{parseRun.Id:D}/artifacts",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // The stub's content list, having survived download, normalization, and the commit.
         Assert.Equal(3, blocks!.Items.Count);
@@ -93,30 +100,38 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
         Assert.Contains(artifacts!, artifact => artifact.Type == "content-list");
         Assert.Contains(artifacts!, artifact => artifact.Type == "provider-archive");
 
-        using var markdown = await client.GetAsync($"/api/v1/parse-runs/{parseRun.Id:D}/markdown");
+        using var markdown = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRun.Id:D}/markdown",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, markdown.StatusCode);
         Assert.Contains(
             StubMinerUServer.MarkdownBody,
-            await markdown.Content.ReadAsStringAsync(),
+            await markdown.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
             StringComparison.Ordinal);
 
         // The Asset is downloadable, which is the only proof that the bytes were stored and not
         // merely counted.
         using var assetContent = await client.GetAsync(
-            $"/api/v1/parse-runs/{parseRun.Id:D}/assets/{asset.Id:D}/content");
+            $"/api/v1/parse-runs/{parseRun.Id:D}/assets/{asset.Id:D}/content",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, assetContent.StatusCode);
-        Assert.Equal(asset.SizeBytes, (await assetContent.Content.ReadAsByteArrayAsync()).Length);
+        Assert.Equal(asset.SizeBytes, (await assetContent.Content.ReadAsByteArrayAsync(
+            TestContext.Current.CancellationToken)).Length);
 
         var documentRuns = await client.GetFromJsonAsync<ParseRunResponse[]>(
-            $"/api/v1/documents/{document.Id:D}/parse-runs");
+            $"/api/v1/documents/{document.Id:D}/parse-runs",
+            cancellationToken: TestContext.Current.CancellationToken);
         var listed = Assert.Single(documentRuns!);
         Assert.Equal(parseRun.Id, listed.Id);
         Assert.Equal("succeeded", listed.Status);
 
-        using var export = await client.GetAsync($"/api/v1/parse-runs/{parseRun.Id:D}/exports/zip");
+        using var export = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRun.Id:D}/exports/zip",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, export.StatusCode);
         using var exported = new ZipArchive(
-            new MemoryStream(await export.Content.ReadAsByteArrayAsync()),
+            new MemoryStream(await export.Content.ReadAsByteArrayAsync(
+                TestContext.Current.CancellationToken)),
             ZipArchiveMode.Read);
         Assert.NotEmpty(exported.Entries);
     }
@@ -135,14 +150,17 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
                 "Rejecting MinerU",
                 "mineru-local",
                 provider.BaseUrl,
-                IsDefault: true));
+                IsDefault: true),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, createConfig.StatusCode);
 
         var document = await UploadDocumentAsync(client);
         using var createParse = await client.PostAsJsonAsync(
             $"/api/v1/documents/{document.Id:D}/parse-runs",
-            new ParseRunCreateRequest(MaxAttempts: 1));
-        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>();
+            new ParseRunCreateRequest(MaxAttempts: 1),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var parseRun = await createParse.Content.ReadFromJsonAsync<ParseRunResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, createParse.StatusCode);
 
         // A Provider that answers 400 is a permanent input failure, so the run ends rather than
@@ -154,7 +172,9 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
 
         // The Document is untouched by the failure and can be parsed again once the Provider is
         // fixed, which is what makes a failed attempt recoverable from the browser.
-        using var reread = await client.GetAsync($"/api/v1/documents/{document.Id:D}");
+        using var reread = await client.GetAsync(
+            $"/api/v1/documents/{document.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, reread.StatusCode);
     }
 

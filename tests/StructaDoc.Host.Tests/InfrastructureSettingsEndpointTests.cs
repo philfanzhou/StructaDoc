@@ -27,9 +27,11 @@ public sealed class InfrastructureSettingsEndpointTests
         using var client = await SettingsTestDeployment.SignedInClientAsync(factory);
 
         var storage = await client.GetFromJsonAsync<StorageStatusResponse>(
-            "/api/v1/admin/settings/storage");
+            "/api/v1/admin/settings/storage",
+            cancellationToken: TestContext.Current.CancellationToken);
         var database = await client.GetFromJsonAsync<DatabaseStatusResponse>(
-            "/api/v1/admin/settings/database");
+            "/api/v1/admin/settings/database",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("Local", storage!.Provider);
         Assert.Null(storage.StartupFault);
@@ -125,8 +127,10 @@ public sealed class InfrastructureSettingsEndpointTests
 
         using var write = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.StorageProvider, "s3"));
-        var result = await write.Content.ReadFromJsonAsync<SettingUpdateResponse>();
+            new SettingUpdateRequest(SettingCatalog.StorageProvider, "s3"),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var result = await write.Content.ReadFromJsonAsync<SettingUpdateResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, write.StatusCode);
         // Nothing re-reads storage while the service runs, so claiming an effect would be a lie.
@@ -142,7 +146,8 @@ public sealed class InfrastructureSettingsEndpointTests
 
         using var secret = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.DatabaseConnectionString, "Data Source=/data/moved.db"));
+            new SettingUpdateRequest(SettingCatalog.DatabaseConnectionString, "Data Source=/data/moved.db"),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, secret.StatusCode);
 
         var connectionString = await GetAsync(client, SettingCatalog.DatabaseConnectionString);
@@ -150,7 +155,9 @@ public sealed class InfrastructureSettingsEndpointTests
         // A connection string usually carries a password, so only whether one is set comes back.
         Assert.Equal(string.Empty, connectionString.Value);
 
-        var listed = await client.GetStringAsync("/api/v1/admin/settings");
+        var listed = await client.GetStringAsync(
+            "/api/v1/admin/settings",
+            TestContext.Current.CancellationToken);
         Assert.DoesNotContain("moved.db", listed, StringComparison.Ordinal);
     }
 
@@ -169,7 +176,8 @@ public sealed class InfrastructureSettingsEndpointTests
         // time an administrator is still looking at what they typed.
         using var response = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(key, value));
+            new SettingUpdateRequest(key, value),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.False((await GetAsync(client, key)).IsStored);
@@ -184,7 +192,10 @@ public sealed class InfrastructureSettingsEndpointTests
         // create on any operating system: the same shape as a server that is not there, without
         // waiting for a connection to time out.
         var blocker = Path.Combine(Path.GetTempPath(), $"structadoc-blocker-{Guid.NewGuid():N}");
-        await File.WriteAllTextAsync(blocker, "not a directory");
+        await File.WriteAllTextAsync(
+            blocker,
+            "not a directory",
+            TestContext.Current.CancellationToken);
 
         try
         {
@@ -195,7 +206,8 @@ public sealed class InfrastructureSettingsEndpointTests
                     "/api/v1/admin/settings",
                     new SettingUpdateRequest(
                         SettingCatalog.DatabaseConnectionString,
-                        $"Data Source={Path.Combine(blocker, "structadoc.db")}"));
+                        $"Data Source={Path.Combine(blocker, "structadoc.db")}"),
+                    cancellationToken: TestContext.Current.CancellationToken);
                 Assert.Equal(HttpStatusCode.OK, write.StatusCode);
             }
 
@@ -205,25 +217,30 @@ public sealed class InfrastructureSettingsEndpointTests
             using var administrator = await SettingsTestDeployment.SignedInClientAsync(restarted);
 
             var database = await administrator.GetFromJsonAsync<DatabaseStatusResponse>(
-                "/api/v1/admin/settings/database");
+                "/api/v1/admin/settings/database",
+                cancellationToken: TestContext.Current.CancellationToken);
             Assert.NotNull(database!.StartupFault);
             Assert.False(database.IsReachable);
 
             // Signing in and reading settings both work, because administrators and settings live in
             // the control plane rather than in the database that is missing.
             var settings = await administrator.GetFromJsonAsync<SettingResponse[]>(
-                "/api/v1/admin/settings");
+                "/api/v1/admin/settings",
+                cancellationToken: TestContext.Current.CancellationToken);
             Assert.NotEmpty(settings!);
 
             // Nothing routes real traffic to it, though. A service that answers /admin and cannot
             // store a document is not ready.
-            using var ready = await administrator.GetAsync("/health/ready");
+            using var ready = await administrator.GetAsync(
+                "/health/ready",
+                TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.ServiceUnavailable, ready.StatusCode);
 
             // Clearing the stored value is the repair, and it is reachable from here.
             using var repair = await administrator.PutAsJsonAsync(
                 "/api/v1/admin/settings",
-                new SettingUpdateRequest(SettingCatalog.DatabaseConnectionString, string.Empty));
+                new SettingUpdateRequest(SettingCatalog.DatabaseConnectionString, string.Empty),
+                cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, repair.StatusCode);
         }
         finally
@@ -239,11 +256,16 @@ public sealed class InfrastructureSettingsEndpointTests
         using var factory = deployment.CreateFactory();
         using var client = factory.CreateClient();
 
-        using var storage = await client.GetAsync("/api/v1/admin/settings/storage");
-        using var database = await client.GetAsync("/api/v1/admin/settings/database");
+        using var storage = await client.GetAsync(
+            "/api/v1/admin/settings/storage",
+            TestContext.Current.CancellationToken);
+        using var database = await client.GetAsync(
+            "/api/v1/admin/settings/database",
+            TestContext.Current.CancellationToken);
         using var test = await client.PostAsJsonAsync(
             "/api/v1/admin/settings/database/test",
-            new DatabaseConnectionTestRequest());
+            new DatabaseConnectionTestRequest(),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, storage.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, database.StatusCode);

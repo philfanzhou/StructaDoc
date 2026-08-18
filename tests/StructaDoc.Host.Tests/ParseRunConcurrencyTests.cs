@@ -37,7 +37,9 @@ public sealed class ParseRunConcurrencyTests(StructaDocWebApplicationFactory fac
 
         // Each slot holds its Parse Run inside the Provider call until both have arrived. A Host
         // that still executes one Parse Run at a time can never satisfy this, so it times out.
-        await provider.AllActive.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await provider.AllActive.Task.WaitAsync(
+            TimeSpan.FromSeconds(30),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(2, provider.PeakConcurrency);
     }

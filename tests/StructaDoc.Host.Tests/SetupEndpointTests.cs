@@ -23,7 +23,9 @@ public sealed class SetupEndpointTests
         using var factory = new UnclaimedFactory();
         using var client = factory.CreateClient();
 
-        var before = await client.GetFromJsonAsync<SetupStatusResponse>("/api/v1/setup");
+        var before = await client.GetFromJsonAsync<SetupStatusResponse>(
+            "/api/v1/setup",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(before!.SetupRequired);
 
         var token = await client.GetAntiforgeryTokenAsync();
@@ -32,10 +34,14 @@ public sealed class SetupEndpointTests
             Content = JsonContent.Create(new SetupClaimRequest(Username, Password, "First operator")),
         };
         claim.Headers.Add(token.HeaderName, token.RequestToken);
-        using var claimResponse = await client.SendAsync(claim);
+        using var claimResponse = await client.SendAsync(
+            claim,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, claimResponse.StatusCode);
 
-        var after = await client.GetFromJsonAsync<SetupStatusResponse>("/api/v1/setup");
+        var after = await client.GetFromJsonAsync<SetupStatusResponse>(
+            "/api/v1/setup",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.False(after!.SetupRequired);
 
         // A second caller must not be able to add itself through the anonymous endpoint.
@@ -46,7 +52,9 @@ public sealed class SetupEndpointTests
             Content = JsonContent.Create(new SetupClaimRequest("second-operator", Password, null)),
         };
         second.Headers.Add(secondToken.HeaderName, secondToken.RequestToken);
-        using var secondResponse = await secondClient.SendAsync(second);
+        using var secondResponse = await secondClient.SendAsync(
+            second,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, secondResponse.StatusCode);
     }
 
@@ -61,15 +69,19 @@ public sealed class SetupEndpointTests
             Content = JsonContent.Create(new SetupClaimRequest(Username, Password, null)),
         };
         claim.Headers.Add(token.HeaderName, token.RequestToken);
-        using var claimResponse = await client.SendAsync(claim);
+        using var claimResponse = await client.SendAsync(
+            claim,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, claimResponse.StatusCode);
 
         var session = await client.GetFromJsonAsync<AdministratorSessionResponse>(
-            "/api/v1/admin/session");
+            "/api/v1/admin/session",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(Username, session!.Username);
 
         var warning = await client.GetFromJsonAsync<SetupClaimWarningResponse>(
-            "/api/v1/admin/setup-claim");
+            "/api/v1/admin/setup-claim",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.False(string.IsNullOrWhiteSpace(warning!.ClaimedFromAddress));
 
         // The warning is the compensating control for an unauthenticated claim, so it stays until an
@@ -79,10 +91,14 @@ public sealed class SetupEndpointTests
             HttpMethod.Post,
             "/api/v1/admin/setup-claim/acknowledge");
         acknowledge.Headers.Add(acknowledgeToken.HeaderName, acknowledgeToken.RequestToken);
-        using var acknowledgeResponse = await client.SendAsync(acknowledge);
+        using var acknowledgeResponse = await client.SendAsync(
+            acknowledge,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, acknowledgeResponse.StatusCode);
 
-        using var afterAcknowledge = await client.GetAsync("/api/v1/admin/setup-claim");
+        using var afterAcknowledge = await client.GetAsync(
+            "/api/v1/admin/setup-claim",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, afterAcknowledge.StatusCode);
     }
 
@@ -104,10 +120,12 @@ public sealed class SetupEndpointTests
         };
         request.Headers.Add(token.HeaderName, token.RequestToken);
 
-        using var response = await client.SendAsync(request);
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var status = await client.GetFromJsonAsync<SetupStatusResponse>("/api/v1/setup");
+        var status = await client.GetFromJsonAsync<SetupStatusResponse>(
+            "/api/v1/setup",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(status!.SetupRequired);
     }
 
@@ -119,7 +137,8 @@ public sealed class SetupEndpointTests
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/setup",
-            new SetupClaimRequest(Username, Password, null));
+            new SetupClaimRequest(Username, Password, null),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -132,7 +151,9 @@ public sealed class SetupEndpointTests
         using var factory = new StructaDocWebApplicationFactory();
         using var client = factory.CreateClient();
 
-        var status = await client.GetFromJsonAsync<SetupStatusResponse>("/api/v1/setup");
+        var status = await client.GetFromJsonAsync<SetupStatusResponse>(
+            "/api/v1/setup",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(status!.SetupRequired);
     }

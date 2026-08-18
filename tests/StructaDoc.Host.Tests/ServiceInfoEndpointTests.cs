@@ -12,8 +12,11 @@ public sealed class ServiceInfoEndpointTests(StructaDocWebApplicationFactory fac
     {
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/v1/system/info");
-        var payload = await response.Content.ReadFromJsonAsync<ServiceInfoResponse>();
+        using var response = await client.GetAsync(
+            "/api/v1/system/info",
+            TestContext.Current.CancellationToken);
+        var payload = await response.Content.ReadFromJsonAsync<ServiceInfoResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(payload);
@@ -33,7 +36,9 @@ public sealed class ServiceInfoEndpointTests(StructaDocWebApplicationFactory fac
     {
         using var client = factory.CreateClient();
 
-        var payload = await client.GetFromJsonAsync<ServiceInfoResponse>("/api/v1/system/info");
+        var payload = await client.GetFromJsonAsync<ServiceInfoResponse>(
+            "/api/v1/system/info",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(payload);
         Assert.NotEqual(saysNothing, payload.Version);

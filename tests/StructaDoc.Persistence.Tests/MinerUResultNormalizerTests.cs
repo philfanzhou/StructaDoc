@@ -40,8 +40,12 @@ public sealed class MinerUResultNormalizerTests
             "vlm",
             "pipeline");
 
-        var first = await environment.Normalizer.NormalizeAsync(request);
-        var replay = await environment.Normalizer.NormalizeAsync(request);
+        var first = await environment.Normalizer.NormalizeAsync(
+            request,
+            TestContext.Current.CancellationToken);
+        var replay = await environment.Normalizer.NormalizeAsync(
+            request,
+            TestContext.Current.CancellationToken);
 
         Assert.True(environment.Normalizer.Supports(ProviderTypes.MinerUCloud));
         Assert.True(environment.Normalizer.Supports(ProviderTypes.MinerULocal));
@@ -99,9 +103,12 @@ public sealed class MinerUResultNormalizerTests
         var markdownArtifact = Assert.Single(
             first.Artifacts,
             artifact => artifact.Type == ArtifactTypes.Markdown);
-        await using var markdownContent = await environment.Storage.OpenReadAsync(markdownArtifact.StorageRef);
+        await using var markdownContent = await environment.Storage.OpenReadAsync(
+            markdownArtifact.StorageRef,
+            TestContext.Current.CancellationToken);
         using var reader = new StreamReader(markdownContent, Encoding.UTF8);
-        Assert.Equal("# Heading\n\n![figure](images/figure.png)", await reader.ReadToEndAsync());
+        Assert.Equal("# Heading\n\n![figure](images/figure.png)", await reader.ReadToEndAsync(
+            TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -116,7 +123,8 @@ public sealed class MinerUResultNormalizerTests
         var bundle = await environment.Normalizer.NormalizeAsync(new(
             parseRunId,
             ProviderTypes.MinerULocal,
-            archive));
+            archive),
+        TestContext.Current.CancellationToken);
 
         Assert.Empty(bundle.Pages);
         Assert.Empty(bundle.Blocks);
@@ -140,7 +148,8 @@ public sealed class MinerUResultNormalizerTests
         var bundle = await environment.Normalizer.NormalizeAsync(new(
             parseRunId,
             ProviderTypes.MinerUCloud,
-            archive));
+            archive),
+        TestContext.Current.CancellationToken);
 
         Assert.Single(bundle.Blocks);
         Assert.Contains(bundle.Artifacts, artifact => artifact.Type == ArtifactTypes.Layout);
@@ -166,7 +175,8 @@ public sealed class MinerUResultNormalizerTests
             parseRunId,
             ProviderTypes.MinerULocal,
             archive,
-            Backend: "pipeline"));
+            Backend: "pipeline"),
+        TestContext.Current.CancellationToken);
 
         var asset = Assert.Single(bundle.Assets);
         var block = Assert.Single(bundle.Blocks);
@@ -230,7 +240,8 @@ public sealed class MinerUResultNormalizerTests
             environment.Normalizer.NormalizeAsync(new(
                 parseRunId,
                 ProviderTypes.MinerUCloud,
-                archive)));
+                archive),
+            TestContext.Current.CancellationToken));
 
         Assert.Equal(expectedCode, exception.ErrorCode);
         Assert.Equal(ProviderFailureCategory.Permanent, exception.Category);
@@ -252,7 +263,8 @@ public sealed class MinerUResultNormalizerTests
             environment.Normalizer.NormalizeAsync(new(
                 parseRunId,
                 ProviderTypes.MinerUCloud,
-                archive)));
+                archive),
+            TestContext.Current.CancellationToken));
 
         Assert.Equal("mineru-result-entry-ambiguous", exception.ErrorCode);
     }
@@ -271,7 +283,8 @@ public sealed class MinerUResultNormalizerTests
             environment.Normalizer.NormalizeAsync(new(
                 markdownParseRunId,
                 ProviderTypes.MinerULocal,
-                markdownArchive)));
+                markdownArchive),
+            TestContext.Current.CancellationToken));
         Assert.Equal("mineru-result-entry-ambiguous", markdownException.ErrorCode);
 
         var imageParseRunId = Guid.NewGuid();
@@ -285,7 +298,8 @@ public sealed class MinerUResultNormalizerTests
             environment.Normalizer.NormalizeAsync(new(
                 imageParseRunId,
                 ProviderTypes.MinerULocal,
-                imageArchive)));
+                imageArchive),
+            TestContext.Current.CancellationToken));
         Assert.Equal("mineru-result-entry-ambiguous", imageException.ErrorCode);
     }
 
@@ -309,7 +323,8 @@ public sealed class MinerUResultNormalizerTests
             environment.Normalizer.NormalizeAsync(new(
                 parseRunId,
                 ProviderTypes.MinerUCloud,
-                archive)));
+                archive),
+            TestContext.Current.CancellationToken));
 
         Assert.Equal("mineru-result-markdown-too-large", exception.ErrorCode);
     }
@@ -328,7 +343,8 @@ public sealed class MinerUResultNormalizerTests
             environment.Normalizer.NormalizeAsync(new(
                 parseRunId,
                 ProviderTypes.MinerUCloud,
-                changedManifest)));
+                changedManifest),
+            TestContext.Current.CancellationToken));
 
         Assert.Equal("provider-result-archive-changed", exception.ErrorCode);
         Assert.Equal(ProviderFailureCategory.Security, exception.Category);
@@ -350,7 +366,8 @@ public sealed class MinerUResultNormalizerTests
         var bundle = await normalizer.NormalizeAsync(new(
             parseRunId,
             ProviderTypes.MinerUCloud,
-            archive));
+            archive),
+        TestContext.Current.CancellationToken);
 
         Assert.Equal(2, bundle.Artifacts.Count);
         Assert.Empty(Directory.GetFiles(temporaryPath, "*", SearchOption.AllDirectories));

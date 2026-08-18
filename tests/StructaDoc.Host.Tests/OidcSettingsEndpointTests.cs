@@ -25,7 +25,8 @@ public sealed class OidcSettingsEndpointTests
         const string Secret = "the-client-secret-nobody-should-see";
         using var written = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.OidcClientSecret, Secret));
+            new SettingUpdateRequest(SettingCatalog.OidcClientSecret, Secret),
+            cancellationToken: TestContext.Current.CancellationToken);
         written.EnsureSuccessStatusCode();
 
         var state = await GetAsync(client, SettingCatalog.OidcClientSecret);
@@ -52,7 +53,8 @@ public sealed class OidcSettingsEndpointTests
         {
             using var written = await client.PutAsJsonAsync(
                 "/api/v1/admin/settings",
-                new SettingUpdateRequest(SettingCatalog.OidcClientSecret, Secret));
+                new SettingUpdateRequest(SettingCatalog.OidcClientSecret, Secret),
+                cancellationToken: TestContext.Current.CancellationToken);
             written.EnsureSuccessStatusCode();
         }
 
@@ -81,7 +83,8 @@ public sealed class OidcSettingsEndpointTests
 
         using var written = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.OidcAuthority, "https://issuer.example/realm/  "));
+            new SettingUpdateRequest(SettingCatalog.OidcAuthority, "https://issuer.example/realm/  "),
+            cancellationToken: TestContext.Current.CancellationToken);
         written.EnsureSuccessStatusCode();
 
         // The trailing slash is the difference most misconfigurations come down to: the middleware
@@ -104,7 +107,8 @@ public sealed class OidcSettingsEndpointTests
 
         using var response = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",
-            new SettingUpdateRequest(SettingCatalog.OidcAuthority, authority));
+            new SettingUpdateRequest(SettingCatalog.OidcAuthority, authority),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.False((await GetAsync(client, SettingCatalog.OidcAuthority)).IsStored);
@@ -123,7 +127,8 @@ public sealed class OidcSettingsEndpointTests
             // it in. The combination is what fails, and no single write can see it coming.
             using var enabled = await client.PutAsJsonAsync(
                 "/api/v1/admin/settings",
-                new SettingUpdateRequest(SettingCatalog.OidcEnabled, "true"));
+                new SettingUpdateRequest(SettingCatalog.OidcEnabled, "true"),
+                cancellationToken: TestContext.Current.CancellationToken);
             enabled.EnsureSuccessStatusCode();
         }
 
@@ -133,7 +138,8 @@ public sealed class OidcSettingsEndpointTests
         using (var client = await SettingsTestDeployment.SignedInClientAsync(restarted))
         {
             var status = await client.GetFromJsonAsync<OidcStatusResponse>(
-                "/api/v1/admin/settings/oidc");
+                "/api/v1/admin/settings/oidc",
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.False(status!.Enabled);
             Assert.NotNull(status.StartupFault);
@@ -214,8 +220,10 @@ public sealed class OidcSettingsEndpointTests
 
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/settings/oidc/test",
-            new OidcConnectionTestRequest("http://issuer.example", RequireHttpsMetadata: true));
-        var result = await response.Content.ReadFromJsonAsync<OidcConnectionTestResponse>();
+            new OidcConnectionTestRequest("http://issuer.example", RequireHttpsMetadata: true),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var result = await response.Content.ReadFromJsonAsync<OidcConnectionTestResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // Reporting it here rather than after a fetch keeps the answer the same as the one the
         // service would give itself at startup.
@@ -229,12 +237,15 @@ public sealed class OidcSettingsEndpointTests
         using var factory = deployment.CreateFactory();
 
         using var anonymous = factory.CreateClient();
-        using var status = await anonymous.GetAsync("/api/v1/admin/settings/oidc");
+        using var status = await anonymous.GetAsync(
+            "/api/v1/admin/settings/oidc",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, status.StatusCode);
 
         using var probe = await anonymous.PostAsJsonAsync(
             "/api/v1/admin/settings/oidc/test",
-            new OidcConnectionTestRequest("https://issuer.example", RequireHttpsMetadata: true));
+            new OidcConnectionTestRequest("https://issuer.example", RequireHttpsMetadata: true),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, probe.StatusCode);
 
         // The probe makes the service fetch an address the caller chose, so it is a write as far as
@@ -243,7 +254,8 @@ public sealed class OidcSettingsEndpointTests
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
         using var withoutToken = await client.PostAsJsonAsync(
             "/api/v1/admin/settings/oidc/test",
-            new OidcConnectionTestRequest("https://issuer.example", RequireHttpsMetadata: true));
+            new OidcConnectionTestRequest("https://issuer.example", RequireHttpsMetadata: true),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, withoutToken.StatusCode);
     }
 

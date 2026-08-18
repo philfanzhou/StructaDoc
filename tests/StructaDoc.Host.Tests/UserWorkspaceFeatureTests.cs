@@ -28,7 +28,11 @@ public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory fa
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
-            await storage.WriteAsync(assetRef, new MemoryStream("asset"u8.ToArray()), 1024);
+            await storage.WriteAsync(
+                assetRef,
+                new MemoryStream("asset"u8.ToArray()),
+                1024,
+                TestContext.Current.CancellationToken);
             var db = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
             db.ParseRuns.Add(new ParseRunEntity
             {
@@ -50,28 +54,36 @@ public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory fa
             db.ParsePages.Add(new ParsePageEntity { ParseRunId = runId, Number = 1 });
             db.ParseAssets.Add(new ParseAssetEntity { Id = assetId, ParseRunId = runId, Name = "example.png", MediaType = "image/png", SizeBytes = 5, Sha256 = "d59386e0ae4353e9d73de00b09a1b3e91c746c0915ab91670c2c9d092323ce2a", StorageRef = assetRef, CreatedAtUtc = DateTime.UtcNow });
             db.ParseBlocks.Add(new ParseBlockEntity { Id = blockId, ParseRunId = runId, Sequence = 0, PageNumber = 1, Type = "text", Content = "stable content", ProviderDataJson = "{\"privateProviderField\":true}", SourceLocatorJson = "{\"raw\":true}" });
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        using var result = await client.GetAsync($"/api/v1/parse-runs/{runId:D}/blocks");
-        var json = await result.Content.ReadAsStringAsync();
+        using var result = await client.GetAsync(
+            $"/api/v1/parse-runs/{runId:D}/blocks",
+            TestContext.Current.CancellationToken);
+        var json = await result.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, result.StatusCode);
         Assert.Contains("stable content", json, StringComparison.Ordinal);
         Assert.DoesNotContain("privateProviderField", json, StringComparison.Ordinal);
         Assert.DoesNotContain("sourceLocator", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("storageRef", json, StringComparison.OrdinalIgnoreCase);
 
-        using var deletion = await client.DeleteAsync($"/api/v1/documents/{document.Id:D}");
+        using var deletion = await client.DeleteAsync(
+            $"/api/v1/documents/{document.Id:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Accepted, deletion.StatusCode);
 
         var completed = false;
         for (var attempt = 0; attempt < 60 && !completed; attempt++)
         {
-            await Task.Delay(150);
+            await Task.Delay(150, TestContext.Current.CancellationToken);
             await using var scope = factory.Services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
-            completed = !await db.Documents.AnyAsync(item => item.Id == document.Id)
-                && await db.CleanupJobs.AnyAsync(item => item.TargetId == document.Id && item.Status == "completed");
+            completed = !await db.Documents.AnyAsync(
+                item => item.Id == document.Id,
+                cancellationToken: TestContext.Current.CancellationToken)
+                && await db.CleanupJobs.AnyAsync(
+                    item => item.TargetId == document.Id && item.Status == "completed",
+                    cancellationToken: TestContext.Current.CancellationToken);
         }
         Assert.True(completed, "The persistent cleanup worker did not finish within the test timeout.");
         Assert.False(File.Exists(Path.Combine(factory.StorageRootPath, assetRef.Replace('/', Path.DirectorySeparatorChar))));
@@ -104,7 +116,11 @@ public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory fa
             var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
             foreach (var storageRef in refs)
             {
-                await storage.WriteAsync(storageRef, new MemoryStream("payload"u8.ToArray()), 1024);
+                await storage.WriteAsync(
+                    storageRef,
+                    new MemoryStream("payload"u8.ToArray()),
+                    1024,
+                    TestContext.Current.CancellationToken);
             }
 
             var db = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
@@ -143,20 +159,26 @@ public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory fa
             db.ParseBlocks.Add(new ParseBlockEntity { Id = Guid.NewGuid(), ParseRunId = runId, Sequence = 0, PageNumber = 1, Type = "image", AssetId = assetId });
             db.ParseArtifacts.Add(new ParseArtifactEntity { Id = Guid.NewGuid(), ParseRunId = runId, Type = "markdown", Name = "document.md", MediaType = "text/markdown", SizeBytes = 7, Sha256 = PayloadSha256, StorageRef = refs[1], CreatedAtUtc = DateTime.UtcNow });
             db.ParseSegments.Add(new ParseSegmentEntity { Id = segmentId, ParseRunId = runId, Index = 0, StartPage = 1, EndPage = 1, StorageRef = refs[3], SizeBytes = 7, Sha256 = PayloadSha256, Status = ParseRunStatuses.Succeeded, UpdatedAtUtc = DateTime.UtcNow });
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        using var deletion = await client.DeleteAsync($"/api/v1/parse-runs/{runId:D}");
+        using var deletion = await client.DeleteAsync(
+            $"/api/v1/parse-runs/{runId:D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Accepted, deletion.StatusCode);
 
         var completed = false;
         for (var attempt = 0; attempt < 60 && !completed; attempt++)
         {
-            await Task.Delay(150);
+            await Task.Delay(150, TestContext.Current.CancellationToken);
             await using var scope = factory.Services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
-            completed = !await db.ParseRuns.AnyAsync(item => item.Id == runId)
-                && await db.CleanupJobs.AnyAsync(item => item.TargetId == runId && item.Status == "completed");
+            completed = !await db.ParseRuns.AnyAsync(
+                item => item.Id == runId,
+                cancellationToken: TestContext.Current.CancellationToken)
+                && await db.CleanupJobs.AnyAsync(
+                    item => item.TargetId == runId && item.Status == "completed",
+                    cancellationToken: TestContext.Current.CancellationToken);
         }
 
         Assert.True(completed, "The persistent cleanup worker did not finish within the test timeout.");
@@ -164,13 +186,25 @@ public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory fa
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
-            Assert.False(await db.ParsePages.AnyAsync(item => item.ParseRunId == runId));
-            Assert.False(await db.ParseBlocks.AnyAsync(item => item.ParseRunId == runId));
-            Assert.False(await db.ParseAssets.AnyAsync(item => item.ParseRunId == runId));
-            Assert.False(await db.ParseArtifacts.AnyAsync(item => item.ParseRunId == runId));
-            Assert.False(await db.ParseSegments.AnyAsync(item => item.ParseRunId == runId));
+            Assert.False(await db.ParsePages.AnyAsync(
+                item => item.ParseRunId == runId,
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.False(await db.ParseBlocks.AnyAsync(
+                item => item.ParseRunId == runId,
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.False(await db.ParseAssets.AnyAsync(
+                item => item.ParseRunId == runId,
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.False(await db.ParseArtifacts.AnyAsync(
+                item => item.ParseRunId == runId,
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.False(await db.ParseSegments.AnyAsync(
+                item => item.ParseRunId == runId,
+                cancellationToken: TestContext.Current.CancellationToken));
             // The Document itself survives losing its last Parse Run and can be parsed again.
-            Assert.True(await db.Documents.AnyAsync(item => item.Id == document.Id));
+            Assert.True(await db.Documents.AnyAsync(
+                item => item.Id == document.Id,
+                cancellationToken: TestContext.Current.CancellationToken));
         }
 
         foreach (var storageRef in refs)
@@ -184,9 +218,12 @@ public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory fa
             Directory.Exists(Path.Combine(factory.StorageRootPath, "parse-runs", runId.ToString("N"))),
             "The Parse Run directory outlived every object stored under it.");
 
-        using var runs = await client.GetAsync($"/api/v1/documents/{document.Id:D}/parse-runs");
+        using var runs = await client.GetAsync(
+            $"/api/v1/documents/{document.Id:D}/parse-runs",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, runs.StatusCode);
-        Assert.Equal("[]", (await runs.Content.ReadAsStringAsync()).Trim());
+        Assert.Equal("[]", (await runs.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken)).Trim());
     }
 
     private const string PayloadSha256 = "239f59ed55e737c77147cf55ad0c1b030b6d7ee748a7426952f9b852d5a935e5";

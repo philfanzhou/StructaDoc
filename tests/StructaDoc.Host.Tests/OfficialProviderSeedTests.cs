@@ -26,7 +26,8 @@ public sealed class OfficialProviderSeedTests(StructaDocWebApplicationFactory fa
         await client.LoginAsAdministratorAsync();
 
         var configs = await client.GetFromJsonAsync<ProviderConfigResponse[]>(
-            "/api/v1/admin/provider-configs");
+            "/api/v1/admin/provider-configs",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(configs);
         var official = Assert.Single(configs, config => config.Name == "official");
@@ -42,14 +43,16 @@ public sealed class OfficialProviderSeedTests(StructaDocWebApplicationFactory fa
         // but failures against the service. Refusing at creation keeps the reason next to the
         // request, and the workspace reads the same fact so it can say so before anyone clicks.
         var status = await client.GetFromJsonAsync<ParseExecutionStatusResponse>(
-            "/api/v1/parse-execution");
+            "/api/v1/parse-execution",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(status);
         Assert.True(status.WorkerEnabled);
         Assert.True(status.ProviderCredentialMissing);
 
         var document = await UploadDocumentAsync(client);
         using var refused = await CreateParseRunAsync(client, document.Id);
-        var refusedBody = await refused.Content.ReadAsStringAsync();
+        var refusedBody = await refused.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
         Assert.Contains("credential", refusedBody, StringComparison.OrdinalIgnoreCase);
@@ -66,11 +69,13 @@ public sealed class OfficialProviderSeedTests(StructaDocWebApplicationFactory fa
                 Model: official.Model,
                 Credential: "official-endpoint-test-token",
                 IsEnabled: true,
-                IsDefault: true));
+                IsDefault: true),
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
 
         var readyStatus = await client.GetFromJsonAsync<ParseExecutionStatusResponse>(
-            "/api/v1/parse-execution");
+            "/api/v1/parse-execution",
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(readyStatus);
         Assert.False(readyStatus.ProviderCredentialMissing);
 

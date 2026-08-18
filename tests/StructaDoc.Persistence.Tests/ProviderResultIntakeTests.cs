@@ -39,7 +39,9 @@ public sealed class ProviderResultIntakeTests
         Assert.Equal(first.StorageRef, replay.StorageRef);
         Assert.Single(Directory.GetFiles(environment.StoragePath, "*", SearchOption.AllDirectories));
 
-        var recovered = await environment.Intake.TryLoadArchiveAsync(parseRunId);
+        var recovered = await environment.Intake.TryLoadArchiveAsync(
+            parseRunId,
+            TestContext.Current.CancellationToken);
         Assert.NotNull(recovered);
         Assert.Equal(first.Sha256, recovered.Sha256);
         Assert.Equal(first.Entries.ToArray(), recovered.Entries.ToArray());
@@ -50,7 +52,9 @@ public sealed class ProviderResultIntakeTests
     {
         using var environment = new IntakeTestEnvironment();
 
-        var recovered = await environment.Intake.TryLoadArchiveAsync(Guid.NewGuid());
+        var recovered = await environment.Intake.TryLoadArchiveAsync(
+            Guid.NewGuid(),
+            TestContext.Current.CancellationToken);
 
         Assert.Null(recovered);
     }
@@ -63,11 +67,17 @@ public sealed class ProviderResultIntakeTests
         var storageRef = $"parse-runs/{parseRunId:N}/provider/result.zip";
         await using (var invalid = new MemoryStream("not-a-zip"u8.ToArray()))
         {
-            await environment.Storage.WriteAsync(storageRef, invalid, maxBytes: 1024);
+            await environment.Storage.WriteAsync(
+                storageRef,
+                invalid,
+                maxBytes: 1024,
+                cancellationToken: TestContext.Current.CancellationToken);
         }
 
         var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
-            environment.Intake.TryLoadArchiveAsync(parseRunId));
+            environment.Intake.TryLoadArchiveAsync(
+                parseRunId,
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("provider-result-not-zip", exception.ErrorCode);
         Assert.Empty(Directory.GetFiles(environment.StoragePath, "*", SearchOption.AllDirectories));
@@ -231,7 +241,10 @@ public sealed class ProviderResultIntakeTests
             new MemoryStream(archiveBytes, writable: false),
             "application/zip");
 
-        var stored = await intake.StoreArchiveAsync(Guid.NewGuid(), result);
+        var stored = await intake.StoreArchiveAsync(
+            Guid.NewGuid(),
+            result,
+            TestContext.Current.CancellationToken);
 
         Assert.Single(stored.Entries);
         Assert.Equal("result.txt", stored.Entries[0].Path);
@@ -251,9 +264,11 @@ public sealed class ProviderResultIntakeTests
             environment.StoreAsync(parseRunId, differentBytes));
 
         Assert.Equal("provider-result-storage-conflict", exception.ErrorCode);
-        await using var persisted = await environment.Storage.OpenReadAsync(first.StorageRef);
+        await using var persisted = await environment.Storage.OpenReadAsync(
+            first.StorageRef,
+            TestContext.Current.CancellationToken);
         using var copy = new MemoryStream();
-        await persisted.CopyToAsync(copy);
+        await persisted.CopyToAsync(copy, TestContext.Current.CancellationToken);
         Assert.Equal(originalBytes, copy.ToArray());
     }
 

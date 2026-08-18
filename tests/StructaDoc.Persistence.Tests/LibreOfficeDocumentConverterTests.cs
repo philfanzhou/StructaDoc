@@ -35,7 +35,8 @@ public sealed class LibreOfficeDocumentConverterTests
                          new DocumentConversionRequest(
                              SpreadsheetMediaType,
                              source.Length,
-                             _ => Task.FromResult<Stream>(new MemoryStream(source, writable: false)))))
+                             _ => Task.FromResult<Stream>(new MemoryStream(source, writable: false))),
+                         TestContext.Current.CancellationToken))
         {
             Assert.Equal("libreoffice", result.ConverterType);
             Assert.Equal("LibreOffice 25.2.4.2 520(Build:2)", result.ConverterVersion);
@@ -69,7 +70,8 @@ public sealed class LibreOfficeDocumentConverterTests
                 new DocumentConversionRequest(
                     SpreadsheetMediaType,
                     5,
-                    _ => Task.FromResult<Stream>(new MemoryStream(new byte[5])))));
+                    _ => Task.FromResult<Stream>(new MemoryStream(new byte[5]))),
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("document-conversion-input-too-large", exception.ErrorCode);
         Assert.Empty(environment.Runner.Requests);
@@ -86,7 +88,8 @@ public sealed class LibreOfficeDocumentConverterTests
                 new DocumentConversionRequest(
                     SpreadsheetMediaType,
                     source.Length,
-                    _ => Task.FromResult<Stream>(new MemoryStream(source, writable: false)))));
+                    _ => Task.FromResult<Stream>(new MemoryStream(source, writable: false))),
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("document-conversion-output-invalid", exception.ErrorCode);
         var request = Assert.Single(environment.Runner.ConversionRequests);

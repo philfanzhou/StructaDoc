@@ -17,16 +17,19 @@ public sealed class LocalFileStorageTests
         var stored = await storage.WriteAsync(
             "documents/abc/original",
             content,
-            maxBytes: 1024);
+            maxBytes: 1024,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(contentBytes.Length, stored.SizeBytes);
         Assert.Equal(
             Convert.ToHexString(SHA256.HashData(contentBytes)).ToLowerInvariant(),
             stored.Sha256);
 
-        await using var storedContent = await storage.OpenReadAsync(stored.StorageRef);
+        await using var storedContent = await storage.OpenReadAsync(
+            stored.StorageRef,
+            TestContext.Current.CancellationToken);
         using var copy = new MemoryStream();
-        await storedContent.CopyToAsync(copy);
+        await storedContent.CopyToAsync(copy, TestContext.Current.CancellationToken);
         Assert.Equal(contentBytes, copy.ToArray());
     }
 
@@ -38,7 +41,11 @@ public sealed class LocalFileStorageTests
         await using var content = new MemoryStream(new byte[11]);
 
         await Assert.ThrowsAsync<FileSizeLimitExceededException>(
-            () => storage.WriteAsync("documents/abc/original", content, maxBytes: 10));
+            () => storage.WriteAsync(
+                "documents/abc/original",
+                content,
+                maxBytes: 10,
+                cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Empty(Directory.GetFiles(directory.Path, "*", SearchOption.AllDirectories));
     }
@@ -53,25 +60,39 @@ public sealed class LocalFileStorageTests
 
         await using (var original = new MemoryStream(originalBytes))
         {
-            await storage.WriteAsync(storageRef, original, maxBytes: 1024);
+            await storage.WriteAsync(
+                storageRef,
+                original,
+                maxBytes: 1024,
+                cancellationToken: TestContext.Current.CancellationToken);
         }
 
         await using (var replay = new MemoryStream(originalBytes))
         {
-            var storedReplay = await storage.WriteAsync(storageRef, replay, maxBytes: 1024);
+            var storedReplay = await storage.WriteAsync(
+                storageRef,
+                replay,
+                maxBytes: 1024,
+                cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(originalBytes.Length, storedReplay.SizeBytes);
         }
 
         await using (var conflict = new MemoryStream("different-result"u8.ToArray()))
         {
             var exception = await Assert.ThrowsAsync<StorageObjectConflictException>(
-                () => storage.WriteAsync(storageRef, conflict, maxBytes: 1024));
+                () => storage.WriteAsync(
+                    storageRef,
+                    conflict,
+                    maxBytes: 1024,
+                    cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal(storageRef, exception.StorageRef);
         }
 
-        await using var persisted = await storage.OpenReadAsync(storageRef);
+        await using var persisted = await storage.OpenReadAsync(
+            storageRef,
+            TestContext.Current.CancellationToken);
         using var copy = new MemoryStream();
-        await persisted.CopyToAsync(copy);
+        await persisted.CopyToAsync(copy, TestContext.Current.CancellationToken);
         Assert.Equal(originalBytes, copy.ToArray());
     }
 
@@ -85,15 +106,23 @@ public sealed class LocalFileStorageTests
 
         await using (var content = new MemoryStream("image"u8.ToArray()))
         {
-            await storage.WriteAsync(deletedRef, content, maxBytes: 1024);
+            await storage.WriteAsync(
+                deletedRef,
+                content,
+                maxBytes: 1024,
+                cancellationToken: TestContext.Current.CancellationToken);
         }
 
         await using (var content = new MemoryStream("image"u8.ToArray()))
         {
-            await storage.WriteAsync(keptRef, content, maxBytes: 1024);
+            await storage.WriteAsync(
+                keptRef,
+                content,
+                maxBytes: 1024,
+                cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        await storage.DeleteIfExistsAsync(deletedRef);
+        await storage.DeleteIfExistsAsync(deletedRef, TestContext.Current.CancellationToken);
 
         Assert.False(Directory.Exists(Path.Combine(directory.Path, "parse-runs", "abc")));
         // A sibling still holding an object stops the walk, and so does the storage root.
@@ -102,13 +131,17 @@ public sealed class LocalFileStorageTests
 
         // Deleting the last object leaves the root itself and the staging directory standing, so
         // the storage stays usable without being constructed again.
-        await storage.DeleteIfExistsAsync(keptRef);
+        await storage.DeleteIfExistsAsync(keptRef, TestContext.Current.CancellationToken);
         Assert.False(Directory.Exists(Path.Combine(directory.Path, "parse-runs")));
         Assert.True(Directory.Exists(Path.Combine(directory.Path, ".staging")));
 
         await using (var content = new MemoryStream("image"u8.ToArray()))
         {
-            await storage.WriteAsync(keptRef, content, maxBytes: 1024);
+            await storage.WriteAsync(
+                keptRef,
+                content,
+                maxBytes: 1024,
+                cancellationToken: TestContext.Current.CancellationToken);
         }
 
         Assert.True(File.Exists(Path.Combine(directory.Path, "parse-runs", "def", "assets", "image.png")));
@@ -126,7 +159,11 @@ public sealed class LocalFileStorageTests
         await using var content = new MemoryStream("content"u8.ToArray());
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => storage.WriteAsync(storageRef, content, maxBytes: 1024));
+            () => storage.WriteAsync(
+                storageRef,
+                content,
+                maxBytes: 1024,
+                cancellationToken: TestContext.Current.CancellationToken));
     }
 
     private sealed class TemporaryStorageDirectory : IDisposable

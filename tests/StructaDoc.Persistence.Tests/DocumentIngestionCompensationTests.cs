@@ -40,7 +40,8 @@ public sealed class DocumentIngestionCompensationTests
             await using var content = new MemoryStream("%PDF-1.7\n%%EOF"u8.ToArray());
 
             await Assert.ThrowsAsync<DbUpdateException>(() => service.IngestAsync(
-                new DocumentIngestionRequest("sample.pdf", "application/pdf", content)));
+                new DocumentIngestionRequest("sample.pdf", "application/pdf", content),
+                TestContext.Current.CancellationToken));
 
             Assert.Empty(Directory.GetFiles(storagePath, "*", SearchOption.AllDirectories));
         }

@@ -16,7 +16,9 @@ public sealed class DocumentReadEndpointTests
         using var factory = new StructaDocWebApplicationFactory();
         using var client = factory.CreateClient();
 
-        using var anonymousResponse = await client.GetAsync("/api/v1/documents");
+        using var anonymousResponse = await client.GetAsync(
+            "/api/v1/documents",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, anonymousResponse.StatusCode);
 
         await client.LoginAsAdministratorAsync();
@@ -28,7 +30,9 @@ public sealed class DocumentReadEndpointTests
             "ApiKey",
             writeOnlyClient.Credential);
 
-        using var writeOnlyResponse = await client.GetAsync("/api/v1/documents");
+        using var writeOnlyResponse = await client.GetAsync(
+            "/api/v1/documents",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, writeOnlyResponse.StatusCode);
 
         client.DefaultRequestHeaders.Authorization = null;
@@ -40,7 +44,9 @@ public sealed class DocumentReadEndpointTests
             "ApiKey",
             readClient.Credential);
 
-        using var readerResponse = await client.GetAsync("/api/v1/documents");
+        using var readerResponse = await client.GetAsync(
+            "/api/v1/documents",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, readerResponse.StatusCode);
     }
 
@@ -68,9 +74,11 @@ public sealed class DocumentReadEndpointTests
         {
             var path = "/api/v1/documents?limit=2"
                 + (cursor is null ? string.Empty : $"&cursor={Uri.EscapeDataString(cursor)}");
-            using var response = await client.GetAsync(path);
-            var json = await response.Content.ReadAsStringAsync();
-            var page = await response.Content.ReadFromJsonAsync<DocumentListResponse>();
+            using var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
+            var json = await response.Content.ReadAsStringAsync(
+                TestContext.Current.CancellationToken);
+            var page = await response.Content.ReadFromJsonAsync<DocumentListResponse>(
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.NotNull(page);
@@ -110,7 +118,7 @@ public sealed class DocumentReadEndpointTests
         using var client = factory.CreateClient();
         await client.LoginAsAdministratorAsync();
 
-        using var response = await client.GetAsync(path);
+        using var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -125,17 +133,22 @@ public sealed class DocumentReadEndpointTests
         var created = await UploadPdfAsync(client, "download.pdf", bytes);
 
         using var detailResponse = await client.GetAsync(
-            $"/api/v1/documents/{created.Id:D}");
-        var detailJson = await detailResponse.Content.ReadAsStringAsync();
-        var detail = await detailResponse.Content.ReadFromJsonAsync<DocumentResponse>();
+            $"/api/v1/documents/{created.Id:D}",
+            TestContext.Current.CancellationToken);
+        var detailJson = await detailResponse.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
+        var detail = await detailResponse.Content.ReadFromJsonAsync<DocumentResponse>(
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
         Assert.Equal(created, detail);
         Assert.DoesNotContain("storageRef", detailJson, StringComparison.OrdinalIgnoreCase);
 
         using var contentResponse = await client.GetAsync(
-            $"/api/v1/documents/{created.Id:D}/content");
-        var downloaded = await contentResponse.Content.ReadAsByteArrayAsync();
+            $"/api/v1/documents/{created.Id:D}/content",
+            TestContext.Current.CancellationToken);
+        var downloaded = await contentResponse.Content.ReadAsByteArrayAsync(
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, contentResponse.StatusCode);
         Assert.Equal(bytes, downloaded);
@@ -153,22 +166,28 @@ public sealed class DocumentReadEndpointTests
             $"/api/v1/documents/{created.Id:D}/content");
         conditionalRequest.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(
             $"\"{created.Sha256}\""));
-        using var conditionalResponse = await client.SendAsync(conditionalRequest);
+        using var conditionalResponse = await client.SendAsync(
+            conditionalRequest,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotModified, conditionalResponse.StatusCode);
 
         using var rangeRequest = new HttpRequestMessage(
             HttpMethod.Get,
             $"/api/v1/documents/{created.Id:D}/content");
         rangeRequest.Headers.Range = new RangeHeaderValue(0, 4);
-        using var rangeResponse = await client.SendAsync(rangeRequest);
+        using var rangeResponse = await client.SendAsync(
+            rangeRequest,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.PartialContent, rangeResponse.StatusCode);
-        Assert.Equal(bytes[..5], await rangeResponse.Content.ReadAsByteArrayAsync());
+        Assert.Equal(bytes[..5], await rangeResponse.Content.ReadAsByteArrayAsync(
+            TestContext.Current.CancellationToken));
         Assert.Equal(0, rangeResponse.Content.Headers.ContentRange?.From);
         Assert.Equal(4, rangeResponse.Content.Headers.ContentRange?.To);
         Assert.Equal(bytes.Length, rangeResponse.Content.Headers.ContentRange?.Length);
 
         using var missingResponse = await client.GetAsync(
-            $"/api/v1/documents/{Guid.NewGuid():D}");
+            $"/api/v1/documents/{Guid.NewGuid():D}",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, missingResponse.StatusCode);
     }
 
@@ -190,8 +209,10 @@ public sealed class DocumentReadEndpointTests
         File.Delete(storedPath);
 
         using var response = await client.GetAsync(
-            $"/api/v1/documents/{created.Id:D}/content");
-        var responseBody = await response.Content.ReadAsStringAsync();
+            $"/api/v1/documents/{created.Id:D}/content",
+            TestContext.Current.CancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.DoesNotContain(factory.StorageRootPath, responseBody, StringComparison.OrdinalIgnoreCase);

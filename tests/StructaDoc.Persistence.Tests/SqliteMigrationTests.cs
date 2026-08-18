@@ -27,8 +27,10 @@ public sealed class SqliteMigrationTests
 
             await using (var dbContext = new StructaDocDbContext(options))
             {
-                await dbContext.Database.MigrateAsync();
-                Assert.Empty(await dbContext.Database.GetPendingMigrationsAsync());
+                await dbContext.Database.MigrateAsync(
+                    cancellationToken: TestContext.Current.CancellationToken);
+                Assert.Empty(await dbContext.Database.GetPendingMigrationsAsync(
+                    cancellationToken: TestContext.Current.CancellationToken));
 
                 dbContext.Documents.Add(new DocumentEntity
                 {
@@ -57,27 +59,31 @@ public sealed class SqliteMigrationTests
                     CreatedAtUtc = now,
                 });
 
-                await dbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
             await using var firstWorker = new StructaDocDbContext(options);
             await using var secondWorker = new StructaDocDbContext(options);
-            var firstClaim = await firstWorker.ParseRuns.SingleAsync(run => run.Id == parseRunId);
-            var secondClaim = await secondWorker.ParseRuns.SingleAsync(run => run.Id == parseRunId);
+            var firstClaim = await firstWorker.ParseRuns.SingleAsync(
+                run => run.Id == parseRunId,
+                cancellationToken: TestContext.Current.CancellationToken);
+            var secondClaim = await secondWorker.ParseRuns.SingleAsync(
+                run => run.Id == parseRunId,
+                cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(DateTimeKind.Utc, firstClaim.NextAttemptAtUtc.Kind);
 
             firstClaim.Status = ParseRunStatuses.Claimed;
             firstClaim.ClaimedBy = "worker-1";
             firstClaim.LeaseExpiresAtUtc = now.AddMinutes(1);
-            await firstWorker.SaveChangesAsync();
+            await firstWorker.SaveChangesAsync(TestContext.Current.CancellationToken);
 
             secondClaim.Status = ParseRunStatuses.Claimed;
             secondClaim.ClaimedBy = "worker-2";
             secondClaim.LeaseExpiresAtUtc = now.AddMinutes(1);
 
             await Assert.ThrowsAsync<DbUpdateConcurrencyException>(
-                () => secondWorker.SaveChangesAsync());
+                () => secondWorker.SaveChangesAsync(TestContext.Current.CancellationToken));
 
             Assert.Equal(1, firstClaim.ConcurrencyVersion);
         }

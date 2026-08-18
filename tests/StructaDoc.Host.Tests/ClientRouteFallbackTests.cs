@@ -16,7 +16,7 @@ public sealed class ClientRouteFallbackTests(StructaDocWebApplicationFactory fac
     {
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync(path);
+        using var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -27,7 +27,9 @@ public sealed class ClientRouteFallbackTests(StructaDocWebApplicationFactory fac
     {
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/v1/system/info");
+        using var response = await client.GetAsync(
+            "/api/v1/system/info",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }

@@ -85,13 +85,17 @@ jobs:
       - name: Build .NET solution
         run: dotnet build StructaDoc.slnx --configuration Release --no-restore
 
+      # xunit v3 runs on Microsoft.Testing.Platform, which the .NET 10 SDK drives in place of
+      # VSTest, so the report is asked for by name rather than through a `--logger` string. Each
+      # test project is its own executable now and writes its own file into the results
+      # directory, which is why no prefix or file name is supplied here.
       - name: Run tests that do not require Docker
         run: >-
           dotnet test StructaDoc.slnx
           --configuration Release
           --no-build
           --no-restore
-          --logger "trx;LogFilePrefix=unit"
+          --report-trx
           --results-directory artifacts/test-results
 
       - name: Upload test results
@@ -125,7 +129,7 @@ jobs:
           dotnet test tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj
           --configuration Release
           --no-restore
-          --logger "trx;LogFileName=database-contracts.trx"
+          --report-trx
           --results-directory artifacts/database-contract-results
 
       - name: Upload database contract results

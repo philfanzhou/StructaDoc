@@ -33,14 +33,19 @@ public sealed class ParseBundleCommitStoreTests
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
             var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
-            committed = await store.TryCommitAsync(lease, bundle, nowUtc.AddSeconds(2));
+            committed = await store.TryCommitAsync(
+                lease,
+                bundle,
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken);
         }
 
         Assert.Equal(ParseBundleCommitStatus.Committed, committed.Status);
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var parseRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync();
+            var parseRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+                cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(ParseRunStatuses.Succeeded, parseRun.Status);
             Assert.Equal(ParseBundleValidator.CurrentSchemaVersion, parseRun.ResultSchemaVersion);
             Assert.Equal(ParseBundleValidator.ComputeFingerprint(bundle), parseRun.ResultSha256);
@@ -49,14 +54,20 @@ public sealed class ParseBundleCommitStoreTests
             Assert.Null(parseRun.ClaimedBy);
             Assert.Null(parseRun.LeaseExpiresAtUtc);
             Assert.Null(parseRun.Stage);
-            Assert.Equal(2, await dbContext.ParsePages.CountAsync());
-            Assert.Equal(2, await dbContext.ParseBlocks.CountAsync());
-            Assert.Single(await dbContext.ParseAssets.ToListAsync());
-            Assert.Single(await dbContext.ParseArtifacts.ToListAsync());
+            Assert.Equal(2, await dbContext.ParsePages.CountAsync(
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Equal(2, await dbContext.ParseBlocks.CountAsync(
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Single(await dbContext.ParseAssets.ToListAsync(
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Single(await dbContext.ParseArtifacts.ToListAsync(
+                cancellationToken: TestContext.Current.CancellationToken));
 
             var imageBlock = await dbContext.ParseBlocks
                 .AsNoTracking()
-                .SingleAsync(block => block.AssetId != null);
+                .SingleAsync(
+                    block => block.AssetId != null,
+                    cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(1, imageBlock.PageNumber);
             Assert.Equal(0.1, imageBlock.BoundingBoxX0);
             Assert.Equal(0.95, imageBlock.Confidence);
@@ -65,7 +76,11 @@ public sealed class ParseBundleCommitStoreTests
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
             var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
-            var replay = await store.TryCommitAsync(lease, bundle, nowUtc.AddMinutes(1));
+            var replay = await store.TryCommitAsync(
+                lease,
+                bundle,
+                nowUtc.AddMinutes(1),
+                TestContext.Current.CancellationToken);
             var conflictingBundle = bundle with
             {
                 ProviderMetadataJson = "{\"providerType\":\"mineru-local\",\"model\":\"different\"}",
@@ -73,7 +88,8 @@ public sealed class ParseBundleCommitStoreTests
             var conflict = await store.TryCommitAsync(
                 lease,
                 conflictingBundle,
-                nowUtc.AddMinutes(1));
+                nowUtc.AddMinutes(1),
+                TestContext.Current.CancellationToken);
 
             Assert.Equal(ParseBundleCommitStatus.AlreadyCommitted, replay.Status);
             Assert.Equal(ParseBundleCommitStatus.Conflict, conflict.Status);
@@ -97,7 +113,11 @@ public sealed class ParseBundleCommitStoreTests
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
             var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
-            var result = await store.TryCommitAsync(lease, bundle, nowUtc.AddSeconds(2));
+            var result = await store.TryCommitAsync(
+                lease,
+                bundle,
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken);
             Assert.Equal(ParseBundleCommitStatus.StorageMismatch, result.Status);
             Assert.Equal("storage-content-mismatch", result.ErrorCode);
         }
@@ -121,13 +141,18 @@ public sealed class ParseBundleCommitStoreTests
                     .SetProperty(parseRun => parseRun.Status, ParseRunStatuses.CancelRequested)
                     .SetProperty(
                         parseRun => parseRun.ConcurrencyVersion,
-                        parseRun => parseRun.ConcurrencyVersion + 1));
+                        parseRun => parseRun.ConcurrencyVersion + 1),
+                cancellationToken: TestContext.Current.CancellationToken);
         }
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
             var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
-            var result = await store.TryCommitAsync(lease, bundle, nowUtc.AddSeconds(2));
+            var result = await store.TryCommitAsync(
+                lease,
+                bundle,
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken);
             Assert.Equal(ParseBundleCommitStatus.LeaseLost, result.Status);
         }
 
@@ -185,13 +210,17 @@ public sealed class ParseBundleCommitStoreTests
                 StorageRef = "results/existing.png",
                 CreatedAtUtc = nowUtc,
             });
-            await dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
             var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
-            var result = await store.TryCommitAsync(lease, bundle, nowUtc.AddSeconds(2));
+            var result = await store.TryCommitAsync(
+                lease,
+                bundle,
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken);
             Assert.Equal(ParseBundleCommitStatus.Conflict, result.Status);
         }
 
@@ -239,10 +268,15 @@ public sealed class ParseBundleCommitStoreTests
         await dbContext.ParseRuns
             .Where(parseRun => parseRun.Id == lease.ParseRunId)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(parseRun => parseRun.ConversionJson, conversion.ToJson()));
+                .SetProperty(parseRun => parseRun.ConversionJson, conversion.ToJson()),
+            cancellationToken: TestContext.Current.CancellationToken);
         var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
 
-        var result = await store.TryCommitAsync(lease, bundle, nowUtc.AddSeconds(2));
+        var result = await store.TryCommitAsync(
+            lease,
+            bundle,
+            nowUtc.AddSeconds(2),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(ParseBundleCommitStatus.InvalidBundle, result.Status);
         Assert.Equal("invalid-conversion-artifact", result.ErrorCode);
