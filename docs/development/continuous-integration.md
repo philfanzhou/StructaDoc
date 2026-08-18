@@ -11,22 +11,24 @@ Four jobs run independently:
 3. **PostgreSQL, MySQL, and MariaDB contracts** sets `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`; Testcontainers starts PostgreSQL 17, MySQL 8.4, and MariaDB 11.4 and runs the same migration, persistence, lease, recovery, and canonical-commit contracts.
 4. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, checks that the running image reports the commit that built it, checks that a forwarded header from a peer nothing trusts is refused and reported, and uses Chromium to exercise administrator sign-in, Provider configuration, PDF upload, parsing, and the administration area.
 
-Two more run for a `v*` tag and nothing else:
+Two more publish, and not for the same events:
 
-5. **Publish image to GitHub Container Registry** waits for all four, builds the same Dockerfile, and pushes it to `ghcr.io`. See [Published Images](#published-images).
-6. **Publish GitHub release** waits for the image, then creates the release the tag names. Its notes are the ones GitHub generates from the pull requests merged since the previous tag, with the `docker pull` line placed above them.
+5. **Publish image to GitHub Container Registry** waits for all four, builds the same Dockerfile, and pushes it to `ghcr.io`. A `v*` tag publishes the release names; a push to `main` publishes `edge` and nothing else. See [Published Images](#published-images).
+6. **Publish GitHub release** runs for a `v*` tag alone. It waits for the image, then creates the release the tag names. Its notes are the ones GitHub generates from the pull requests merged since the previous tag, with the `docker pull` line placed above them.
 
 TRX results, Playwright HTML reports, screenshots, failure traces/videos, and container logs are uploaded as Actions artifacts. Temporary administrator credentials exist only in the isolated runner environment and are not repository secrets or production defaults.
 
 ## Published Images
 
-`ghcr.io/philfanzhou/structadoc` receives `latest`, `<version>`, and `<major>.<minor>`, all of them from a `v*` tag. Nothing else publishes. A push to the default branch runs every test job and stops there.
+`ghcr.io/philfanzhou/structadoc` receives `latest`, `<version>`, and `<major>.<minor>` from a `v*` tag, and `edge` from a push to `main`. Nothing else publishes.
 
-`latest` names the newest release, which is now the only kind of build that reaches the registry at all. Whoever pulls it did not choose a tag, and a `latest` reporting `0.0.0-dev` would be a development build handed to someone who never asked for one.
+`latest` names the newest release. Whoever pulls it did not choose a tag, and a `latest` reporting `0.0.0-dev` would be a development build handed to someone who never asked for one, so the rule that produces it is gated on the tag rather than given to whichever build published most recently.
 
-`sha-<commit>` is no longer published. It came from the branch build, and there is no branch build to produce it. A deployment that named a commit names a version instead, or a digest, which is the only immutable name in either case. Images already published under a commit name stay in the registry; no new ones appear.
+`edge` is whatever `main` currently is, and it is meant to move. It exists so that a change can be pulled and tried before anyone has decided on a version for it: the next push to the default branch overwrites it, and it reports `0.0.0-dev` because no release named a version for it. That is what makes it usable for trying something and what makes it unusable for a deployment, which names a version or a digest.
 
-Releasing is one push. `git tag -a v0.1.0 && git push origin v0.1.0` is what causes any publishing to happen at all, rather than only what turns the semver rules on. The tag also supplies the `VERSION` build argument, so the version the registry advertises and the version the running service reports come from the same place and cannot drift. A build from the default branch keeps the placeholder `Directory.Build.props` declares and never leaves the runner.
+`sha-<commit>` is not published. The branch build produces `edge` instead: one name that moves, rather than one permanent name per push, none of which was pulled twice. A deployment that named a commit names a version instead, or a digest, which is the only immutable name in either case. Images already published under a commit name stay in the registry; no new ones appear.
+
+Releasing is one push. `git tag -a v0.1.0 && git push origin v0.1.0` is what produces every name a deployment can be pinned to, rather than only what turns the semver rules on. The tag also supplies the `VERSION` build argument, so the version the registry advertises and the version the running service reports come from the same place and cannot drift. A build from the default branch passes no version and keeps the placeholder `Directory.Build.props` declares, which is why `edge` reports `0.0.0-dev` and a release never does.
 
 Both image-building jobs pass `SOURCE_REVISION`, and the container job then asks the running image for it. This is checked rather than assumed because nothing inside the image can derive it: `.dockerignore` excludes `.git`, so the SourceLink the SDK ships finds no repository and stamps nothing. A build argument that quietly stopped being passed would leave every deployment unable to say which commit it is, while every health check still passed.
 
