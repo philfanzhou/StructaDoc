@@ -8,6 +8,7 @@ using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.System;
 using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
+using StructaDoc.Host.OpenApi;
 using StructaDoc.Host.ParseRuns;
 using StructaDoc.Host.Providers;
 using StructaDoc.Host.Resources;
@@ -121,6 +122,7 @@ builder.Services.AddStructaDocProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
 builder.Services.AddStructaDocHostAuthentication(authenticationOptions, oidcOptions, keyRing);
+builder.Services.AddStructaDocApiDescription();
 builder.Services.AddSingleton(oidcOptions);
 builder.Services.AddSingleton(workerOptions);
 builder.Services.AddSingleton(settingsConfiguration);
@@ -210,6 +212,10 @@ app.UseStructaDocReverseProxy(reverseProxyOptions, app.Logger);
 app.UseRateLimiter();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+// Before authentication because the page carries no credential of its own, and before the endpoint
+// that answers unmatched routes with the application shell, which would otherwise return HTML for
+// every path under it.
+app.UseStructaDocApiDescriptionPage();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -237,6 +243,8 @@ var serviceVersion = Assembly
     .GetExecutingAssembly()
     .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
     .InformationalVersion ?? "unknown";
+
+app.MapStructaDocApiDescription();
 
 app.MapGet(
         "/api/v1/system/info",

@@ -99,6 +99,7 @@ The Host serves the compiled web application and API on one address:
 
 Useful unauthenticated endpoints are:
 
+- `GET /api/v1/openapi.json` and `/api/v1/docs` — the API description and a page that browses it;
 - `GET /api/v1/system/info` — service identity and version;
 - `GET /health/live` — process liveness;
 - `GET /health/ready` — database and storage readiness.
@@ -236,6 +237,8 @@ GET    /api/v1/parse-runs/{parseRunId}/exports/{format}
 Content is retrieved through authorized endpoints; internal `storageRef` values never appear in public DTOs. Parse Run creation supports `Idempotency-Key`. Block listing uses stable sequence pagination. Deletion returns an accepted lifecycle transition and is completed by a durable cleanup job.
 
 Cancellation is best-effort and idempotent: it stops local processing and durably completes as `cancelled`, which is also how a Document is released for deletion when its Parse Run will never finish on its own. Because the current MinerU protocols expose no single-task cancellation contract, work already submitted to an online Provider may keep consuming remote resources.
+
+The same surface is published as an OpenAPI 3.1 document at `GET /api/v1/openapi.json`, browsable at `/api/v1/docs`. It is generated from the endpoints, so it cannot describe a route that does not exist, and it records which scope each one needs and which are reachable only from a browser. See [API Description](./docs/development/api-description.md).
 
 Administrator endpoints manage local sessions, API clients, and Provider configurations under `/api/v1/admin`. Cookie-authenticated writes require an antiforgery token; API-key requests do not use browser cookies. A scope authorizes the endpoint, and ownership or an explicit grant authorizes the resource, so an API client reaches what it uploaded and what was shared with it rather than the whole workspace. See [ADR-0008](./docs/adr/0008-api-client-resource-isolation.md).
 

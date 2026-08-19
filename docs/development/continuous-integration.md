@@ -9,7 +9,7 @@ Four jobs run independently:
 1. **Web dependency audit** runs `npm audit` against `web/package-lock.json`. It is its own job so that an advisory published upstream cannot end the run before anything has been built.
 2. **Build and unit tests** installs .NET 10 and Node.js 24, restores and builds the backend and frontend, and runs tests that do not require Docker.
 3. **PostgreSQL, MySQL, and MariaDB contracts** sets `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`; Testcontainers starts PostgreSQL 17, MySQL 8.4, and MariaDB 11.4 and runs the same migration, persistence, lease, recovery, and canonical-commit contracts.
-4. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, checks that the running image reports the commit that built it, checks that a forwarded header from a peer nothing trusts is refused and reported, and uses Chromium to exercise administrator sign-in, Provider configuration, PDF upload, parsing, and the administration area.
+4. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, checks that the running image reports the commit that built it, checks that a forwarded header from a peer nothing trusts is refused and reported, and uses Chromium to exercise administrator sign-in, Provider configuration, PDF upload, parsing, the administration area, and the API description page.
 
 Two more publish, and not for the same events:
 
