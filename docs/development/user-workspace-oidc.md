@@ -13,6 +13,7 @@ One Host serves both audiences and the API on a single address, as required by [
 /admin          the administration area
 /admin/signin   administrator sign-in, including local break-glass access
 /api/v1/...     the service API
+/api/v1/docs    the browsable API description
 ```
 
 A path prefix is not an access boundary. The web application is public static content that any visitor can download, so `/admin` protects nothing by itself; every administrative route is enforced by the administrator policy on the server. The split exists so the two audiences get their own entry point and so the administration bundle is a lazily loaded chunk that a workspace-only visitor never downloads.

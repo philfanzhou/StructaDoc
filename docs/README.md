@@ -35,6 +35,7 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 
 | Document | Subject |
 |---|---|
+| [API Description](./development/api-description.md) | The OpenAPI document, what it says about authentication and scopes, and the page that browses it |
 | [Authentication](./development/authentication.md) | Local administration, generic OIDC, API keys, bootstrap, and antiforgery |
 | [Canonical Result Persistence](./development/canonical-result-persistence.md) | Bundle validation, storage verification, and idempotent success transactions |
 | [Continuous Integration](./development/continuous-integration.md) | Build, database contracts, production container, and browser validation |

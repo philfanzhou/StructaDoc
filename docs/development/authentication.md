@@ -122,6 +122,8 @@ Following [ADR-0008](../adr/0008-api-client-resource-isolation.md), an API clien
 | OIDC user | what `(issuer, subject)` owns or was granted |
 | API client | what `(structadoc:api-client, <client id>)` owns or was granted |
 
+The published API description states this per endpoint: which scope each one needs, and which are reachable only from a browser. See [API Description](./api-description.md).
+
 `structadoc:api-client` is a reserved issuer and cannot collide with a real one: a valid OIDC issuer is an absolute `http`/`https` URI, which this is not. Documents uploaded by an API client record it as their owner, and an owner holds every document permission.
 
 A grant may name an API client, so `POST /api/v1/documents/{id}/access-grants` accepts `structadoc:api-client` as the issuer with a client ID as the subject. That is how a Document uploaded through the browser is handed to an integration, and it is revocable and listed like every other grant. There is no principal-level grant meaning "everything this owner has"; sharing is per Document.
