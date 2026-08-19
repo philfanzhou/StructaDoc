@@ -12,13 +12,23 @@ GET    /api/v1/parse-runs/{parseRunId}/assets/{assetId}/content
 GET    /api/v1/parse-runs/{parseRunId}/artifacts
 GET    /api/v1/parse-runs/{parseRunId}/artifacts/{artifactId}/content
 GET    /api/v1/parse-runs/{parseRunId}/markdown
+GET    /api/v1/parse-runs/{parseRunId}/markdown/preview
 GET    /api/v1/parse-runs/{parseRunId}/exports/{markdown|html|zip|pdf}
 POST   /api/v1/parse-runs/{parseRunId}/cancel
 DELETE /api/v1/parse-runs/{parseRunId}
 DELETE /api/v1/documents/{documentId}
 ```
 
-Blocks use `afterSequence` for stable cursor pagination. Their public DTO excludes `ProviderDataJson` and raw source locators.
+Blocks use `afterSequence` for stable cursor pagination, and `nextSequence` in the response is the cursor for the page after it. A response without `nextSequence` is the last page; a caller that reads `items` and ignores the cursor sees the beginning of a result with nothing saying it stopped. `pageNumber` narrows the listing to one page, which is what a layout view reads rather than paging the whole run to find one page's Blocks. Their public DTO excludes `ProviderDataJson` and raw source locators.
+
+## Reading a Result
+
+`markdown` returns the canonical Markdown Artifact as it was stored. `markdown/preview` returns the same result rendered as a self-contained HTML page, for display rather than for saving. It is the HTML export byte for byte — the same renderer, link rewriting, and bounded image inlining — and differs in two ways that are the reason it is a separate route:
+
+- reading a result is not exporting it, so it requires read access to the Parse Run rather than the `export` permission;
+- it is served inline rather than as an attachment, because a browser that downloads a preview has not shown one.
+
+Both `markdown/preview` and the download routes answer with `Content-Security-Policy: sandbox`, which puts Provider-authored content in an opaque origin. That is also why the preview inlines images instead of linking them at their authorized endpoints: a request back to this service from an opaque origin carries no session cookie, so a linked image would be a broken one. A result whose images exceed the inlining budget previews with those images missing; they remain downloadable through the Asset routes.
 
 ## Exports
 

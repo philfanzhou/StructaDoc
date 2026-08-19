@@ -50,6 +50,19 @@ A document records the principal that created it, whether that was an OIDC user 
 
 Every document, Parse Run, Page, Block, Asset, Artifact, Markdown view, export, share operation, and deletion performs resource-level authorization. One owner-or-grant rule covers every principal, so an API client sees what it uploaded and what it was granted rather than the whole workspace. Administrators are the only global policy; a document an administrator uploads is unowned and stays administrator-only.
 
+## Reading a Result
+
+Whether a parse is any good is a question about the result, and it is the question the workspace exists to answer. A Parse Run's result is shown as four tabs over one selection rather than one column, because someone is either reading the document or checking its structure, and those want different things on screen:
+
+- **Document** is the Markdown rendered by `markdown/preview`, in an iframe with the `sandbox` attribute. The content came out of a Provider archive, so it is never given the workspace's own origin to run in; the response carries `Content-Security-Policy: sandbox` as well. A run with no Markdown Artifact has nothing here, and the panel opens on the structure instead.
+- **Structure** lists Blocks in reading order with their type, page, confidence, and referenced Asset. Blocks arrive one cursor page at a time and are appended on request. The count on screen is what has been loaded, never a total: there is no count endpoint, and a number the page cannot know is worse than no number.
+- **Layout** draws one page's Blocks as boxes on the page's own shape, numbered in reading order and coloured by type, and clicking a box shows that Block. Bounding boxes are normalized to the page, so this needs no page raster and no dimensions to be in the right relative places; Provider dimensions give the shape, and without them the boxes are drawn on A4 and the panel says so. It reads one page at a time through the Blocks endpoint's `pageNumber` filter rather than paging the whole run. Blocks with no bounding box are counted and named as absent rather than dropped.
+- **Resources** shows image Assets as thumbnails and every Artifact by type, both linked at their authorized content routes.
+
+Block types come from the canonical model, whose registered set is allowed to grow inside one API major version. An unrecognized type is coloured and displayed under its own name rather than dropped, which is what the model asks consumers to do.
+
+Every result read is checked against the current selection when it returns. Selecting a second Parse Run while the first one's reads are in flight is one click, and without the check the slower answer lands in the newer run's panel.
+
 ## Watching Work in Progress
 
 Parsing is asynchronous and finishes on the service without telling the browser, so the workspace re-reads what is unfinished on a three-second timer. The timer is driven by the visible state rather than left running: it starts when a Parse Run or a document in the list holds a non-final status and stops when everything in view is `succeeded`, `failed`, or `cancelled`, so a workspace showing only finished work makes no requests at all. The workspace says while it is polling, so a screen that is not changing is distinguishable from one that has stopped watching.

@@ -18,6 +18,7 @@ public static class ParseResultEndpoints
         group.MapGet("/artifacts", ListArtifactsAsync);
         group.MapGet("/artifacts/{artifactId:guid}/content", DownloadArtifactAsync);
         group.MapGet("/markdown", DownloadMarkdownAsync);
+        group.MapGet("/markdown/preview", PreviewMarkdownAsync);
         return endpoints;
     }
 
@@ -51,6 +52,24 @@ public static class ParseResultEndpoints
     private static Task<IResult> DownloadAssetAsync(Guid parseRunId, Guid assetId, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => service.OpenAssetAsync(parseRunId, assetId, ResourceAccessContextFactory.Create(context.User), cancellationToken));
     private static Task<IResult> DownloadArtifactAsync(Guid parseRunId, Guid artifactId, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => service.OpenArtifactAsync(parseRunId, artifactId, ResourceAccessContextFactory.Create(context.User), cancellationToken));
     private static Task<IResult> DownloadMarkdownAsync(Guid parseRunId, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => service.OpenMarkdownAsync(parseRunId, ResourceAccessContextFactory.Create(context.User), cancellationToken), inline: true);
+
+    /// <summary>
+    /// The Markdown result rendered as a self-contained HTML page, for display rather than for
+    /// saving.
+    /// </summary>
+    /// <remarks>
+    /// The page is byte-for-byte the HTML export, which is what makes this cheap: the same renderer,
+    /// the same Provider-relative link rewriting, and the same bounded image inlining. Two things
+    /// differ, and both are the reason it is a separate route. Reading a result is not exporting it,
+    /// so this asks for read access rather than the export permission; and it is served inline
+    /// instead of as an attachment, because a browser that downloads a preview has not shown one.
+    ///
+    /// Images are inlined rather than linked at their authorized endpoints because
+    /// <c>Content-Security-Policy: sandbox</c> puts the page in an opaque origin, where a request
+    /// back to this service carries no session cookie and would load nothing. Inlining is bounded,
+    /// so a result whose images exceed the export budget previews with those images missing.
+    /// </remarks>
+    private static Task<IResult> PreviewMarkdownAsync(Guid parseRunId, HttpContext context, IParseExportService exports, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => exports.CreateAsync(parseRunId, "html", ResourceAccessContextFactory.Create(context.User), cancellationToken), inline: true);
 
     private static async Task<IResult> DownloadAsync(Guid parseRunId, HttpContext context, Func<Task<ParseResultContent?>> open, bool inline = false)
     {

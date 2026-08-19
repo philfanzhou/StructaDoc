@@ -7,7 +7,7 @@
 
 StructaDoc turns uploaded documents into stable, structured data. It combines a user-facing Vue workspace, a controlled administration area, a versioned HTTP API, durable background processing, and local or S3-compatible storage in one self-hostable application.
 
-Users can upload and manage PDF, Word, Excel, and PowerPoint files; start parsing; inspect normalized pages, blocks, assets, and Markdown; share documents; and export Markdown, HTML, ZIP, or PDF. Administrators additionally manage parsing Providers and API clients.
+Users can upload and manage PDF, Word, Excel, and PowerPoint files; start parsing; read the result as rendered Markdown, as Blocks in reading order, or as a page-layout map of where each Block sits; download assets and artifacts; share documents; and export Markdown, HTML, ZIP, or PDF. Administrators additionally manage parsing Providers and API clients.
 
 MinerU Cloud and self-hosted MinerU are adapters behind a Provider-neutral boundary. Consumers never need to understand Provider task protocols, output layouts, or version-specific raw JSON.
 
@@ -43,7 +43,7 @@ StructaDoc is in early development, but the main end-to-end platform is implemen
 - constrained LibreOffice Office-to-PDF fallback;
 - resumable large-PDF segmentation and deterministic result merging;
 - bounded Provider ZIP intake and deterministic canonical normalization;
-- stable result DTOs, authorized downloads, Markdown preview, and exports;
+- stable result DTOs, authorized downloads, rendered Markdown, Block and layout views, and exports;
 - persistent cleanup jobs that complete object deletion before removing relational data.
 
 The production Docker image, PostgreSQL/MySQL/MariaDB contract suites, and Chromium workspace smoke test are exercised by GitHub Actions. A Worker sends documents to a Provider once an administrator has configured and enabled one under `/admin`; a deployment with no Provider makes no outbound requests, because a Parse Run cannot be created without one.
@@ -231,10 +231,11 @@ GET    /api/v1/parse-runs/{parseRunId}/blocks
 GET    /api/v1/parse-runs/{parseRunId}/assets
 GET    /api/v1/parse-runs/{parseRunId}/artifacts
 GET    /api/v1/parse-runs/{parseRunId}/markdown
+GET    /api/v1/parse-runs/{parseRunId}/markdown/preview
 GET    /api/v1/parse-runs/{parseRunId}/exports/{format}
 ```
 
-Content is retrieved through authorized endpoints; internal `storageRef` values never appear in public DTOs. Parse Run creation supports `Idempotency-Key`. Block listing uses stable sequence pagination. Deletion returns an accepted lifecycle transition and is completed by a durable cleanup job.
+Content is retrieved through authorized endpoints; internal `storageRef` values never appear in public DTOs. `markdown` returns the stored Markdown Artifact and `markdown/preview` returns it rendered as a self-contained page for display. Parse Run creation supports `Idempotency-Key`. Block listing uses stable sequence pagination. Deletion returns an accepted lifecycle transition and is completed by a durable cleanup job.
 
 Cancellation is best-effort and idempotent: it stops local processing and durably completes as `cancelled`, which is also how a Document is released for deletion when its Parse Run will never finish on its own. Because the current MinerU protocols expose no single-task cancellation contract, work already submitted to an online Provider may keep consuming remote resources.
 
