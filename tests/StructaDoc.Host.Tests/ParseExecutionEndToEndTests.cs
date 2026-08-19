@@ -109,6 +109,20 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
             await markdown.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
             StringComparison.Ordinal);
 
+        // Markdown a Provider produced is not something a person can read as Markdown, and the
+        // workspace shows this rendering rather than the source. It is the last step of the chain,
+        // so it is checked on the result the chain actually produced rather than on a fixture.
+        using var preview = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRun.Id:D}/markdown/preview",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+        Assert.Equal("text/html", preview.Content.Headers.ContentType?.MediaType);
+        var previewHtml = await preview.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        // Anchored on the closing tag rather than the opening one: the renderer gives headings an
+        // identifier, so the opening tag carries an attribute this assertion has no stake in.
+        Assert.Contains($">{StubMinerUServer.MarkdownHeading}</h1>", previewHtml, StringComparison.Ordinal);
+        Assert.Contains(StubMinerUServer.MarkdownBody, previewHtml, StringComparison.Ordinal);
+
         // The Asset is downloadable, which is the only proof that the bytes were stored and not
         // merely counted.
         using var assetContent = await client.GetAsync(

@@ -120,6 +120,18 @@ test('administrator can use the document workspace and administration area', asy
   await expect(runStatus).toHaveText('失败', { timeout: 60_000 })
   await expect(page.locator('.inline-error')).toBeVisible()
   await expect(page.locator('.auto-refresh')).toBeHidden()
+
+  // The result panel reads Pages, Blocks, Assets, and Artifacts as four separate authorized calls,
+  // and a failed run has none of them. What it owes here is to come up and say so: a panel that
+  // throws on an empty result is a panel nobody sees a real one in either. The populated case is
+  // asserted against a parsed document by ParseExecutionEndToEndTests.
+  const resultTabs = page.locator('.result-tabs')
+  await expect(resultTabs.getByRole('button', { name: /版面/ })).toBeVisible()
+  // Without a Markdown Artifact there is nothing on the document tab, so the panel opens on the
+  // structure instead of on an empty frame.
+  await expect(resultTabs.getByRole('button', { name: /结构/ })).toHaveClass(/active/)
+  await expect(page.getByText('结果尚未生成或不含内容块。')).toBeVisible()
+
   await page.screenshot({ path: 'test-results/workspace.png', fullPage: true })
 
   // A failed run is still a record the user has to be able to get rid of, including when it is the

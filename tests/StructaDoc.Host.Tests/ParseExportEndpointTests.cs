@@ -75,6 +75,64 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         Assert.Contains("images/missing.png", html, StringComparison.Ordinal);
     }
 
+    // The preview is the HTML export served for display. What is worth testing is not the rendering,
+    // which the export tests above already cover, but the two things that differ: it is reached by
+    // reading a result rather than by exporting one, and it arrives as a page rather than as a file.
+    [Fact]
+    public async Task Markdown_preview_serves_the_rendered_result_inline_rather_than_as_a_download()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+        var parseRunId = await SeedSucceededRunAsync(sourceIsPdf: true);
+
+        using var response = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRunId:D}/markdown/preview",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
+        // A browser that saves the preview has not shown one.
+        Assert.NotEqual("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
+        // The page carries Provider-authored content, so it is served into an opaque origin where
+        // it cannot reach the session that asked for it.
+        Assert.Equal("sandbox", Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
+
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("<h1", html, StringComparison.Ordinal);
+        // Inlined rather than linked: a request back to this service from an opaque origin carries
+        // no session cookie, so a linked image would be a broken image.
+        Assert.Contains(
+            $"data:image/png;base64,{Convert.ToBase64String(ImageBytes)}",
+            html,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Markdown_preview_is_unavailable_for_a_parse_run_the_caller_cannot_read()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+
+        using var response = await client.GetAsync(
+            $"/api/v1/parse-runs/{Guid.NewGuid():D}/markdown/preview",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Markdown_preview_is_not_served_without_a_credential()
+    {
+        using var client = factory.CreateClient();
+        var parseRunId = await SeedSucceededRunAsync(sourceIsPdf: true);
+
+        using var response = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRunId:D}/markdown/preview",
+            TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
     [Fact]
     public async Task Pdf_export_returns_the_original_when_the_source_is_already_pdf()
     {

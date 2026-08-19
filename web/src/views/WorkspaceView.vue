@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { get, mutate, upload, type DocumentItem, type ParseBlock, type ParseExecutionStatus, type ParseRun } from '../api'
+import { get, mutate, upload, type DocumentItem, type ParseArtifact, type ParseAsset, type ParseBlock, type ParseBlockList, type ParseExecutionStatus, type ParsePage, type ParseRun } from '../api'
 import { message } from '../messages'
 import { session } from '../session'
 
@@ -10,10 +10,9 @@ const selectedDocument = ref<DocumentItem>()
 const runs = ref<ParseRun[]>([])
 const selectedRun = ref<ParseRun>()
 const blocks = ref<ParseBlock[]>([])
-const pages = ref<any[]>([])
-const assets = ref<any[]>([])
-const artifacts = ref<any[]>([])
-const markdown = ref('')
+const pages = ref<ParsePage[]>([])
+const assets = ref<ParseAsset[]>([])
+const artifacts = ref<ParseArtifact[]>([])
 const fileNameFilter = ref('')
 const statusFilter = ref('')
 const share = ref({ issuer: '', subject: '', permissions: ['read', 'parse', 'export'] })
@@ -68,7 +67,7 @@ async function onFiles(files: FileList | null) {
 }
 
 async function openDocument(document: DocumentItem) {
-  selectedDocument.value = document; selectedRun.value = undefined; blocks.value = []; pages.value = []; assets.value = []; artifacts.value = []; markdown.value = ''
+  selectedDocument.value = document; clearRunResult(); selectedRun.value = undefined
   try { runs.value = await get(`/api/v1/documents/${document.id}/parse-runs`) }
   catch (e) { message((e as Error).message, true) }
 }
@@ -80,20 +79,145 @@ async function createParse() {
   catch (e) { message((e as Error).message, true) } finally { busy.value = false }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Result presentation
+//
+// A Parse Run's value is its canonical result — Pages, Blocks with reading order and bounding
+// boxes, Assets, and Artifacts — and each of those is a separate authorized read. They are shown
+// as tabs over one selection rather than one scrolling column, because a reader is either checking
+// how the document reads, or checking whether the parser got its structure right, and those two
+// want different things on screen.
+// ---------------------------------------------------------------------------------------------
+
+type ResultTab = 'document' | 'blocks' | 'layout' | 'resources'
+const resultTab = ref<ResultTab>('document')
+
+// Blocks arrive one cursor page at a time. There is no count endpoint, so the number on screen is
+// what has been loaded, never a total this page does not know.
+const blockPageSize = 200
+const nextBlockSequence = ref<number>()
+const loadingBlocks = ref(false)
+const hasMoreBlocks = computed(() => nextBlockSequence.value !== undefined)
+
+const layoutPageNumber = ref<number>()
+const layoutBlocks = ref<ParseBlock[]>([])
+const layoutIncomplete = ref(false)
+const selectedBlockId = ref<string>()
+
+const hasMarkdown = computed(() => artifacts.value.some(artifact => artifact.type === 'markdown'))
+const previewUrl = computed(() => selectedRun.value ? `/api/v1/parse-runs/${selectedRun.value.id}/markdown/preview` : '')
+const imageAssets = computed(() => assets.value.filter(asset => asset.mediaType.startsWith('image/')))
+const assetsById = computed(() => new Map(assets.value.map(asset => [asset.id, asset])))
+
+function assetUrl(assetId: string) { return `/api/v1/parse-runs/${selectedRun.value?.id}/assets/${assetId}/content` }
+function artifactUrl(artifactId: string) { return `/api/v1/parse-runs/${selectedRun.value?.id}/artifacts/${artifactId}/content` }
+
+// The registered Block types from the canonical model. The set is allowed to grow inside one API
+// major version, so an unrecognized type is coloured and shown under its own name rather than
+// dropped — and in a neutral colour, because a type this bundle predates is not a fault in the
+// result. `unknown` is the model's own token for content the normalizer could not classify, so it
+// is distinguished from a type this page simply has no entry for.
+const blockTypeColors: Record<string, string> = {
+  title: '#1b543d', text: '#4d8268', list: '#6b8f57', table: '#b0761e', formula: '#7a4f9c',
+  image: '#2b6c8f', code: '#546b7a', header: '#94a29a', footer: '#94a29a', footnote: '#a0846b',
+  unknown: '#8a7f6b',
+}
+const blockTypeNames: Record<string, string> = {
+  title: '标题', text: '正文', list: '列表', table: '表格', formula: '公式',
+  image: '图片', code: '代码', header: '页眉', footer: '页脚', footnote: '脚注', unknown: '未识别',
+}
+function blockColor(type: string) { return blockTypeColors[type] ?? '#69766f' }
+function blockTypeName(type: string) { return blockTypeNames[type] ?? type }
+
+function clearRunResult() {
+  blocks.value = []; pages.value = []; assets.value = []; artifacts.value = []
+  nextBlockSequence.value = undefined; layoutBlocks.value = []; layoutPageNumber.value = undefined
+  layoutIncomplete.value = false; selectedBlockId.value = undefined; resultTab.value = 'document'
+}
+
+// Every result read below is checked against the current selection once it returns. Selecting a
+// second Parse Run while the first one's reads are still in flight is one click, and without the
+// check the slower answer lands in the newer run's panel.
+function stillSelected(runId: string) { return selectedRun.value?.id === runId }
+
 async function openRun(run: ParseRun) {
-  selectedRun.value = run; markdown.value = ''
+  selectedRun.value = run
+  clearRunResult()
   try {
-    const loaded = await Promise.all([
-      get<{ items: ParseBlock[] }>(`/api/v1/parse-runs/${run.id}/blocks?limit=500`),
-      get<any[]>(`/api/v1/parse-runs/${run.id}/pages`),
-      get<any[]>(`/api/v1/parse-runs/${run.id}/assets`),
-      get<any[]>(`/api/v1/parse-runs/${run.id}/artifacts`),
+    const [pageList, assetList, artifactList] = await Promise.all([
+      get<ParsePage[]>(`/api/v1/parse-runs/${run.id}/pages`),
+      get<ParseAsset[]>(`/api/v1/parse-runs/${run.id}/assets`),
+      get<ParseArtifact[]>(`/api/v1/parse-runs/${run.id}/artifacts`),
     ])
-    blocks.value = loaded[0].items; pages.value = loaded[1]; assets.value = loaded[2]; artifacts.value = loaded[3]
-    const response = await fetch(`/api/v1/parse-runs/${run.id}/markdown`, { credentials: 'same-origin' })
-    if (response.ok) markdown.value = await response.text()
+    if (!stillSelected(run.id)) return
+    pages.value = pageList; assets.value = assetList; artifacts.value = artifactList
+    // Without a rendered document there is nothing on the first tab, so open where the result is.
+    if (!hasMarkdown.value) resultTab.value = 'blocks'
+    await loadBlocks(true)
   } catch (e) { message((e as Error).message, true) }
 }
+
+async function loadBlocks(reset = false) {
+  const run = selectedRun.value
+  if (!run) return
+  // Only appending is guarded against a second start: a reset belongs to a selection the user just
+  // made, and dropping it would leave the panel claiming the result has no content blocks.
+  // `nextSequence` is a Block sequence and sequences start at zero, so absence is the only end
+  // marker; treating a falsy cursor as the end would stop after the first page.
+  if (!reset && (loadingBlocks.value || nextBlockSequence.value === undefined)) return
+  loadingBlocks.value = true
+  try {
+    const query = new URLSearchParams({ limit: String(blockPageSize) })
+    if (!reset) query.set('afterSequence', String(nextBlockSequence.value))
+    const page = await get<ParseBlockList>(`/api/v1/parse-runs/${run.id}/blocks?${query}`)
+    if (!stillSelected(run.id)) return
+    blocks.value = reset ? page.items : [...blocks.value, ...page.items]
+    nextBlockSequence.value = page.nextSequence ?? undefined
+  } catch (e) { message((e as Error).message, true) } finally { loadingBlocks.value = false }
+}
+
+// The layout view reads one page at a time through the Blocks endpoint's own page filter, so it
+// does not depend on how far the sequential list above happens to have been scrolled.
+async function openLayoutPage(pageNumber: number) {
+  const run = selectedRun.value
+  if (!run) return
+  layoutPageNumber.value = pageNumber
+  selectedBlockId.value = undefined
+  try {
+    const page = await get<ParseBlockList>(`/api/v1/parse-runs/${run.id}/blocks?pageNumber=${pageNumber}&limit=1000`)
+    if (!stillSelected(run.id) || layoutPageNumber.value !== pageNumber) return
+    layoutBlocks.value = page.items
+    layoutIncomplete.value = page.nextSequence !== undefined && page.nextSequence !== null
+  } catch (e) { message((e as Error).message, true) }
+}
+
+async function showTab(tab: ResultTab) {
+  resultTab.value = tab
+  if (tab === 'layout' && layoutPageNumber.value === undefined && pages.value.length) {
+    await openLayoutPage(pages.value[0].number)
+  }
+}
+
+const layoutPage = computed(() => pages.value.find(page => page.number === layoutPageNumber.value))
+// Bounding boxes are normalized to the page, so the drawing only needs the page's shape. Provider
+// dimensions give it; without them the boxes are still in the right relative places, and A4 is the
+// least misleading shape to put them on.
+const layoutAspectKnown = computed(() => !!layoutPage.value?.width && !!layoutPage.value?.height)
+const layoutHeight = computed(() => layoutAspectKnown.value
+  ? Math.round(1000 * (layoutPage.value!.height! / layoutPage.value!.width!))
+  : 1414)
+const layoutBoxes = computed(() => layoutBlocks.value
+  .filter(block => block.boundingBox)
+  .map(block => ({
+    block,
+    x: block.boundingBox!.x0 * 1000,
+    y: block.boundingBox!.y0 * layoutHeight.value,
+    width: Math.max((block.boundingBox!.x1 - block.boundingBox!.x0) * 1000, 1),
+    height: Math.max((block.boundingBox!.y1 - block.boundingBox!.y0) * layoutHeight.value, 1),
+  })))
+const layoutLegend = computed(() => [...new Set(layoutBlocks.value.map(block => block.type))].sort())
+const layoutBoxlessCount = computed(() => layoutBlocks.value.length - layoutBoxes.value.length)
+const selectedBlock = computed(() => layoutBlocks.value.find(block => block.id === selectedBlockId.value))
 
 async function cancelRun(run: ParseRun) {
   if (!confirm('确认取消这次解析？StructaDoc 会停止本地处理，随后该记录进入“已取消”。')) return
@@ -119,7 +243,7 @@ async function deleteRun(run: ParseRun) {
   busy.value = true
   try {
     await mutate(`/api/v1/parse-runs/${run.id}`, 'DELETE')
-    if (selectedRun.value?.id === run.id) { selectedRun.value = undefined; blocks.value = []; pages.value = []; assets.value = []; artifacts.value = []; markdown.value = '' }
+    if (selectedRun.value?.id === run.id) { selectedRun.value = undefined; clearRunResult() }
     message('删除请求已进入清理队列')
     await refreshRuns(selectedRun.value?.id)
   }
@@ -142,8 +266,8 @@ async function pollProgress() {
   const previous = selectedRun.value
   await refreshRuns(previous?.id, true)
   const current = selectedRun.value
-  // Pages, blocks, assets, and the Markdown rendering only exist once a run reaches a final
-  // status, so they are read at that transition rather than on every tick.
+  // Pages, blocks, assets, and the rendered document only exist once a run reaches a final status,
+  // so they are read at that transition rather than on every tick.
   if (previous && current && isUnfinished(previous.status) && !isUnfinished(current.status)) {
     await openRun(current)
   }
@@ -207,7 +331,100 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
         <div v-if="selectedRun.errorMessage" class="inline-error">{{ selectedRun.errorCode }}：{{ selectedRun.errorMessage }}</div>
         <div v-if="canCancelRun" class="run-actions"><button class="secondary" :disabled="busy" @click="cancelRun(selectedRun)">取消解析</button><span>取消是尽力而为的：StructaDoc 会停止本地处理，但已提交给在线解析提供方的任务可能仍在上游继续消耗资源。</span></div>
         <div class="export-row"><span>导出</span><a v-for="format in ['markdown','html','zip','pdf']" :key="format" :href="`/api/v1/parse-runs/${selectedRun.id}/exports/${format}`">{{ format.toUpperCase() }}</a></div>
-        <div class="result-tabs"><div class="result-title"><h3>结构化内容</h3><span>{{ pages.length }} 页</span><span>{{ blocks.length }} 块</span><span>{{ assets.length }} 资源</span><span>{{ artifacts.length }} 制品</span></div><div v-if="markdown" class="markdown-preview"><pre>{{ markdown }}</pre></div><div v-else class="block-list"><article v-for="block in blocks" :key="block.id"><span>#{{ block.sequence }} · {{ block.type }}<template v-if="block.pageNumber"> · P{{ block.pageNumber }}</template></span><p>{{ block.content || '（无文本内容）' }}</p></article><p v-if="!blocks.length" class="muted">结果尚未生成或不含文本块。</p></div><details v-if="assets.length || artifacts.length" class="resource-list"><summary>资源与制品下载</summary><a v-for="asset in assets" :key="asset.id" :href="`/api/v1/parse-runs/${selectedRun.id}/assets/${asset.id}/content`">{{ asset.name }} · {{ prettyBytes(asset.sizeBytes) }}</a><a v-for="artifact in artifacts" :key="artifact.id" :href="`/api/v1/parse-runs/${selectedRun.id}/artifacts/${artifact.id}/content`">{{ artifact.type }} · {{ artifact.name }}</a></details></div>
+
+        <nav class="result-tabs">
+          <button :class="{ active: resultTab === 'document' }" @click="showTab('document')">文档</button>
+          <button :class="{ active: resultTab === 'blocks' }" @click="showTab('blocks')">结构<small>{{ blocks.length }}{{ hasMoreBlocks ? '+' : '' }}</small></button>
+          <button :class="{ active: resultTab === 'layout' }" @click="showTab('layout')">版面<small>{{ pages.length }}</small></button>
+          <button :class="{ active: resultTab === 'resources' }" @click="showTab('resources')">资源<small>{{ assets.length + artifacts.length }}</small></button>
+        </nav>
+
+        <div v-show="resultTab === 'document'" class="result-pane">
+          <!-- Rendered by the service and shown in a sandboxed frame: the Markdown comes from a
+               Provider archive, so it is never given the workspace's own origin to run in. -->
+          <iframe v-if="hasMarkdown" class="document-frame" sandbox="" :src="previewUrl" title="解析结果预览"></iframe>
+          <p v-else class="muted pane-empty">这次解析没有产出 Markdown 制品。切到“结构”查看规范化后的内容块。</p>
+        </div>
+
+        <div v-show="resultTab === 'blocks'" class="result-pane">
+          <div class="block-list">
+            <article v-for="block in blocks" :key="block.id">
+              <header>
+                <span class="block-type" :style="{ background: blockColor(block.type) }">{{ blockTypeName(block.type) }}</span>
+                <span class="block-meta">
+                  #{{ block.sequence }}
+                  <template v-if="block.subtype"> · {{ block.subtype }}</template>
+                  <template v-if="block.pageNumber"> · 第 {{ block.pageNumber }} 页</template>
+                  <template v-if="block.confidence !== undefined && block.confidence !== null"> · 置信度 {{ (block.confidence * 100).toFixed(0) }}%</template>
+                  <template v-if="block.boundingBox"> · 有位置</template>
+                </span>
+              </header>
+              <img v-if="block.assetId && assetsById.get(block.assetId)?.mediaType.startsWith('image/')" class="block-asset" :src="assetUrl(block.assetId)" :alt="assetsById.get(block.assetId)?.name">
+              <p v-if="block.content">{{ block.content }}</p>
+              <p v-else class="muted">（无文本内容）</p>
+            </article>
+            <p v-if="!blocks.length" class="muted pane-empty">结果尚未生成或不含内容块。</p>
+          </div>
+          <div v-if="blocks.length" class="block-more">
+            <button v-if="hasMoreBlocks" class="secondary" :disabled="loadingBlocks" @click="loadBlocks()">{{ loadingBlocks ? '加载中…' : `继续加载 ${blockPageSize} 块` }}</button>
+            <span>已加载 {{ blocks.length }} 块{{ hasMoreBlocks ? '，后面还有' : '，这是全部' }}</span>
+          </div>
+        </div>
+
+        <div v-show="resultTab === 'layout'" class="result-pane">
+          <template v-if="pages.length">
+            <div class="page-picker">
+              <button v-for="page in pages" :key="page.number" :class="{ active: page.number === layoutPageNumber }" @click="openLayoutPage(page.number)">{{ page.number }}</button>
+            </div>
+            <div v-if="layoutPage" class="layout-view">
+              <svg class="layout-map" :viewBox="`0 0 1000 ${layoutHeight}`" preserveAspectRatio="xMidYMin meet" role="img" aria-label="页面版面示意">
+                <rect class="layout-paper" x="0" y="0" width="1000" :height="layoutHeight" />
+                <g v-for="(box, index) in layoutBoxes" :key="box.block.id" class="layout-box" :class="{ selected: box.block.id === selectedBlockId }" @click="selectedBlockId = box.block.id">
+                  <rect :x="box.x" :y="box.y" :width="box.width" :height="box.height" :stroke="blockColor(box.block.type)" :fill="blockColor(box.block.type)" />
+                  <text :x="box.x + 10" :y="box.y + 40" :fill="blockColor(box.block.type)">{{ index + 1 }}</text>
+                </g>
+              </svg>
+              <div class="layout-side">
+                <p class="hint">
+                  第 {{ layoutPage.number }} 页 ·
+                  <template v-if="layoutAspectKnown">{{ layoutPage.width }}×{{ layoutPage.height }} {{ layoutPage.unit || '' }}</template>
+                  <template v-else>提供方未报告页面尺寸，按 A4 比例示意</template>
+                </p>
+                <p class="hint">框内数字是这一页中有位置信息的块的阅读顺序；点击任意框查看它的内容。</p>
+                <p v-if="layoutBoxlessCount > 0" class="hint">本页另有 {{ layoutBoxlessCount }} 个内容块没有位置信息，只出现在“结构”里。</p>
+                <p v-if="layoutIncomplete" class="hint">本页内容块超过 1000 个，版面图只画了前 1000 个。</p>
+                <div class="layout-legend">
+                  <span v-for="type in layoutLegend" :key="type"><i :style="{ background: blockColor(type) }"></i>{{ blockTypeName(type) }}</span>
+                </div>
+                <div v-if="selectedBlock" class="layout-selected">
+                  <strong>#{{ selectedBlock.sequence }} · {{ blockTypeName(selectedBlock.type) }}</strong>
+                  <img v-if="selectedBlock.assetId && assetsById.get(selectedBlock.assetId)?.mediaType.startsWith('image/')" :src="assetUrl(selectedBlock.assetId)" :alt="assetsById.get(selectedBlock.assetId)?.name">
+                  <p>{{ selectedBlock.content || '（无文本内容）' }}</p>
+                </div>
+              </div>
+            </div>
+            <p v-else class="muted pane-empty">选择一页查看它的版面。</p>
+          </template>
+          <p v-else class="muted pane-empty">这次解析没有可靠的物理页面，内容块只有全局阅读顺序。</p>
+        </div>
+
+        <div v-show="resultTab === 'resources'" class="result-pane">
+          <h4 v-if="imageAssets.length">图片资源</h4>
+          <div v-if="imageAssets.length" class="asset-grid">
+            <a v-for="asset in imageAssets" :key="asset.id" :href="assetUrl(asset.id)" target="_blank" rel="noopener">
+              <img :src="assetUrl(asset.id)" :alt="asset.name">
+              <small>{{ asset.name }}<template v-if="asset.width && asset.height"> · {{ asset.width }}×{{ asset.height }}</template> · {{ prettyBytes(asset.sizeBytes) }}</small>
+            </a>
+          </div>
+          <h4 v-if="artifacts.length">制品</h4>
+          <div v-if="artifacts.length" class="artifact-list">
+            <a v-for="artifact in artifacts" :key="artifact.id" :href="artifactUrl(artifact.id)">
+              <span class="artifact-type">{{ artifact.type }}</span>
+              <span class="file-copy"><strong>{{ artifact.name }}</strong><small>{{ artifact.mediaType }} · {{ prettyBytes(artifact.sizeBytes) }}</small></span>
+            </a>
+          </div>
+          <p v-if="!assets.length && !artifacts.length" class="muted pane-empty">这次解析没有产出资源或制品。</p>
+        </div>
       </template>
       <details v-if="selectedDocument.ownedByCurrentUser || canAdmin" class="share-box"><summary>共享访问</summary><label>OIDC Issuer<input v-model="share.issuer" placeholder="https://identity.example.com"></label><label>Subject<input v-model="share.subject" placeholder="用户的 sub"></label><fieldset><legend>权限</legend><label v-for="permission in ['read','write','parse','export','delete','share']" :key="permission"><input v-model="share.permissions" type="checkbox" :value="permission"> {{ permission }}</label></fieldset><button class="secondary" @click="grantAccess">保存授权</button></details>
     </section>
@@ -216,5 +433,69 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
 </template>
 
 <style scoped>
-.auto-refresh{display:flex;align-items:center;font-size:11px;color:#57816e}.run-row{display:flex;align-items:center;border:1px solid var(--line);background:#fff;margin-bottom:7px}.run-row.selected{border-color:#4d8268;background:#f0f6f2}.run-open{flex:1;min-width:0;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:0;background:transparent;padding:12px}.run-delete{align-self:center;font-size:11px;padding:6px 12px}.run-delete:disabled{opacity:.5;cursor:default}.run-actions{display:flex;align-items:center;gap:10px;margin:12px 0}.run-actions span{font-size:11px;color:#5c6b62;line-height:1.5}.result-title{display:flex;align-items:center;gap:8px}.result-title h3{margin-right:auto}.result-title span{font-size:10px;color:#57816e;background:#e7eee9;padding:4px 7px;border-radius:20px}.resource-list{border-top:1px solid #d8ded9;padding-top:12px;margin-top:14px}.resource-list summary{font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px}.resource-list a{display:block;color:#123c2b;font-size:12px;padding:8px 0;border-bottom:1px solid #e8ebe8;text-decoration:none}.share-box fieldset{border:0;padding:8px 0 14px;display:flex;flex-wrap:wrap;gap:8px 14px}.share-box legend{font-size:12px;font-weight:700}.share-box fieldset label{display:flex;align-items:center;gap:5px;font-size:11px}.share-box fieldset input{width:auto}
+.auto-refresh{display:flex;align-items:center;font-size:11px;color:#57816e}
+.run-row{display:flex;align-items:center;border:1px solid var(--line);background:#fff;margin-bottom:7px}
+.run-row.selected{border-color:#4d8268;background:#f0f6f2}
+.run-open{flex:1;min-width:0;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:0;background:transparent;padding:12px}
+.run-delete{align-self:center;font-size:11px;padding:6px 12px}
+.run-delete:disabled{opacity:.5;cursor:default}
+.run-actions{display:flex;align-items:center;gap:10px;margin:12px 0}
+.run-actions span{font-size:11px;color:#5c6b62;line-height:1.5}
+
+/* Result tabs */
+.result-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-top:22px}
+.result-tabs button{border:0;background:transparent;padding:11px 16px;font-size:13px;font-weight:700;color:var(--muted);border-bottom:2px solid transparent;display:flex;align-items:center;gap:7px}
+.result-tabs button:hover{color:var(--ink)}
+.result-tabs button.active{color:var(--green);border-bottom-color:var(--green)}
+.result-tabs small{font-size:10px;font-weight:700;background:#e7eee9;color:#57816e;padding:2px 7px;border-radius:20px}
+.result-tabs button.active small{background:var(--mint);color:var(--green)}
+.result-pane{padding-top:16px}
+.pane-empty{padding:44px 8px;text-align:center}
+
+/* Document */
+.document-frame{width:100%;height:620px;border:1px solid var(--line);background:#fff}
+
+/* Blocks */
+.block-list{max-height:620px;overflow:auto}
+.block-list article{padding:14px 0;border-bottom:1px solid #e6eae7}
+.block-list header{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+.block-type{font-size:10px;font-weight:700;color:#fff;padding:3px 8px;border-radius:3px}
+.block-meta{font-size:10px;color:var(--muted)}
+.block-list p{font-size:13px;line-height:1.7;margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.block-asset{max-width:100%;max-height:240px;border:1px solid var(--line);margin-bottom:8px}
+.block-more{display:flex;align-items:center;gap:12px;padding-top:14px}
+.block-more span{font-size:11px;color:var(--muted)}
+
+/* Layout */
+.page-picker{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;max-height:88px;overflow:auto}
+.page-picker button{border:1px solid var(--line);background:#fff;color:var(--muted);font-size:11px;min-width:32px;padding:5px 8px;border-radius:3px}
+.page-picker button.active{border-color:var(--green);background:var(--green);color:#fff}
+.layout-view{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(200px,1fr);gap:18px;align-items:start}
+.layout-map{width:100%;max-height:620px}
+.layout-paper{fill:#fff;stroke:var(--line)}
+.layout-box rect{fill-opacity:.1;stroke-width:2}
+.layout-box{cursor:pointer}
+.layout-box:hover rect{fill-opacity:.24}
+.layout-box.selected rect{fill-opacity:.32;stroke-width:4}
+.layout-box text{font:700 38px ui-monospace,monospace;paint-order:stroke;stroke:#fffef9;stroke-width:5px}
+.layout-side{display:grid;gap:10px}
+.layout-legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;color:#48584f}
+.layout-legend span{display:flex;align-items:center;gap:5px}
+.layout-legend i{width:10px;height:10px;border-radius:2px}
+.layout-selected{border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px;max-height:300px;overflow:auto}
+.layout-selected strong{font-size:12px}
+.layout-selected img{max-width:100%;border:1px solid var(--line)}
+.layout-selected p{font-size:12px;line-height:1.7;margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+
+/* Resources */
+.result-pane h4{font-size:12px;margin:0 0 12px}
+.result-pane h4~h4{margin-top:26px}
+.asset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.asset-grid a{display:grid;gap:6px;text-decoration:none;color:var(--ink)}
+.asset-grid img{width:100%;height:110px;object-fit:contain;background:#fff;border:1px solid var(--line)}
+.asset-grid small{font-size:10px;color:var(--muted);overflow-wrap:anywhere}
+.artifact-list a{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #e6eae7;text-decoration:none;color:var(--ink)}
+.artifact-type{font-size:10px;font-weight:700;color:#37664f;background:#e0e9e3;padding:5px 9px;border-radius:3px;white-space:nowrap}
+
+@media(max-width:900px){.layout-view{grid-template-columns:1fr}}
 </style>
