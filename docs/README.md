@@ -22,6 +22,7 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | [ADR-0005](./adr/0005-authentication-and-api-clients.md) | Accepted | Separate administrator Cookie sessions, API-client keys, scopes, and antiforgery protection |
 | [ADR-0006](./adr/0006-user-workspace-and-oidc.md) | Accepted | Provide a user workspace, generic OIDC, and resource-level authorization |
 | [ADR-0007](./adr/0007-resource-lifecycle-and-cleanup.md) | Accepted | Use ownership, explicit sharing, and durable resource cleanup |
+| [ADR-0008](./adr/0008-api-client-resource-isolation.md) | Accepted | Bound API clients by ownership and grants rather than trusting them across the workspace |
 
 ## Specifications
 

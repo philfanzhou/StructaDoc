@@ -108,7 +108,27 @@ Registered scopes are:
 
 Scopes are independent. Provider configuration remains administrator-only.
 
+A scope says which verbs a key may use. It says nothing about whose resources they may be used on, which is decided by ownership: a client is a workspace principal keyed by `(structadoc:api-client, <client id>)`, it owns what it uploads, and it reaches nothing else unless a grant names it. See [Resource Boundary](#resource-boundary).
+
 Administrator Cookie endpoints under `/api/v1/admin/api-clients` list, create, update scopes, rotate keys, and irrevocably revoke clients. All writes require antiforgery validation. Names are trimmed, scopes are de-duplicated in a stable order, unknown scopes return `400`, and concurrent or terminal-state conflicts return `409`.
+
+## Resource Boundary
+
+Following [ADR-0008](../adr/0008-api-client-resource-isolation.md), an API client is bounded by the same owner-or-grant rule as an OIDC user rather than reaching the whole deployment.
+
+| Subject | Reaches |
+|---|---|
+| Local administrator | every resource |
+| OIDC user | what `(issuer, subject)` owns or was granted |
+| API client | what `(structadoc:api-client, <client id>)` owns or was granted |
+
+`structadoc:api-client` is a reserved issuer and cannot collide with a real one: a valid OIDC issuer is an absolute `http`/`https` URI, which this is not. Documents uploaded by an API client record it as their owner, and an owner holds every document permission.
+
+A grant may name an API client, so `POST /api/v1/documents/{id}/access-grants` accepts `structadoc:api-client` as the issuer with a client ID as the subject. That is how a Document uploaded through the browser is handed to an integration, and it is revocable and listed like every other grant. There is no principal-level grant meaning "everything this owner has"; sharing is per Document.
+
+A resource outside the caller's boundary answers `404`, not `403`, so holding a key does not confirm which resource IDs exist.
+
+Upgrading attributes existing Documents rather than orphaning them. `created_by` already records which client uploaded each one, and the `AttributeApiClientDocumentOwnership` migration recovers ownership from it in all four supported databases. Documents uploaded by an administrator stay unowned and remain administrator-only, which is what they already were.
 
 ## Data Protection
 

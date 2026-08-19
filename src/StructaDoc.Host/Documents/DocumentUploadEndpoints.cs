@@ -131,8 +131,21 @@ public static class DocumentUploadEndpoints
         return $"{subjectType}:{subjectId}";
     }
 
+    // An upload is owned by whoever made it, and an API client is one of the principals that can.
+    // Without this the Document would be unowned, which is not the same as belonging to everyone:
+    // the client that uploaded it could not read it back except through the global access this
+    // change removed. An administrator upload stays unowned, because an administrator is not a
+    // workspace principal and reaches every Document in any case.
     private static (string? Issuer, string? Subject) GetOwner(ClaimsPrincipal user)
     {
+        if (user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.ApiClient))
+        {
+            return (
+                PrincipalIdentity.ApiClientIssuer,
+                user.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? throw new InvalidOperationException("Authenticated subject ID is missing."));
+        }
+
         if (!user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.User))
         {
             return (null, null);

@@ -39,10 +39,9 @@ public static class DocumentAccessGrantEndpoints
     {
         var antiforgeryFailure = await ValidateAntiforgeryAsync(context, antiforgery);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
-        if (!ExternalIdentityConstraints.IsValidIssuer(request.Issuer)
-            || !ExternalIdentityConstraints.IsValidSubject(request.Subject))
+        if (!PrincipalIdentity.IsValid(request.Issuer, request.Subject))
         {
-            return Validation("identity", "Issuer must be an HTTP(S) OIDC issuer and subject must be an ASCII identifier of at most 255 characters.");
+            return Validation("identity", $"Issuer must be an HTTP(S) OIDC issuer with an ASCII subject of at most 255 characters, or '{PrincipalIdentity.ApiClientIssuer}' with an API client ID as the subject.");
         }
         var permissions = DocumentPermissions.None;
         foreach (var name in request.Permissions.Distinct(StringComparer.OrdinalIgnoreCase))

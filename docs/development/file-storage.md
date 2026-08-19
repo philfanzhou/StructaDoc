@@ -45,7 +45,7 @@ file=<exactly one file>
 
 Success returns `201` with a public Document summary. Empty files, invalid filenames, and malformed forms return `400`; size violations return `413`; unsupported or unrecognized formats return `415`.
 
-The endpoint requires an administrator, an authorized OIDC user, or an API client with `documents:write`. Cookie-authenticated writes require antiforgery validation. An OIDC upload records the stable owner `(issuer, subject)`; local administrator and API-client uploads retain their distinct creator facts.
+The endpoint requires an administrator, an authorized OIDC user, or an API client with `documents:write`. Cookie-authenticated writes require antiforgery validation. An upload by a workspace principal records its stable owner `(issuer, subject)`, whether that principal is an OIDC user or an API client under the reserved issuer `structadoc:api-client`. A local administrator upload records a creator but no owner, because an administrator reaches every Document without one.
 
 ## Configuration
 

@@ -85,7 +85,7 @@ public sealed class EfCoreDocumentReadService(
                     .OrderByDescending(run => run.CreatedAtUtc)
                     .Select(run => run.Status)
                     .FirstOrDefault(),
-                access.IsInteractiveUser
+                access.HasPrincipalIdentity
                     && document.OwnerIssuer == access.Issuer
                     && document.OwnerSubject == access.Subject))
             .Take(checked(limit + 1))
@@ -134,7 +134,7 @@ public sealed class EfCoreDocumentReadService(
                     .OrderByDescending(run => run.CreatedAtUtc)
                     .Select(run => run.Status)
                     .FirstOrDefault(),
-                access.IsInteractiveUser
+                access.HasPrincipalIdentity
                     && document.OwnerIssuer == access.Issuer
                     && document.OwnerSubject == access.Subject))
             .SingleOrDefaultAsync(cancellationToken);
@@ -172,7 +172,7 @@ public sealed class EfCoreDocumentReadService(
                         .OrderByDescending(run => run.CreatedAtUtc)
                         .Select(run => run.Status)
                         .FirstOrDefault(),
-                    access.IsInteractiveUser
+                    access.HasPrincipalIdentity
                         && document.OwnerIssuer == access.Issuer
                         && document.OwnerSubject == access.Subject),
                 document.StorageRef))
@@ -206,12 +206,12 @@ public sealed class EfCoreDocumentReadService(
         ResourceAccessContext access,
         DocumentPermissions permission)
     {
-        if (access.IsAdministrator || access.IsServiceClient)
+        if (access.IsAdministrator)
         {
             return query;
         }
 
-        if (!access.IsInteractiveUser)
+        if (!access.HasPrincipalIdentity)
         {
             return query.Where(_ => false);
         }

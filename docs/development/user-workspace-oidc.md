@@ -32,13 +32,13 @@ Because the workspace and administration areas are client-side routes, the Host 
 - Authority, client, scopes, and claim/role mapping come from the generic `Oidc` configuration section, which an administrator can also fill in from the browser.
 - SignaCore can act as a compatible OIDC Provider, but StructaDoc does not reference or bind to SignaCore code or private contracts.
 - The local administrator is a username-based account in a separate local control-plane database, kept for first-run setup and break-glass access during identity-Provider outages.
-- API clients retain independent keys and scopes and never reuse browser cookies.
+- API clients retain independent keys and scopes, never reuse browser cookies, and are principals in the same `(issuer, subject)` key space under the reserved issuer `structadoc:api-client`. See [ADR-0008](../adr/0008-api-client-resource-isolation.md).
 
 The Host handles OIDC tokens and creates an encrypted HttpOnly application session after callback. Browser JavaScript does not receive the tokens.
 
 ## Ownership and Sharing
 
-An OIDC-created document records its owner. Owners have full document permission. Explicit grants target another `(issuer, subject)` and contain a subset of:
+A document records the principal that created it, whether that was an OIDC user or an API client. Owners have full document permission. Explicit grants target another `(issuer, subject)`, which may be either kind of principal, and contain a subset of:
 
 - `read`
 - `write`
@@ -47,7 +47,7 @@ An OIDC-created document records its owner. Owners have full document permission
 - `delete`
 - `share`
 
-Every document, Parse Run, Page, Block, Asset, Artifact, Markdown view, export, share operation, and deletion performs resource-level authorization. Administrators and scoped service clients retain their separate global service policies.
+Every document, Parse Run, Page, Block, Asset, Artifact, Markdown view, export, share operation, and deletion performs resource-level authorization. One owner-or-grant rule covers every principal, so an API client sees what it uploaded and what it was granted rather than the whole workspace. Administrators are the only global policy; a document an administrator uploads is unowned and stays administrator-only.
 
 ## Watching Work in Progress
 

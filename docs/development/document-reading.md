@@ -9,9 +9,9 @@ Document reads require one of:
 
 - an administrator session;
 - an OIDC user who owns the document or has a matching read grant;
-- an API client with `documents:read`.
+- an API client with `documents:read` that owns the document or has a matching read grant.
 
-`documents:write` does not imply read permission. GET requests do not require antiforgery tokens. Every result, Asset, Artifact, Markdown, export, and original-content route repeats resource-level authorization; endpoint authentication alone is not sufficient.
+`documents:write` does not imply read permission, and neither scope reaches a document the caller neither owns nor was granted. GET requests do not require antiforgery tokens. Every result, Asset, Artifact, Markdown, export, and original-content route repeats resource-level authorization; endpoint authentication alone is not sufficient.
 
 ## Endpoints
 

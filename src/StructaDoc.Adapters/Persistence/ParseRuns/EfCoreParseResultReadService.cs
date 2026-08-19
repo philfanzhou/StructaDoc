@@ -111,12 +111,12 @@ public sealed class EfCoreParseResultReadService(
             .AnyAsync(cancellationToken);
 
     private static IQueryable<ParseRunEntity> ApplyAccess(IQueryable<ParseRunEntity> query, ResourceAccessContext access) =>
-        access.IsAdministrator || access.IsServiceClient ? query : access.IsInteractiveUser
+        access.IsAdministrator ? query : access.HasPrincipalIdentity
             ? query.Where(run => run.Document.OwnerIssuer == access.Issuer && run.Document.OwnerSubject == access.Subject || run.Document.AccessGrants.Any(grant => grant.PrincipalIssuer == access.Issuer && grant.PrincipalSubject == access.Subject && (grant.Permissions & (int)DocumentPermissions.Read) != 0))
             : query.Where(_ => false);
 
     private static IQueryable<DocumentEntity> ApplyDocumentAccess(IQueryable<DocumentEntity> query, ResourceAccessContext access) =>
-        access.IsAdministrator || access.IsServiceClient ? query : access.IsInteractiveUser
+        access.IsAdministrator ? query : access.HasPrincipalIdentity
             ? query.Where(document => document.OwnerIssuer == access.Issuer && document.OwnerSubject == access.Subject || document.AccessGrants.Any(grant => grant.PrincipalIssuer == access.Issuer && grant.PrincipalSubject == access.Subject && (grant.Permissions & (int)DocumentPermissions.Read) != 0))
             : query.Where(_ => false);
 

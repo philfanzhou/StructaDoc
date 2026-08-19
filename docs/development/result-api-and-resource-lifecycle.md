@@ -31,7 +31,7 @@ Provider Markdown references images by the Provider's own archive layout, typica
 
 Link rewriting matches on file name, because the canonical Asset display name is the archive entry's final segment. A file name shared by more than one Asset is ambiguous and is left untouched rather than guessed, and an unmatched link is preserved so an export never silently drops a reference it could not resolve. Absolute and `data:` targets are never rewritten.
 
-Every route performs resource-level authorization. OIDC users access owned or explicitly shared documents. Administrators use administrative policy. API clients require the corresponding scope. A resource outside the caller's authorization boundary is not distinguishable through storage metadata.
+Every route performs resource-level authorization. Administrators use administrative policy. Every other caller accesses what it owns or was explicitly shared, and that includes API clients: a scope decides which verbs a key may use, ownership decides which resources, and holding `parses:read` does not make another principal's Parse Run readable. See [ADR-0008](../adr/0008-api-client-resource-isolation.md). A resource outside the caller's authorization boundary is not distinguishable through storage metadata.
 
 ## Durable Deletion
 
