@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-05
+- Superseded in part by: [ADR-0008](./0008-api-client-resource-isolation.md), which bounds API clients by ownership and grants instead of treating them as globally trusted service principals.
 
 ## Context
 

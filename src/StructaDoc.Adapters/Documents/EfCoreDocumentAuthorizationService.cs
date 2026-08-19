@@ -16,7 +16,7 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
         DocumentPermissions permission,
         CancellationToken cancellationToken = default)
     {
-        if (access.IsAdministrator || access.IsServiceClient)
+        if (access.IsAdministrator)
         {
             return dbContext.Documents.AnyAsync(
                 document => document.Id == documentId
@@ -24,7 +24,7 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
                 cancellationToken);
         }
 
-        if (!access.IsInteractiveUser)
+        if (!access.HasPrincipalIdentity)
         {
             return Task.FromResult(false);
         }
@@ -143,10 +143,9 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issuer);
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
-        if (!ExternalIdentityConstraints.IsValidIssuer(issuer.Trim())
-            || !ExternalIdentityConstraints.IsValidSubject(subject.Trim()))
+        if (!PrincipalIdentity.IsValid(issuer.Trim(), subject.Trim()))
         {
-            throw new ArgumentException("External identity is not a valid OIDC issuer and subject pair.");
+            throw new ArgumentException("Grant principal is neither an OIDC issuer and subject pair nor an API client.");
         }
     }
 }

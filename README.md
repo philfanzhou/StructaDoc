@@ -237,7 +237,7 @@ Content is retrieved through authorized endpoints; internal `storageRef` values 
 
 Cancellation is best-effort and idempotent: it stops local processing and durably completes as `cancelled`, which is also how a Document is released for deletion when its Parse Run will never finish on its own. Because the current MinerU protocols expose no single-task cancellation contract, work already submitted to an online Provider may keep consuming remote resources.
 
-Administrator endpoints manage local sessions, API clients, and Provider configurations under `/api/v1/admin`. Cookie-authenticated writes require an antiforgery token; API-key requests do not use browser cookies and are authorized by scope.
+Administrator endpoints manage local sessions, API clients, and Provider configurations under `/api/v1/admin`. Cookie-authenticated writes require an antiforgery token; API-key requests do not use browser cookies. A scope authorizes the endpoint, and ownership or an explicit grant authorizes the resource, so an API client reaches what it uploaded and what was shared with it rather than the whole workspace. See [ADR-0008](./docs/adr/0008-api-client-resource-isolation.md).
 
 ## Key Configuration
 

@@ -43,7 +43,7 @@ Seeding is skipped as soon as any Provider exists, so it never competes with a c
 
 ## Parse Run Creation
 
-`POST /api/v1/documents/{documentId}/parse-runs` requires an administrator, an OIDC owner/grantee with parse permission, or an API client with `parses:write`. Cookie writes require antiforgery validation.
+`POST /api/v1/documents/{documentId}/parse-runs` requires an administrator, or a workspace principal with `parses:write` that owns the Document or holds a parse grant on it. That principal is an OIDC user or an API client; both are bounded the same way. Cookie writes require antiforgery validation.
 
 The request may name `providerConfigId`; otherwise it uses the enabled default. No usable default returns `503`, while an explicit unknown ID returns `404`. A configuration whose type authenticates every call and holds no credential also returns `503`, under its own title, because that is the state a deployment nobody has finished setting up starts in.
 
