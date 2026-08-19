@@ -13,8 +13,13 @@ internal sealed class ApiDocumentTransformer : IOpenApiDocumentTransformer
     // other way would produce a document whose examples do not authenticate.
     public const string ApiKeySchemeName = "ApiKey";
 
+    // The first prefix that matches wins, so a path that belongs to a group by subject rather than
+    // by its leading segments has to be named before the group it nests inside. Starting and listing
+    // a document's Parse Runs is the first thing an integrator looks for under Parse Runs, and the
+    // last place they would look for it is Documents.
     private static readonly (string Prefix, string Tag)[] Groups =
     [
+        ("/api/v1/documents/{documentId}/parse-runs", ApiTags.ParseRuns),
         ("/api/v1/documents", ApiTags.Documents),
         ("/api/v1/parse-runs", ApiTags.ParseRuns),
         ("/api/v1/parse-execution", ApiTags.ParseRuns),

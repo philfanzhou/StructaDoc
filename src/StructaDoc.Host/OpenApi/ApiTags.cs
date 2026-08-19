@@ -3,7 +3,7 @@ using Microsoft.OpenApi;
 namespace StructaDoc.Host.OpenApi;
 
 // The groups the description is read in. Without them every operation lands under the assembly
-// name, which is one list of sixty and tells a reader nothing about where to start.
+// name, and a reader is handed one undifferentiated list with nothing saying where to start.
 internal static class ApiTags
 {
     public const string Documents = "Documents";

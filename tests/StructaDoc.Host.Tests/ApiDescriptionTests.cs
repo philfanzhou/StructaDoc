@@ -152,6 +152,26 @@ public sealed class ApiDescriptionTests
         }
     }
 
+    [Theory]
+    [InlineData("/api/v1/documents", "post", "Documents")]
+    [InlineData("/api/v1/documents/{documentId}/access-grants", "get", "Documents")]
+    [InlineData("/api/v1/documents/{documentId}/parse-runs", "post", "Parse Runs")]
+    [InlineData("/api/v1/parse-runs/{id}", "get", "Parse Runs")]
+    [InlineData("/api/v1/admin/api-clients", "post", "Administration")]
+    public async Task An_operation_is_grouped_by_its_subject_rather_than_its_leading_segments(
+        string path,
+        string method,
+        string tag)
+    {
+        using var document = await ReadDescriptionAsync();
+        var operation = document.RootElement.GetProperty("paths").GetProperty(path).GetProperty(method);
+
+        // Grouping is by path prefix, so the endpoint that starts parsing would fall under Documents
+        // on its route alone, which is the one group an integrator looking for it will not open.
+        var tags = operation.GetProperty("tags").EnumerateArray().Select(entry => entry.GetString());
+        Assert.Equal(tag, Assert.Single(tags));
+    }
+
     [Fact]
     public async Task The_browsable_page_is_served_from_the_service_itself()
     {
