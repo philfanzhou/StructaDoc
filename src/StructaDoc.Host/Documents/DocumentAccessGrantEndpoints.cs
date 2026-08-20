@@ -21,9 +21,9 @@ public static class DocumentAccessGrantEndpoints
     public static IEndpointRouteBuilder MapDocumentAccessGrantEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/documents/{documentId:guid}/access-grants").RequireAuthorization(AuthorizationPolicies.DocumentsWrite);
-        group.MapGet("", ListAsync);
-        group.MapPost("", SetAsync).ProducesValidationProblem();
-        group.MapDelete("/{grantId:guid}", RevokeAsync);
+        group.MapGet("", ListAsync).Produces<IReadOnlyList<DocumentAccessGrantResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapPost("", SetAsync).Produces<DocumentAccessGrantResponse>().ProducesValidationProblem().ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapDelete("/{grantId:guid}", RevokeAsync).Produces(StatusCodes.Status204NoContent).ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound);
         return endpoints;
     }
 

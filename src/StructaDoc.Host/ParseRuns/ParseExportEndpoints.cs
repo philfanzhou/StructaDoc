@@ -12,7 +12,8 @@ public static class ParseExportEndpoints
 
     public static IEndpointRouteBuilder MapParseExportEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/v1/parse-runs/{parseRunId:guid}/exports/{format}", ExportAsync).RequireAuthorization(AuthorizationPolicies.ParsesRead);
+        // One route with four media types, because the format asked for is what comes back.
+        endpoints.MapGet("/api/v1/parse-runs/{parseRunId:guid}/exports/{format}", ExportAsync).RequireAuthorization(AuthorizationPolicies.ParsesRead).Produces<Stream>(StatusCodes.Status200OK, contentType: "text/markdown", additionalContentTypes: ["text/html", "application/zip", "application/pdf"]).ProducesValidationProblem().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
         return endpoints;
     }
 

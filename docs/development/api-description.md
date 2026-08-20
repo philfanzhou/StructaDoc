@@ -15,7 +15,7 @@ Both live under `/api` so the description travels with the API it describes, inc
 
 ## What It Describes
 
-The document is generated from the endpoints themselves, so it cannot name a route that does not exist or miss one that does. Routes, parameters, request bodies, response shapes, and status codes come from the `Produces` metadata each endpoint already carried.
+The document is generated from the endpoints themselves, so it cannot name a route that does not exist or miss one that does. Routes, parameters, and request bodies come from the signatures. What comes back does not: these handlers return `IResult`, which describes nothing, so response shapes and status codes are exactly the `Produces` metadata an endpoint declares. An endpoint that declares none is described as answering nothing at all, and that reads to an integrator as the contract rather than as an omission, so every operation declares its own.
 
 Two things are not visible in an endpoint signature and are supplied by transformers in `src/StructaDoc.Host/OpenApi`:
 
@@ -49,3 +49,5 @@ The page is `Swashbuckle.AspNetCore.SwaggerUI`, and only that package: none of S
 `tests/StructaDoc.Host.Tests/ApiDescriptionTests.cs` covers the parts a generator cannot infer: that the document is served without a credential, that the security scheme is described in the form that actually authenticates, that scope-gated operations name their scope and offer the credential, that browser-only and anonymous operations do not, that every operation is grouped, that only the service API is described, and that the browsable page is served by the service itself.
 
 One of those tests holds that every route named in the document's overview is a route the document describes. The overview is prose, and prose is where a route goes stale without anything failing.
+
+Two more are invariants over the whole document rather than checks on one endpoint: that every operation says what a successful call returns, and that the Canonical Document Model types a client is generated against are in it. Both name what is missing when they fail, because what they guard against is an endpoint added later that quietly describes nothing.

@@ -25,9 +25,14 @@ public static class InteractiveSessionEndpoints
                     !await provisioning.AnyAdministratorExistsAsync(cancellationToken))))
             .AllowAnonymous()
             .Produces<InteractiveSessionResponse>();
+        // A redirect is the whole answer here: the browser leaves for the identity provider and
+        // comes back signed in. Undeclared, the one operation that returns no body at all reads
+        // like the ones that forgot to say.
         group.MapGet("/login", (HttpContext context, string? returnUrl) =>
             BeginLogin(context, oidcOptions, returnUrl))
-            .AllowAnonymous();
+            .AllowAnonymous()
+            .Produces(StatusCodes.Status302Found)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         group.MapPost("/logout", LogoutAsync)
             .RequireAuthorization(AuthorizationPolicies.InteractiveUser)
             .Produces(StatusCodes.Status204NoContent)
