@@ -215,10 +215,6 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("media_type");
 
-                    b.Property<string>("MetadataJson")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("metadata_json");
-
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasMaxLength(512)

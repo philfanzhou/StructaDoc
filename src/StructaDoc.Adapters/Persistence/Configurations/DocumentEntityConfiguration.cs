@@ -51,9 +51,6 @@ internal sealed class DocumentEntityConfiguration : IEntityTypeConfiguration<Doc
             .HasColumnName("deletion_requested_at_utc");
         builder.Property(document => document.CreatedAtUtc)
             .HasColumnName("created_at_utc");
-        builder.Property(document => document.MetadataJson)
-            .HasColumnName("metadata_json");
-
         builder.HasIndex(document => document.Sha256)
             .HasDatabaseName("ix_documents_sha256");
         builder.HasIndex(document => new { document.CreatedAtUtc, document.Id })

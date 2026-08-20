@@ -2,7 +2,7 @@
 
 - Status: Implemented specification
 - Version: 1.0-draft
-- Last updated: 2026-08-07
+- Last updated: 2026-08-20
 
 ## 1. Purpose
 
@@ -69,13 +69,14 @@ A Document represents the immutable original managed by StructaDoc.
 | `createdBy` | No | Opaque uploader/API-client fact |
 | `owner` | No | External owner identified by `(issuer, subject)` |
 | `createdAt` | Yes | Creation time |
-| `metadata` | No | Bounded, non-sensitive caller metadata |
 
 ### Invariants
 
 - Conversion output never overwrites the original.
 - A user filename never participates in a server path.
 - Client-declared MIME type is not authoritative.
+- A Document has no caller-defined business metadata; consumers keep their own keys against its
+  stable ID unless a future version defines an explicit contract for them.
 - Physical content deduplication, if introduced, does not merge distinct Document resources.
 - Deletion-pending Documents are unavailable to ordinary reads.
 
@@ -277,4 +278,4 @@ At minimum, a normalized result satisfies:
 
 ## 15. Evolution Work
 
-Future additive work may define richer metadata keys, more Office sheet/slide/section locators, more Provider fixture versions, and additional registered Block types. Any incompatible public meaning follows the versioning rules above rather than leaking a Provider schema into the contract.
+Future additive work may define richer Artifact metadata keys, more Office sheet/slide/section locators, more Provider fixture versions, and additional registered Block types. Any incompatible public meaning follows the versioning rules above rather than leaking a Provider schema into the contract.

@@ -28,8 +28,6 @@ public sealed class DocumentEntity
 
     public DateTime CreatedAtUtc { get; set; }
 
-    public string? MetadataJson { get; set; }
-
     public ICollection<ParseRunEntity> ParseRuns { get; } = [];
 
     public ICollection<DocumentAccessGrantEntity> AccessGrants { get; } = [];
