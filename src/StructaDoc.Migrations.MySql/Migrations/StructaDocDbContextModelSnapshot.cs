@@ -226,10 +226,6 @@ namespace StructaDoc.Migrations.MySql.Migrations
                         .HasColumnType("varchar(255)")
                         .HasColumnName("media_type");
 
-                    b.Property<string>("MetadataJson")
-                        .HasColumnType("longtext")
-                        .HasColumnName("metadata_json");
-
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasMaxLength(512)
