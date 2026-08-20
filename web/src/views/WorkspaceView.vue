@@ -377,9 +377,20 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
               <button v-for="page in pages" :key="page.number" :class="{ active: page.number === layoutPageNumber }" @click="openLayoutPage(page.number)">{{ page.number }}</button>
             </div>
             <div v-if="layoutPage" class="layout-view">
-              <svg class="layout-map" :viewBox="`0 0 1000 ${layoutHeight}`" preserveAspectRatio="xMidYMin meet" role="img" aria-label="页面版面示意">
+              <svg class="layout-map" :viewBox="`0 0 1000 ${layoutHeight}`" preserveAspectRatio="xMidYMin meet" role="group" aria-label="页面版面示意">
                 <rect class="layout-paper" x="0" y="0" width="1000" :height="layoutHeight" />
-                <g v-for="(box, index) in layoutBoxes" :key="box.block.id" class="layout-box" :class="{ selected: box.block.id === selectedBlockId }" @click="selectedBlockId = box.block.id">
+                <g
+                  v-for="(box, index) in layoutBoxes"
+                  :key="box.block.id"
+                  class="layout-box"
+                  :class="{ selected: box.block.id === selectedBlockId }"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`第 ${index + 1} 块，类型 ${blockTypeName(box.block.type)}`"
+                  :aria-pressed="box.block.id === selectedBlockId"
+                  @click="selectedBlockId = box.block.id"
+                  @keydown.enter.prevent="selectedBlockId = box.block.id"
+                  @keydown.space.prevent="selectedBlockId = box.block.id">
                   <rect :x="box.x" :y="box.y" :width="box.width" :height="box.height" :stroke="blockColor(box.block.type)" :fill="blockColor(box.block.type)" />
                   <text :x="box.x + 10" :y="box.y + 40" :fill="blockColor(box.block.type)">{{ index + 1 }}</text>
                 </g>
@@ -476,6 +487,7 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
 .layout-box rect{fill-opacity:.1;stroke-width:2}
 .layout-box{cursor:pointer}
 .layout-box:hover rect{fill-opacity:.24}
+.layout-box:focus-visible{outline:5px solid #b0761e;outline-offset:6px}
 .layout-box.selected rect{fill-opacity:.32;stroke-width:4}
 .layout-box text{font:700 38px ui-monospace,monospace;paint-order:stroke;stroke:#fffef9;stroke-width:5px}
 .layout-side{display:grid;gap:10px}
