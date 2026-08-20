@@ -8,17 +8,25 @@ namespace StructaDoc.Host.ParseRuns;
 
 public static class ParseResultEndpoints
 {
+    // Every response is declared because the handlers return `IResult`, which tells a generated
+    // document nothing about what comes back. Undeclared, this whole surface is described as routes
+    // that answer with no body, and `/blocks` comes out worse than the rest: with its validation
+    // failure declared and its success not, the document says the endpoint returns `400` and
+    // nothing else. These are the results the product exists to produce, and their shape is the
+    // part of the description an integrator writes code against.
     public static IEndpointRouteBuilder MapParseResultEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/parse-runs/{parseRunId:guid}").RequireAuthorization(AuthorizationPolicies.ParsesRead);
-        group.MapGet("/pages", ListPagesAsync);
-        group.MapGet("/blocks", ListBlocksAsync).ProducesValidationProblem();
-        group.MapGet("/assets", ListAssetsAsync);
-        group.MapGet("/assets/{assetId:guid}/content", DownloadAssetAsync);
-        group.MapGet("/artifacts", ListArtifactsAsync);
-        group.MapGet("/artifacts/{artifactId:guid}/content", DownloadArtifactAsync);
-        group.MapGet("/markdown", DownloadMarkdownAsync);
-        group.MapGet("/markdown/preview", PreviewMarkdownAsync);
+        group.MapGet("/pages", ListPagesAsync).Produces<IReadOnlyList<ParsePageResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/blocks", ListBlocksAsync).Produces<ParseBlockListResponse>().ProducesValidationProblem().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/assets", ListAssetsAsync).Produces<IReadOnlyList<ParseAssetResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
+        // Declared as a binary stream because the response carries the media type of the stored
+        // item, which is whatever the parse produced rather than one type this route could name.
+        group.MapGet("/assets/{assetId:guid}/content", DownloadAssetAsync).Produces<Stream>(StatusCodes.Status200OK, contentType: "application/octet-stream").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+        group.MapGet("/artifacts", ListArtifactsAsync).Produces<IReadOnlyList<ParseArtifactResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/artifacts/{artifactId:guid}/content", DownloadArtifactAsync).Produces<Stream>(StatusCodes.Status200OK, contentType: "application/octet-stream").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+        group.MapGet("/markdown", DownloadMarkdownAsync).Produces<Stream>(StatusCodes.Status200OK, contentType: "text/markdown").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+        group.MapGet("/markdown/preview", PreviewMarkdownAsync).Produces<Stream>(StatusCodes.Status200OK, contentType: "text/html").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return endpoints;
     }
 

@@ -23,7 +23,7 @@ public static class DocumentReadEndpoints
             .Produces<DocumentResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapGet("/{id:guid}/content", DownloadAsync)
-            .Produces(StatusCodes.Status200OK)
+            .Produces<Stream>(StatusCodes.Status200OK, contentType: "application/octet-stream")
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 

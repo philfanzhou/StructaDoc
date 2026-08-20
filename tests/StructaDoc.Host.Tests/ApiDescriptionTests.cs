@@ -198,6 +198,68 @@ public sealed class ApiDescriptionTests
         Assert.Equal("text/html", redirect.Content.Headers.ContentType?.MediaType);
     }
 
+    // What a call returns is the part an integrator writes code against, and the generator infers
+    // none of it here: these handlers return `IResult`, so an operation nobody declared is
+    // described as answering nothing at all. Nothing fails when that happens, and the reader takes
+    // silence for the contract, which is why this is an invariant over the whole document rather
+    // than a test per endpoint.
+    [Fact]
+    public async Task Every_operation_says_what_a_successful_call_returns()
+    {
+        using var document = await ReadDescriptionAsync();
+
+        var undescribed = document.RootElement.GetProperty("paths").EnumerateObject()
+            .SelectMany(path => path.Value.EnumerateObject()
+                .Select(operation => (Route: $"{operation.Name.ToUpperInvariant()} {path.Name}", Operation: operation.Value)))
+            .Where(entry => !DescribesSuccess(entry.Operation))
+            .Select(entry => entry.Route)
+            .ToArray();
+
+        Assert.True(
+            undescribed.Length == 0,
+            $"These operations do not say what a successful call returns: {string.Join(", ", undescribed)}.");
+    }
+
+    [Fact]
+    public async Task The_result_types_a_client_is_generated_against_are_in_the_document()
+    {
+        using var document = await ReadDescriptionAsync();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+
+        // Blocks are the product's output, and the overview asks a client to tolerate Block types
+        // it does not know. That instruction only means something to a client that was given the
+        // shape to begin with.
+        var block = schemas.GetProperty("ParseBlockResponse").GetProperty("properties");
+        foreach (var field in new[] { "sequence", "type", "content", "boundingBox" })
+        {
+            Assert.True(block.TryGetProperty(field, out _), $"Block field '{field}' is missing.");
+        }
+
+        foreach (var name in new[] { "ParsePageResponse", "ParseAssetResponse", "ParseArtifactResponse", "BoundingBoxResponse" })
+        {
+            Assert.True(schemas.TryGetProperty(name, out _), $"Schema '{name}' is missing.");
+        }
+    }
+
+    private static bool DescribesSuccess(JsonElement operation)
+    {
+        if (!operation.TryGetProperty("responses", out var responses))
+        {
+            return false;
+        }
+
+        var success = responses.EnumerateObject()
+            .Where(response => response.Name.StartsWith('2') || response.Name.StartsWith('3'))
+            .ToArray();
+        // `204` and a redirect describe an empty body, which is an answer. Every other success has
+        // a shape, and a status code declared without one describes half of it.
+        return success.Length > 0
+            && success.All(response =>
+                response.Name == "204"
+                || response.Name.StartsWith('3')
+                || response.Value.TryGetProperty("content", out _));
+    }
+
     private static async Task<JsonDocument> ReadDescriptionAsync()
     {
         using var factory = new StructaDocWebApplicationFactory();

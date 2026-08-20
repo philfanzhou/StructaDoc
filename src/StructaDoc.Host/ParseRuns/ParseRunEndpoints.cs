@@ -36,7 +36,9 @@ public static class ParseRunEndpoints
             .Produces<ParseRunResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         endpoints.MapGet("/api/v1/documents/{documentId:guid}/parse-runs", ListForDocumentAsync)
-            .RequireAuthorization(AuthorizationPolicies.ParsesRead);
+            .RequireAuthorization(AuthorizationPolicies.ParsesRead)
+            .Produces<IReadOnlyList<ParseRunResponse>>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
         endpoints.MapPost("/api/v1/parse-runs/{id:guid}/cancel", CancelAsync)
             .RequireAuthorization(AuthorizationPolicies.ParsesWrite)
             .Produces<ParseRunResponse>(StatusCodes.Status202Accepted)
