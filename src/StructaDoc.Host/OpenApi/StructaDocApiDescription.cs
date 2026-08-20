@@ -1,4 +1,7 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.OpenApi;
+using StructaDoc.Host.Authentication;
 
 namespace StructaDoc.Host.OpenApi;
 
@@ -19,11 +22,13 @@ public static class StructaDocApiDescription
     // that adds an optional field does not change what the caller is coding against. `GET
     // /api/v1/system/info` reports which build is answering.
     public const string DocumentName = "v1";
+    public const string BrowserDocumentName = "v1-browser";
 
     // Under `/api` so the description travels with the API it describes, including through a proxy
     // that publishes only that prefix, and so the Host's client-route fallback already excludes it.
     public const string DocumentRoute = "/api/{documentName}/openapi.json";
     public const string DocumentPath = "/api/v1/openapi.json";
+    public const string BrowserDocumentPath = "/api/v1-browser/openapi.json";
     public const string BrowsableRoutePrefix = "api/v1/docs";
 
     public static IServiceCollection AddStructaDocApiDescription(this IServiceCollection services)
@@ -35,12 +40,26 @@ public static class StructaDocApiDescription
         // passing DocumentName would generate the XML file but silently omit it from the document.
         services.AddOpenApi("v1", options =>
         {
-            // Health probes and the SPA's own fallback are endpoints, but they are not the service
-            // API, and describing them would invite an integrator to build against them.
-            options.ShouldInclude = description =>
-                description.RelativePath?.StartsWith("api/", StringComparison.Ordinal) == true;
+            // This is the contract intended for generated clients. Browser-only administration,
+            // setup, and session routes use cookies and antiforgery rather than API client keys;
+            // including them makes a generated SDK advertise methods it cannot authenticate.
+            options.ShouldInclude = IsApiClientOperation;
             options.AddDocumentTransformer<ApiDocumentTransformer>();
+            options.AddOperationTransformer<ApiClientContractTransformer>();
             options.AddOperationTransformer<ApiSecurityTransformer>();
+            options.AddSchemaTransformer<ApiSchemaTransformer>();
+        });
+
+        // Keep a separate description of the entire browser and service surface for operators and
+        // for the bundled Swagger UI. It is deliberately not the document consumers generate from.
+        // The literal name is required by the XML-comment source generator; see the note above.
+        services.AddOpenApi("v1-browser", options =>
+        {
+            options.ShouldInclude = IsServiceApiOperation;
+            options.AddDocumentTransformer<ApiDocumentTransformer>();
+            options.AddOperationTransformer<ApiClientContractTransformer>();
+            options.AddOperationTransformer<ApiSecurityTransformer>();
+            options.AddSchemaTransformer<ApiSchemaTransformer>();
         });
 
         return services;
@@ -69,10 +88,37 @@ public static class StructaDocApiDescription
         app.UseSwaggerUI(options =>
         {
             options.RoutePrefix = BrowsableRoutePrefix;
-            options.SwaggerEndpoint(DocumentPath, $"StructaDoc {DocumentName}");
+            options.SwaggerEndpoint(DocumentPath, "StructaDoc API clients (v1)");
+            options.SwaggerEndpoint(BrowserDocumentPath, "StructaDoc complete browser surface (v1)");
             options.DocumentTitle = "StructaDoc API";
         });
 
         return app;
     }
+
+    private static bool IsApiClientOperation(ApiDescription description)
+    {
+        if (!IsServiceApiOperation(description))
+        {
+            return false;
+        }
+
+        // Service identity is intentionally public. Every other consumer operation must be backed
+        // by one of the four API-client scope policies, which is the same fact authentication uses.
+        if (string.Equals(description.RelativePath, "api/v1/system/info", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return description.ActionDescriptor.EndpointMetadata
+            .OfType<IAuthorizeData>()
+            .Select(metadata => metadata.Policy)
+            .Any(policy => policy is AuthorizationPolicies.DocumentsRead
+                or AuthorizationPolicies.DocumentsWrite
+                or AuthorizationPolicies.ParsesRead
+                or AuthorizationPolicies.ParsesWrite);
+    }
+
+    private static bool IsServiceApiOperation(ApiDescription description) =>
+        description.RelativePath?.StartsWith("api/", StringComparison.Ordinal) == true;
 }

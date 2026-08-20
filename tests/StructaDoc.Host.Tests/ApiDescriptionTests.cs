@@ -135,7 +135,7 @@ public sealed class ApiDescriptionTests
     [Fact]
     public async Task A_browser_only_operation_does_not_offer_the_credential()
     {
-        using var document = await ReadDescriptionAsync();
+        using var document = await ReadBrowserDescriptionAsync();
         var operation = document.RootElement
             .GetProperty("paths")
             .GetProperty("/api/v1/admin/api-clients")
@@ -150,7 +150,7 @@ public sealed class ApiDescriptionTests
     [Fact]
     public async Task An_operation_that_opts_out_of_authorization_is_described_as_open()
     {
-        using var document = await ReadDescriptionAsync();
+        using var document = await ReadBrowserDescriptionAsync();
         var operation = document.RootElement
             .GetProperty("paths")
             .GetProperty("/api/v1/admin/antiforgery")
@@ -193,6 +193,132 @@ public sealed class ApiDescriptionTests
         // Health probes are endpoints, but they are an operational contract rather than the API,
         // and describing them would invite an integration to depend on their shape.
         Assert.DoesNotContain(paths, path => path.Name.StartsWith("/health", StringComparison.Ordinal));
+        Assert.DoesNotContain(paths, path => path.Name.StartsWith("/api/v1/admin", StringComparison.Ordinal));
+        Assert.DoesNotContain(paths, path => path.Name.StartsWith("/api/v1/session", StringComparison.Ordinal));
+        Assert.DoesNotContain(paths, path => path.Name.StartsWith("/api/v1/setup", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_browser_description_covers_the_complete_surface_separately()
+    {
+        using var document = await ReadBrowserDescriptionAsync();
+        var paths = document.RootElement.GetProperty("paths");
+
+        Assert.True(paths.TryGetProperty("/api/v1/documents", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/admin/api-clients", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/session", out _));
+        Assert.Equal(
+            "StructaDoc Browser API",
+            document.RootElement.GetProperty("info").GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task Every_consumer_operation_has_a_stable_unique_operation_id()
+    {
+        using var document = await ReadDescriptionAsync();
+        var operations = document.RootElement.GetProperty("paths").EnumerateObject()
+            .SelectMany(path => path.Value.EnumerateObject()
+                .Select(operation => (
+                    Route: $"{operation.Name.ToUpperInvariant()} {path.Name}",
+                    Id: operation.Value.TryGetProperty("operationId", out var id) ? id.GetString() : null)))
+            .ToArray();
+
+        var missing = operations.Where(operation => string.IsNullOrWhiteSpace(operation.Id)).ToArray();
+        Assert.True(missing.Length == 0, $"Missing operationId: {string.Join(", ", missing.Select(operation => operation.Route))}.");
+
+        var duplicate = operations.GroupBy(operation => operation.Id, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToArray();
+        Assert.True(duplicate.Length == 0, $"Duplicate operationId: {string.Join(", ", duplicate)}.");
+    }
+
+    [Fact]
+    public async Task Upload_is_a_named_single_file_multipart_request()
+    {
+        using var document = await ReadDescriptionAsync();
+        var operation = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/v1/documents")
+            .GetProperty("post");
+        var schema = operation.GetProperty("requestBody")
+            .GetProperty("content")
+            .GetProperty("multipart/form-data")
+            .GetProperty("schema");
+
+        Assert.Equal("UploadDocument", operation.GetProperty("operationId").GetString());
+        Assert.Equal("object", schema.GetProperty("type").GetString());
+        Assert.Contains("file", schema.GetProperty("required").EnumerateArray().Select(value => value.GetString()));
+        var file = schema.GetProperty("properties").GetProperty("file");
+        Assert.Equal("string", file.GetProperty("type").GetString());
+        Assert.Equal("binary", file.GetProperty("format").GetString());
+    }
+
+    [Fact]
+    public async Task Parse_creation_exposes_idempotency_and_request_constraints()
+    {
+        using var document = await ReadDescriptionAsync();
+        var operation = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/v1/documents/{documentId}/parse-runs")
+            .GetProperty("post");
+        var parameter = operation.GetProperty("parameters").EnumerateArray()
+            .Single(value => value.GetProperty("name").GetString() == "Idempotency-Key");
+
+        Assert.Equal("header", parameter.GetProperty("in").GetString());
+        Assert.Equal(256, parameter.GetProperty("schema").GetProperty("maxLength").GetInt32());
+
+        var requestSchemaReference = operation.GetProperty("requestBody")
+            .GetProperty("content")
+            .GetProperty("application/json")
+            .GetProperty("schema")
+            .GetProperty("$ref")
+            .GetString();
+        var schemaName = requestSchemaReference!.Split('/').Last();
+        var request = document.RootElement.GetProperty("components").GetProperty("schemas").GetProperty(schemaName);
+        var maxAttempts = request.GetProperty("properties").GetProperty("maxAttempts");
+        Assert.Equal(1, maxAttempts.GetProperty("minimum").GetInt32());
+        Assert.Equal(10, maxAttempts.GetProperty("maximum").GetInt32());
+        Assert.Equal(3, maxAttempts.GetProperty("default").GetInt32());
+        Assert.Equal("object", request.GetProperty("properties").GetProperty("options").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task Generated_clients_can_see_authentication_cache_and_range_responses()
+    {
+        using var document = await ReadDescriptionAsync();
+        var paths = document.RootElement.GetProperty("paths");
+
+        var getDocument = paths.GetProperty("/api/v1/documents/{id}").GetProperty("get");
+        Assert.True(getDocument.GetProperty("responses").TryGetProperty("401", out _));
+        Assert.True(getDocument.GetProperty("responses").TryGetProperty("403", out _));
+
+        var download = paths.GetProperty("/api/v1/documents/{id}/content").GetProperty("get");
+        Assert.True(download.GetProperty("responses").TryGetProperty("206", out _));
+        Assert.True(download.GetProperty("responses").TryGetProperty("416", out _));
+
+        var preview = paths.GetProperty("/api/v1/parse-runs/{parseRunId}/markdown/preview").GetProperty("get");
+        Assert.True(preview.GetProperty("responses").TryGetProperty("304", out _));
+        Assert.Contains(
+            preview.GetProperty("parameters").EnumerateArray(),
+            parameter => parameter.GetProperty("name").GetString() == "If-None-Match"
+                && parameter.GetProperty("in").GetString() == "header");
+    }
+
+    [Fact]
+    public async Task Pagination_parameters_describe_defaults_and_bounds()
+    {
+        using var document = await ReadDescriptionAsync();
+        var parameters = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/v1/documents")
+            .GetProperty("get")
+            .GetProperty("parameters");
+        var limit = parameters.EnumerateArray()
+            .Single(parameter => parameter.GetProperty("name").GetString() == "limit");
+        var schema = limit.GetProperty("schema");
+
+        Assert.Equal(1, schema.GetProperty("minimum").GetInt32());
+        Assert.Equal(200, schema.GetProperty("maximum").GetInt32());
+        Assert.Equal(50, schema.GetProperty("default").GetInt32());
+        Assert.False(string.IsNullOrWhiteSpace(limit.GetProperty("description").GetString()));
     }
 
     [Fact]
@@ -229,7 +355,9 @@ public sealed class ApiDescriptionTests
         string method,
         string tag)
     {
-        using var document = await ReadDescriptionAsync();
+        using var document = path.StartsWith("/api/v1/admin", StringComparison.Ordinal)
+            ? await ReadBrowserDescriptionAsync()
+            : await ReadDescriptionAsync();
         var operation = document.RootElement.GetProperty("paths").GetProperty(path).GetProperty(method);
 
         // Grouping is by path prefix, so the endpoint that starts parsing would fall under Documents
@@ -348,11 +476,17 @@ public sealed class ApiDescriptionTests
     }
 
     private static async Task<JsonDocument> ReadDescriptionAsync()
+        => await ReadDescriptionAsync("/api/v1/openapi.json");
+
+    private static async Task<JsonDocument> ReadBrowserDescriptionAsync()
+        => await ReadDescriptionAsync("/api/v1-browser/openapi.json");
+
+    private static async Task<JsonDocument> ReadDescriptionAsync(string path)
     {
         using var factory = new StructaDocWebApplicationFactory();
         using var client = factory.CreateClient();
         using var response = await client.GetAsync(
-            "/api/v1/openapi.json",
+            path,
             TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
         return await ReadDocumentAsync(response);

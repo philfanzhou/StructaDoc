@@ -70,6 +70,15 @@ internal sealed class ApiSecurityTransformer : IOpenApiOperationTransformer
             },
         ];
 
+        operation.Responses?.TryAdd("401", new OpenApiResponse
+        {
+            Description = "The API client credential is missing, invalid, expired, or revoked.",
+        });
+        operation.Responses?.TryAdd("403", new OpenApiResponse
+        {
+            Description = "The authenticated API client does not hold the required scope.",
+        });
+
         // The scope is stated rather than carried in the security requirement because OpenAPI
         // attaches scopes to OAuth flows alone, and this credential is not one. A signed-in browser
         // session reaches the same endpoint without holding any scope.

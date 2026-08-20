@@ -36,9 +36,11 @@ internal sealed class ApiDocumentTransformer : IOpenApiDocumentTransformer
     {
         document.Info = new OpenApiInfo
         {
-            Title = "StructaDoc API",
+            Title = context.DocumentName == StructaDocApiDescription.DocumentName
+                ? "StructaDoc API"
+                : "StructaDoc Browser API",
             Version = StructaDocApiDescription.DocumentName,
-            Description = Describe(),
+            Description = Describe(context.DocumentName),
         };
 
         document.Components ??= new OpenApiComponents();
@@ -82,15 +84,21 @@ internal sealed class ApiDocumentTransformer : IOpenApiDocumentTransformer
         }
     }
 
-    private static string Describe()
+    private static string Describe(string documentName)
     {
         var build = Assembly
             .GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion ?? "unknown";
 
+        var audience = documentName == StructaDocApiDescription.DocumentName
+            ? "This consumer document contains only operations available to an API client credential."
+            : "This operator document also contains browser-only administration, setup, and session operations. Their writes require the antiforgery token from `GET /api/v1/admin/antiforgery` in the `X-CSRF-TOKEN` header. Generate API client SDKs from `/api/v1/openapi.json` instead.";
+
         return $"""
             Document ingestion, asynchronous parsing, and normalized structured results.
+
+            {audience}
 
             This document describes the `v1` contract. Within it, fields are added rather than
             changed, so a client must tolerate fields and Block types it does not know. The build
@@ -101,11 +109,6 @@ internal sealed class ApiDocumentTransformer : IOpenApiDocumentTransformer
             authorizes the resource, so a client reaches what it uploaded and what was shared with
             it rather than the whole workspace. A resource outside that boundary answers `404`
             rather than `403`, so holding a credential does not reveal which resource IDs exist.
-
-            Endpoints marked as requiring a browser session are not reachable with an API client
-            credential at all, and their writes additionally require the antiforgery token from
-            `GET /api/v1/admin/antiforgery` in the `X-CSRF-TOKEN` header. They are described here
-            because they are part of the surface, not because an integration should call them.
 
             Parsing is asynchronous: creating a Parse Run returns immediately and the result is
             polled. Errors are `application/problem+json`.

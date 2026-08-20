@@ -6,16 +6,23 @@ StructaDoc is integrated with by other systems. Until now the only description o
 
 | Route | What it serves |
 |---|---|
-| `GET /api/v1/openapi.json` | the OpenAPI 3.1 document |
-| `/api/v1/docs` | a browsable page rendering that document |
+| `GET /api/v1/openapi.json` | the OpenAPI 3.1 consumer contract used for SDK generation |
+| `GET /api/v1-browser/openapi.json` | the complete browser and service surface for operators |
+| `/api/v1/docs` | a browsable page rendering both documents |
 
-Both live under `/api` so the description travels with the API it describes, including through a reverse proxy that publishes only that prefix, and so the Host's client-route fallback already excludes them from the application shell.
+All live under `/api` so the descriptions travel with the API they describe, including through a reverse proxy that publishes only that prefix, and so the Host's client-route fallback already excludes them from the application shell.
 
 `v1` in the path is the contract version, not the build. A build that adds an optional field does not change what a client is coding against; `GET /api/v1/system/info` reports which build is answering.
 
 ## What It Describes
 
-The document is generated from the endpoints themselves, so it cannot name a route that does not exist or miss one that does. Routes, parameters, and request bodies come from the signatures. Selective XML documentation supplies summaries and remarks where a path alone does not explain the operation; comments are written for useful semantics rather than to meet a coverage target. Documented handlers remain at least `internal`, because the compile-time XML processor omits private members, and the `AddOpenApi` document name remains a literal expression so the processor can intercept its registration. What comes back does not come from the signature: these handlers return `IResult`, which describes nothing, so response shapes and status codes are exactly the `Produces` metadata an endpoint declares. An endpoint that declares none is described as answering nothing at all, and that reads to an integrator as the contract rather than as an omission, so every operation declares its own.
+Both documents are generated from the endpoints themselves, so neither can name a route that does not exist. The consumer document filters the surface by the same four scope policies used to admit API client credentials, plus the public service-information route. Browser-only administration, setup, and session operations live only in the operator document, so a generated SDK cannot advertise methods no API key can call.
+
+Routes, parameters, and request bodies normally come from signatures. Selective XML documentation supplies summaries and remarks where a path alone does not explain the operation; comments are written for useful semantics rather than to meet a coverage target. Documented handlers remain at least `internal`, because the compile-time XML processor omits private members, and each `AddOpenApi` document name remains a literal expression so the processor can intercept its registration. Explicit endpoint names provide stable, unique `operationId` values for generated method names.
+
+Some HTTP facts are read deliberately through `HttpContext` and therefore need explicit OpenAPI metadata: upload is a required multipart object with one binary `file` field; Parse Run creation exposes the optional `Idempotency-Key` header; conditional preview and byte-range downloads declare their headers and `304`, `206`, and `416` responses; query pagination records defaults and accepted bounds. Provider options remain extensible JSON properties but are constrained to an object rather than an unconstrained value.
+
+What comes back does not come from the signature: these handlers return `IResult`, which describes nothing, so response shapes and status codes are exactly the `Produces` metadata an endpoint declares plus cross-cutting responses supplied by transformers. Scope-gated operations declare `401` and `403`. An endpoint that declares no success is described as answering nothing at all, and that reads to an integrator as the contract rather than as an omission, so every operation declares its own.
 
 A parameter with a fixed set of legal values says so too. `{format}` on the export route is a `string` in the signature and one of four values in practice, and it is listed from the same array the handler validates against, so a format the service accepts cannot be one the document leaves out.
 
@@ -44,7 +51,7 @@ The credential is described as an API key in the `Authorization` header rather t
 
 A scope authorizes the endpoint; ownership or an explicit grant authorizes the resource. See [Authentication](./authentication.md#resource-boundary) and [ADR-0008](../adr/0008-api-client-resource-isolation.md). The document says so in its overview, because a reader who sees only the scope list will otherwise expect a key to reach the whole workspace.
 
-Browser-only endpoints are described but not offered a credential. They are part of the surface, and omitting them would produce a document that looks complete and is not; marking them is what keeps an integration from building against a route no key can reach.
+Browser-only endpoints are described in the separate operator document and are not offered an API-client credential. Keeping the operator surface visible without putting it in the consumer contract lets administrators inspect the complete Host while integrations generate only callable methods.
 
 ## Reachable Without Signing In
 
@@ -58,8 +65,8 @@ The page is `Swashbuckle.AspNetCore.SwaggerUI`, and only that package: none of S
 
 ## Verification
 
-`tests/StructaDoc.Host.Tests/ApiDescriptionTests.cs` covers the parts a generator cannot infer: that the document is served without a credential, that the security scheme is described in the form that actually authenticates, that scope-gated operations name their scope and offer the credential, that browser-only and anonymous operations do not, that every operation is grouped, that only the service API is described, and that the browsable page is served by the service itself.
+`tests/StructaDoc.Host.Tests/ApiDescriptionTests.cs` covers the parts a generator cannot infer: the consumer/operator split, stable unique operation IDs, the multipart and header contracts, pagination bounds, cache and range responses, the credential form, scopes, permissions, grouping, result DTOs, and the self-hosted browsing page.
 
 One of those tests holds that every route named in the document's overview is a route the document describes. The overview is prose, and prose is where a route goes stale without anything failing.
 
-Three more are invariants over the whole document rather than checks on one endpoint: that every operation says what a successful call returns, that every operation naming a Document or a Parse Run states the permission it requires, and that the Canonical Document Model types a client is generated against are in it. Each names what is missing when it fails, because what they guard against is an endpoint added later that quietly describes nothing.
+The CI workflow then exports `/api/v1/openapi.json`, generates a C# SDK with pinned OpenAPI Generator 7.24.0, and compiles the result. Structural tests and actual generation cover different failure modes, so both gate publishing.

@@ -16,6 +16,7 @@ public static class ParseExportEndpoints
     {
         // One route with four media types, because the format asked for is what comes back.
         endpoints.MapGet("/api/v1/parse-runs/{parseRunId:guid}/exports/{format}", ExportAsync)
+            .WithName("ExportParseRun")
             .RequireAuthorization(AuthorizationPolicies.ParsesRead)
             .RequiresDocumentPermission(DocumentPermissions.Export)
             .Produces<Stream>(StatusCodes.Status200OK, contentType: "text/markdown", additionalContentTypes: ["text/html", "application/zip", "application/pdf"])
