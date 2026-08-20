@@ -80,7 +80,32 @@ public static class ParseResultEndpoints
     /// back to this service carries no session cookie and would load nothing. Inlining is bounded,
     /// so a result whose images exceed the export budget previews with those images missing.
     /// </remarks>
-    private static Task<IResult> PreviewMarkdownAsync(Guid parseRunId, HttpContext context, IParseExportService exports, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => exports.CreateAsync(parseRunId, "html", ResourceAccessContextFactory.Create(context.User), cancellationToken), inline: true);
+    private static async Task<IResult> PreviewMarkdownAsync(Guid parseRunId, HttpContext context, IParseExportService exports, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var access = ResourceAccessContextFactory.Create(context.User);
+            var fingerprint = await exports.GetHtmlEntityTagAsync(parseRunId, access, cancellationToken);
+            if (fingerprint is null) return NotFound(parseRunId);
+
+            var entityTag = new EntityTagHeaderValue($"\"{fingerprint}\"");
+            SetDownloadHeaders(context);
+            if (context.Request.GetTypedHeaders().IfNoneMatch?.Any(candidate =>
+                    candidate.Tag == "*" || candidate.Compare(entityTag, useStrongComparison: false)) == true)
+            {
+                context.Response.GetTypedHeaders().ETag = entityTag;
+                return Results.StatusCode(StatusCodes.Status304NotModified);
+            }
+
+            var item = await exports.CreateAsync(parseRunId, "html", access, cancellationToken);
+            if (item is null) return NotFound(parseRunId);
+            return Results.File(item.Content, item.MediaType, fileDownloadName: null, entityTag: entityTag, enableRangeProcessing: true);
+        }
+        catch (ParseResultContentUnavailableException)
+        {
+            return ContentUnavailable();
+        }
+    }
 
     private static async Task<IResult> DownloadAsync(Guid parseRunId, HttpContext context, Func<Task<ParseResultContent?>> open, bool inline = false)
     {
@@ -88,16 +113,22 @@ public static class ParseResultEndpoints
         {
             var item = await open();
             if (item is null) return NotFound(parseRunId);
-            context.Response.Headers.CacheControl = "private, max-age=0, must-revalidate";
-            context.Response.Headers.XContentTypeOptions = "nosniff";
-            context.Response.Headers["Content-Security-Policy"] = "sandbox";
+            SetDownloadHeaders(context);
             return Results.File(item.Content, item.MediaType, inline ? null : item.Name, entityTag: new EntityTagHeaderValue($"\"{item.Sha256}\""), enableRangeProcessing: true);
         }
         catch (ParseResultContentUnavailableException)
         {
-            return Results.Problem(statusCode: 503, title: "Parse result content unavailable", detail: "The result metadata exists, but its stored content is currently unavailable.");
+            return ContentUnavailable();
         }
     }
 
+    private static void SetDownloadHeaders(HttpContext context)
+    {
+        context.Response.Headers.CacheControl = "private, max-age=0, must-revalidate";
+        context.Response.Headers.XContentTypeOptions = "nosniff";
+        context.Response.Headers["Content-Security-Policy"] = "sandbox";
+    }
+
+    private static IResult ContentUnavailable() => Results.Problem(statusCode: 503, title: "Parse result content unavailable", detail: "The result metadata exists, but its stored content is currently unavailable.");
     private static IResult NotFound(Guid id) => Results.Problem(statusCode: 404, title: "Parse Run or result not found", detail: $"Parse Run '{id:D}' or the requested result does not exist or is not accessible.");
 }

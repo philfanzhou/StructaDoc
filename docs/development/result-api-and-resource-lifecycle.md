@@ -30,6 +30,8 @@ Blocks use `afterSequence` for stable cursor pagination, and `nextSequence` in t
 
 Both `markdown/preview` and the download routes answer with `Content-Security-Policy: sandbox`, which puts Provider-authored content in an opaque origin. That is also why the preview inlines images instead of linking them at their authorized endpoints: a request back to this service from an opaque origin carries no session cookie, so a linked image would be a broken one. A result whose images exceed the inlining budget previews with those images missing; they remain downloadable through the Asset routes.
 
+The preview's ETag is derived before rendering from the Markdown hash, the hashes of Assets eligible for inlining in stable order, the renderer version, and the inlining budgets. A matching `If-None-Match` therefore returns `304` without opening or rendering result content. Rendering changes increment the version so an unchanged Parse Run cannot validate HTML produced by older rules.
+
 ## Exports
 
 Provider Markdown references images by the Provider's own archive layout, typically `images/<name>`, which resolves to nothing once the Markdown leaves that archive. Exports therefore translate image links onto the resources they actually ship:
