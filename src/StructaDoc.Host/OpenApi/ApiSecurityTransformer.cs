@@ -6,9 +6,9 @@ using StructaDoc.Host.Authentication;
 namespace StructaDoc.Host.OpenApi;
 
 // How each endpoint is reached, which is the part of the contract a generated document cannot see.
-// An endpoint's signature says what it takes and returns; the authorization policy on it says who
-// may call it and with which scope, and that is the first thing an integrator needs and the last
-// thing they can infer from a route.
+// An endpoint's signature says what it takes and returns; the authorization policy on it, and the
+// Document permission declared beside it, say who may call it, and that is the first thing an
+// integrator needs and the last thing they can infer from a route.
 internal sealed class ApiSecurityTransformer : IOpenApiOperationTransformer
 {
     private const string BrowserOnly =
@@ -40,6 +40,18 @@ internal sealed class ApiSecurityTransformer : IOpenApiOperationTransformer
             AuthorizationPolicies.InteractiveUser => BrowserOnly,
             _ => "Open to unauthenticated callers.",
         };
+
+        // The scope policy says which credential opens the door. On a Document-scoped route it
+        // is only half the rule: the rest is a permission on that Document, checked against the
+        // grants its owner handed out, and refused with `404` rather than `403` so that a caller
+        // cannot learn a Document exists by being turned away from it.
+        var permission = metadata.OfType<RequiredDocumentPermission>().FirstOrDefault();
+        if (permission is not null)
+        {
+            note += $" The caller must also hold the `{permission.Permission}` permission on the "
+                + "Document behind this resource, as its owner or through an access grant. Without "
+                + "it the answer is `404`, the same answer as for a Document that does not exist.";
+        }
 
         operation.Description = string.IsNullOrWhiteSpace(operation.Description)
             ? note

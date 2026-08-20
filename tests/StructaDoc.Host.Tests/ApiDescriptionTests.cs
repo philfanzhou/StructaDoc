@@ -66,6 +66,72 @@ public sealed class ApiDescriptionTests
         Assert.True(requirement.TryGetProperty("ApiKey", out _));
     }
 
+    [Theory]
+    [InlineData("/api/v1/parse-runs/{parseRunId}/exports/{format}", "get", "Export")]
+    [InlineData("/api/v1/documents/{documentId}/access-grants", "post", "Share")]
+    [InlineData("/api/v1/parse-runs/{id}/cancel", "post", "Parse")]
+    [InlineData("/api/v1/documents/{id}", "delete", "Delete")]
+    [InlineData("/api/v1/parse-runs/{parseRunId}/markdown", "get", "Read")]
+    public async Task An_operation_names_the_Document_permission_it_needs_beyond_its_scope(
+        string path,
+        string method,
+        string permission)
+    {
+        using var document = await ReadDescriptionAsync();
+        var described = document.RootElement.GetProperty("paths").GetProperty(path).GetProperty(method)
+            .GetProperty("description").GetString();
+
+        // The scope is what a credential carries; the permission is what the Document's owner
+        // handed out, and only the second one separates a caller who may export from one who may
+        // only read. Held back, the document invites a call that is answered `404`.
+        Assert.Contains($"`{permission}` permission", described);
+        Assert.Contains("404", described);
+    }
+
+    [Fact]
+    public async Task Every_operation_on_a_named_Document_or_Parse_Run_states_its_permission()
+    {
+        using var document = await ReadDescriptionAsync();
+
+        var silent = document.RootElement.GetProperty("paths").EnumerateObject()
+            .Where(path => path.Name.StartsWith("/api/v1/documents/{", StringComparison.Ordinal)
+                || path.Name.StartsWith("/api/v1/parse-runs/{", StringComparison.Ordinal))
+            .SelectMany(path => path.Value.EnumerateObject()
+                .Select(operation => (Route: $"{operation.Name.ToUpperInvariant()} {path.Name}", Operation: operation.Value)))
+            .Where(entry => !(entry.Operation.TryGetProperty("description", out var description)
+                && (description.GetString() ?? string.Empty).Contains("permission on the Document", StringComparison.Ordinal)))
+            .Select(entry => entry.Route)
+            .ToArray();
+
+        // A route that names a Document, or a Parse Run belonging to one, is admitted by a
+        // permission on that Document. Adding such a route without declaring which permission
+        // leaves the description confidently describing an endpoint that turns the reader away.
+        Assert.True(
+            silent.Length == 0,
+            $"These operations do not say which Document permission they require: {string.Join(", ", silent)}.");
+    }
+
+    [Fact]
+    public async Task The_export_route_lists_the_formats_it_accepts()
+    {
+        using var document = await ReadDescriptionAsync();
+
+        var format = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/v1/parse-runs/{parseRunId}/exports/{format}")
+            .GetProperty("get")
+            .GetProperty("parameters")
+            .EnumerateArray()
+            .Single(parameter => parameter.GetProperty("name").GetString() == "format");
+
+        // Described as a bare string, the one parameter with four legal values reads like free
+        // text, and the caller finds the four by being rejected three times.
+        var values = format.GetProperty("schema").GetProperty("enum")
+            .EnumerateArray()
+            .Select(value => value.GetString())
+            .ToArray();
+        Assert.Equal(["markdown", "html", "zip", "pdf"], values);
+    }
+
     [Fact]
     public async Task A_browser_only_operation_does_not_offer_the_credential()
     {

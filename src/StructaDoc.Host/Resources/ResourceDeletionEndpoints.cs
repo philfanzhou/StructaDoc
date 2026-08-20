@@ -10,8 +10,8 @@ public static class ResourceDeletionEndpoints
 {
     public static IEndpointRouteBuilder MapResourceDeletionEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapDelete("/api/v1/documents/{id:guid}", DeleteDocumentAsync).RequireAuthorization(AuthorizationPolicies.DocumentsWrite).Produces<ResourceDeletionResponse>(StatusCodes.Status202Accepted).ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
-        endpoints.MapDelete("/api/v1/parse-runs/{id:guid}", DeleteParseRunAsync).RequireAuthorization(AuthorizationPolicies.ParsesWrite).Produces<ResourceDeletionResponse>(StatusCodes.Status202Accepted).ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+        endpoints.MapDelete("/api/v1/documents/{id:guid}", DeleteDocumentAsync).RequireAuthorization(AuthorizationPolicies.DocumentsWrite).RequiresDocumentPermission(DocumentPermissions.Delete).Produces<ResourceDeletionResponse>(StatusCodes.Status202Accepted).ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+        endpoints.MapDelete("/api/v1/parse-runs/{id:guid}", DeleteParseRunAsync).RequireAuthorization(AuthorizationPolicies.ParsesWrite).RequiresDocumentPermission(DocumentPermissions.Delete).Produces<ResourceDeletionResponse>(StatusCodes.Status202Accepted).ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
         return endpoints;
     }
 
