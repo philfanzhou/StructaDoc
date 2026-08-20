@@ -37,7 +37,12 @@ public static class ParseResultEndpoints
         return records is null ? NotFound(parseRunId) : Results.Ok(records.Select(page => new ParsePageResponse(page.Number, page.Width, page.Height, page.Unit)));
     }
 
-    private static async Task<IResult> ListBlocksAsync(Guid parseRunId, int? limit, int? afterSequence, int? pageNumber, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken)
+    /// <summary>Lists Blocks in stable reading order.</summary>
+    /// <remarks>
+    /// Follow <c>nextSequence</c> until it is absent. There is no separate count endpoint because
+    /// callers can consume results while they are being produced.
+    /// </remarks>
+    internal static async Task<IResult> ListBlocksAsync(Guid parseRunId, int? limit, int? afterSequence, int? pageNumber, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken)
     {
         var take = limit ?? 200;
         if (take is < 1 or > 1000) return Results.ValidationProblem(new Dictionary<string, string[]> { ["limit"] = ["Limit must be between 1 and 1000."] });
@@ -60,12 +65,10 @@ public static class ParseResultEndpoints
 
     private static Task<IResult> DownloadAssetAsync(Guid parseRunId, Guid assetId, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => service.OpenAssetAsync(parseRunId, assetId, ResourceAccessContextFactory.Create(context.User), cancellationToken));
     private static Task<IResult> DownloadArtifactAsync(Guid parseRunId, Guid artifactId, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => service.OpenArtifactAsync(parseRunId, artifactId, ResourceAccessContextFactory.Create(context.User), cancellationToken));
-    private static Task<IResult> DownloadMarkdownAsync(Guid parseRunId, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => service.OpenMarkdownAsync(parseRunId, ResourceAccessContextFactory.Create(context.User), cancellationToken), inline: true);
+    /// <summary>Returns the stored Markdown Artifact without rendering it.</summary>
+    internal static Task<IResult> DownloadMarkdownAsync(Guid parseRunId, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => service.OpenMarkdownAsync(parseRunId, ResourceAccessContextFactory.Create(context.User), cancellationToken), inline: true);
 
-    /// <summary>
-    /// The Markdown result rendered as a self-contained HTML page, for display rather than for
-    /// saving.
-    /// </summary>
+    /// <summary>The Markdown result rendered as a self-contained HTML page, for display rather than for saving.</summary>
     /// <remarks>
     /// The page is byte-for-byte the HTML export, which is what makes this cheap: the same renderer,
     /// the same Provider-relative link rewriting, and the same bounded image inlining. Two things
@@ -80,7 +83,7 @@ public static class ParseResultEndpoints
     /// back to this service carries no session cookie and would load nothing. Inlining is bounded,
     /// so a result whose images exceed the export budget previews with those images missing.
     /// </remarks>
-    private static Task<IResult> PreviewMarkdownAsync(Guid parseRunId, HttpContext context, IParseExportService exports, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => exports.CreateAsync(parseRunId, "html", ResourceAccessContextFactory.Create(context.User), cancellationToken), inline: true);
+    internal static Task<IResult> PreviewMarkdownAsync(Guid parseRunId, HttpContext context, IParseExportService exports, CancellationToken cancellationToken) => DownloadAsync(parseRunId, context, () => exports.CreateAsync(parseRunId, "html", ResourceAccessContextFactory.Create(context.User), cancellationToken), inline: true);
 
     private static async Task<IResult> DownloadAsync(Guid parseRunId, HttpContext context, Func<Task<ParseResultContent?>> open, bool inline = false)
     {

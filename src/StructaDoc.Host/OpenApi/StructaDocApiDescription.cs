@@ -30,7 +30,10 @@ public static class StructaDocApiDescription
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddOpenApi(DocumentName, options =>
+        // Keep the document name as a literal here. The .NET 10 XML-comment source generator only
+        // intercepts AddOpenApi overloads whose document-name argument is a literal expression;
+        // passing DocumentName would generate the XML file but silently omit it from the document.
+        services.AddOpenApi("v1", options =>
         {
             // Health probes and the SPA's own fallback are endpoints, but they are not the service
             // API, and describing them would invite an integrator to build against them.
