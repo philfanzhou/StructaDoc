@@ -186,6 +186,47 @@ public sealed class ApiClientIsolationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    // `write` was a name in the grant vocabulary that no route ever asked for, which is worse than
+    // an absent one: whoever granted it believed they had handed something over, and whoever read
+    // the grant back believed writes were being gated. Refusing it says so at the moment someone
+    // tries, rather than in a document they may not read.
+    [Fact]
+    public async Task A_grant_rejects_a_permission_no_operation_checks()
+    {
+        using var factory = new StructaDocWebApplicationFactory();
+        using var administrator = factory.CreateClient();
+        await administrator.LoginAsAdministratorAsync();
+
+        var (granteeId, granteeClient) = await CreateIdentifiedApiClientAsync(
+            factory,
+            administrator,
+            "Grantee");
+        granteeClient.Dispose();
+        using var owner = await CreateApiClientAsync(factory, administrator, "Owner");
+        var document = await UploadAsync(owner, "owned.pdf");
+
+        using var response = await owner.PostAsJsonAsync(
+            $"/api/v1/documents/{document.Id:D}/access-grants",
+            new DocumentAccessGrantRequest(
+                PrincipalIdentity.ApiClientIssuer,
+                PrincipalIdentity.ApiClientSubject(granteeId),
+                ["read", "write"]),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        // The whole request is refused, not the unknown half of it: a caller asking for a grant it
+        // named wrongly gets no grant at all.
+        using var grants = await owner.GetAsync(
+            $"/api/v1/documents/{document.Id:D}/access-grants",
+            TestContext.Current.CancellationToken);
+        var stored = await grants.Content.ReadFromJsonAsync<IReadOnlyList<DocumentAccessGrantResponse>>(
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, grants.StatusCode);
+        Assert.NotNull(stored);
+        Assert.Empty(stored);
+    }
+
     private static async Task<HttpClient> CreateApiClientAsync(
         StructaDocWebApplicationFactory factory,
         HttpClient administrator,

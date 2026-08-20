@@ -426,7 +426,7 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
           <p v-if="!assets.length && !artifacts.length" class="muted pane-empty">这次解析没有产出资源或制品。</p>
         </div>
       </template>
-      <details v-if="selectedDocument.ownedByCurrentUser || canAdmin" class="share-box"><summary>共享访问</summary><label>OIDC Issuer<input v-model="share.issuer" placeholder="https://identity.example.com"></label><label>Subject<input v-model="share.subject" placeholder="用户的 sub"></label><fieldset><legend>权限</legend><label v-for="permission in ['read','write','parse','export','delete','share']" :key="permission"><input v-model="share.permissions" type="checkbox" :value="permission"> {{ permission }}</label></fieldset><button class="secondary" @click="grantAccess">保存授权</button></details>
+      <details v-if="selectedDocument.ownedByCurrentUser || canAdmin" class="share-box"><summary>共享访问</summary><label>OIDC Issuer<input v-model="share.issuer" placeholder="https://identity.example.com"></label><label>Subject<input v-model="share.subject" placeholder="用户的 sub"></label><fieldset><legend>权限</legend><label v-for="permission in ['read','parse','export','delete','share']" :key="permission"><input v-model="share.permissions" type="checkbox" :value="permission"> {{ permission }}</label></fieldset><button class="secondary" @click="grantAccess">保存授权</button></details>
     </section>
     <section v-else class="panel detail empty-detail"><span class="big-number">01</span><h2>选择一个文档</h2><p>查看解析历史、规范化结果、资源文件和导出选项。</p></section>
   </div>

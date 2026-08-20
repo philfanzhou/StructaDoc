@@ -21,15 +21,20 @@ public sealed record ResourceAccessContext(
         && !string.IsNullOrWhiteSpace(Subject);
 }
 
+// Each value is a bit in a stored grant, so the numbers are part of the database contract and a
+// permission cannot be renumbered. Bit 2 is retired: it was `Write`, which nothing ever checked
+// because no operation modifies a Document in place. Grants written before it was withdrawn still
+// carry that bit, and reading one is harmless — no route asks for it and the grant endpoint no
+// longer renders a name for it. Assigning 2 to a new permission would silently hand those grants
+// whatever it comes to mean, so a permission added here takes the next unused bit, 64.
 [Flags]
 public enum DocumentPermissions
 {
     None = 0,
     Read = 1,
-    Write = 2,
     Parse = 4,
     Export = 8,
     Delete = 16,
     Share = 32,
-    All = Read | Write | Parse | Export | Delete | Share,
+    All = Read | Parse | Export | Delete | Share,
 }

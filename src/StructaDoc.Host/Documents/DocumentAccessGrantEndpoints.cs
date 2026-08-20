@@ -8,10 +8,12 @@ namespace StructaDoc.Host.Documents;
 
 public static class DocumentAccessGrantEndpoints
 {
+    // The accepted vocabulary, and also how a stored grant is rendered back: a name appears in a
+    // response only if it appears here. `write` was removed from both directions at once, so a
+    // grant written while it was accepted reports the rest of what it carries and stays valid.
     private static readonly IReadOnlyDictionary<string, DocumentPermissions> PermissionMap = new Dictionary<string, DocumentPermissions>(StringComparer.OrdinalIgnoreCase)
     {
         ["read"] = DocumentPermissions.Read,
-        ["write"] = DocumentPermissions.Write,
         ["parse"] = DocumentPermissions.Parse,
         ["export"] = DocumentPermissions.Export,
         ["delete"] = DocumentPermissions.Delete,
