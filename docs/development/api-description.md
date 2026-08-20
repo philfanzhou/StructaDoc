@@ -17,12 +17,24 @@ Both live under `/api` so the description travels with the API it describes, inc
 
 The document is generated from the endpoints themselves, so it cannot name a route that does not exist or miss one that does. Routes, parameters, and request bodies come from the signatures. What comes back does not: these handlers return `IResult`, which describes nothing, so response shapes and status codes are exactly the `Produces` metadata an endpoint declares. An endpoint that declares none is described as answering nothing at all, and that reads to an integrator as the contract rather than as an omission, so every operation declares its own.
 
+A parameter with a fixed set of legal values says so too. `{format}` on the export route is a `string` in the signature and one of four values in practice, and it is listed from the same array the handler validates against, so a format the service accepts cannot be one the document leaves out.
+
 Two things are not visible in an endpoint signature and are supplied by transformers in `src/StructaDoc.Host/OpenApi`:
 
-- **Who may call it.** Every operation gated by a scope policy carries the `ApiKey` security requirement and says which scope it needs. Every operation reachable only from a browser says so instead, and offers no credential, because none would work. An endpoint that opts out of its group's policy is described as open, since describing the group's policy would state a requirement nothing enforces.
+- **Who may call it.** Every operation gated by a scope policy carries the `ApiKey` security requirement and says which scope it needs, and every operation admitted by a permission on a Document says which permission. Every operation reachable only from a browser says so instead, and offers no credential, because none would work. An endpoint that opts out of its group's policy is described as open, since describing the group's policy would state a requirement nothing enforces.
 - **What the group is.** Operations are tagged Documents, Parse Runs, Administration, Sessions, or System. Ungrouped, every operation lands under the assembly name and a reader is handed one undifferentiated list.
 
 The scope is stated in prose rather than carried in the security requirement because OpenAPI attaches scopes to OAuth flows alone, and an API client credential is not one. A signed-in browser session reaches the same endpoints holding no scope at all.
+
+## The Permission Behind a Route
+
+A scope opens the endpoint; a permission on the Document decides whether this caller reaches this resource. The two are not the same requirement and a route can want more of the second than the first suggests: `GET /api/v1/parse-runs/{parseRunId}/exports/{format}` is gated by `parses:read` and refuses a caller who holds read access without `Export`.
+
+That second requirement used to be invisible. A scope policy is endpoint metadata, so the description could read it, while a permission was a question asked of the database partway through a request, and nothing outside the code that asked it could see it. The description named the scope, stopped, and invited calls it could not have known would fail.
+
+Routes now declare it with `RequiresDocumentPermission(...)` beside `RequireAuthorization(...)`, and `ApiSecurityTransformer` states it. Where the check sits in the handler, the handler reads the requirement back out of that metadata rather than naming a permission a second time, so the promise and the enforcement cannot drift apart. Where it sits behind the service boundary — access grants, deletion, the read services' own filtering — the declaration reports what that layer requires.
+
+The refusal is `404`, not `403`, so that a caller cannot learn a Document exists by being turned away from it. The description says so, because that is the part a reader would otherwise misdiagnose as a wrong identifier.
 
 Health probes are excluded. They are endpoints, but they are an operational contract rather than the API, and describing them would invite an integration to depend on their shape.
 
@@ -50,4 +62,4 @@ The page is `Swashbuckle.AspNetCore.SwaggerUI`, and only that package: none of S
 
 One of those tests holds that every route named in the document's overview is a route the document describes. The overview is prose, and prose is where a route goes stale without anything failing.
 
-Two more are invariants over the whole document rather than checks on one endpoint: that every operation says what a successful call returns, and that the Canonical Document Model types a client is generated against are in it. Both name what is missing when they fail, because what they guard against is an endpoint added later that quietly describes nothing.
+Three more are invariants over the whole document rather than checks on one endpoint: that every operation says what a successful call returns, that every operation naming a Document or a Parse Run states the permission it requires, and that the Canonical Document Model types a client is generated against are in it. Each names what is missing when it fails, because what they guard against is an endpoint added later that quietly describes nothing.

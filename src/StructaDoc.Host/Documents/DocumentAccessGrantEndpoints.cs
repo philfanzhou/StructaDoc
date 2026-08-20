@@ -20,7 +20,7 @@ public static class DocumentAccessGrantEndpoints
 
     public static IEndpointRouteBuilder MapDocumentAccessGrantEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/documents/{documentId:guid}/access-grants").RequireAuthorization(AuthorizationPolicies.DocumentsWrite);
+        var group = endpoints.MapGroup("/api/v1/documents/{documentId:guid}/access-grants").RequireAuthorization(AuthorizationPolicies.DocumentsWrite).RequiresDocumentPermission(DocumentPermissions.Share);
         group.MapGet("", ListAsync).Produces<IReadOnlyList<DocumentAccessGrantResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
         group.MapPost("", SetAsync).Produces<DocumentAccessGrantResponse>().ProducesValidationProblem().ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound);
         group.MapDelete("/{grantId:guid}", RevokeAsync).Produces(StatusCodes.Status204NoContent).ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound);
@@ -30,7 +30,7 @@ public static class DocumentAccessGrantEndpoints
     private static async Task<IResult> ListAsync(Guid documentId, HttpContext context, IDocumentAuthorizationService service, CancellationToken cancellationToken)
     {
         var access = ResourceAccessContextFactory.Create(context.User);
-        if (!await service.HasPermissionAsync(documentId, access, DocumentPermissions.Share, cancellationToken)) return NotFound(documentId);
+        if (!await service.HasPermissionAsync(documentId, access, RequiredDocumentPermission.Of(context), cancellationToken)) return NotFound(documentId);
         var grants = await service.ListGrantsAsync(documentId, access, cancellationToken);
         return Results.Ok(grants.Select(ToResponse));
     }

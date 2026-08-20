@@ -24,6 +24,7 @@ public static class ParseRunEndpoints
     {
         endpoints.MapPost("/api/v1/documents/{documentId:guid}/parse-runs", CreateAsync)
             .RequireAuthorization(AuthorizationPolicies.ParsesWrite)
+            .RequiresDocumentPermission(DocumentPermissions.Parse)
             .Produces<ParseRunResponse>(StatusCodes.Status201Created)
             .Produces<ParseRunResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
@@ -33,14 +34,17 @@ public static class ParseRunEndpoints
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         endpoints.MapGet("/api/v1/parse-runs/{id:guid}", GetAsync)
             .RequireAuthorization(AuthorizationPolicies.ParsesRead)
+            .RequiresDocumentPermission(DocumentPermissions.Read)
             .Produces<ParseRunResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         endpoints.MapGet("/api/v1/documents/{documentId:guid}/parse-runs", ListForDocumentAsync)
             .RequireAuthorization(AuthorizationPolicies.ParsesRead)
+            .RequiresDocumentPermission(DocumentPermissions.Read)
             .Produces<IReadOnlyList<ParseRunResponse>>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         endpoints.MapPost("/api/v1/parse-runs/{id:guid}/cancel", CancelAsync)
             .RequireAuthorization(AuthorizationPolicies.ParsesWrite)
+            .RequiresDocumentPermission(DocumentPermissions.Parse)
             .Produces<ParseRunResponse>(StatusCodes.Status202Accepted)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -102,7 +106,7 @@ public static class ParseRunEndpoints
             || !await authorizationService.HasPermissionAsync(
                 parseRun.DocumentId,
                 access,
-                StructaDoc.Application.Authentication.DocumentPermissions.Parse,
+                RequiredDocumentPermission.Of(context),
                 cancellationToken))
         {
             return NotFound(id);
@@ -194,7 +198,7 @@ public static class ParseRunEndpoints
         if (!await authorizationService.HasPermissionAsync(
                 documentId,
                 ResourceAccessContextFactory.Create(context.User),
-                StructaDoc.Application.Authentication.DocumentPermissions.Parse,
+                RequiredDocumentPermission.Of(context),
                 cancellationToken))
         {
             return Results.Problem(
@@ -260,7 +264,7 @@ public static class ParseRunEndpoints
     private static async Task<IResult> ListForDocumentAsync(Guid documentId, HttpContext context, IParseResultReadService service, StructaDoc.Application.Documents.IDocumentAuthorizationService authorizationService, CancellationToken cancellationToken)
     {
         var access = ResourceAccessContextFactory.Create(context.User);
-        if (!await authorizationService.HasPermissionAsync(documentId, access, DocumentPermissions.Read, cancellationToken))
+        if (!await authorizationService.HasPermissionAsync(documentId, access, RequiredDocumentPermission.Of(context), cancellationToken))
         {
             return Results.Problem(statusCode: 404, title: "Document not found", detail: $"Document '{documentId:D}' does not exist or is not accessible.");
         }

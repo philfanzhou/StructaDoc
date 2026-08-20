@@ -1,4 +1,5 @@
 using Microsoft.Net.Http.Headers;
+using StructaDoc.Application.Authentication;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Host.Authentication;
@@ -16,7 +17,7 @@ public static class ParseResultEndpoints
     // part of the description an integrator writes code against.
     public static IEndpointRouteBuilder MapParseResultEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/parse-runs/{parseRunId:guid}").RequireAuthorization(AuthorizationPolicies.ParsesRead);
+        var group = endpoints.MapGroup("/api/v1/parse-runs/{parseRunId:guid}").RequireAuthorization(AuthorizationPolicies.ParsesRead).RequiresDocumentPermission(DocumentPermissions.Read);
         group.MapGet("/pages", ListPagesAsync).Produces<IReadOnlyList<ParsePageResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
         group.MapGet("/blocks", ListBlocksAsync).Produces<ParseBlockListResponse>().ProducesValidationProblem().ProducesProblem(StatusCodes.Status404NotFound);
         group.MapGet("/assets", ListAssetsAsync).Produces<IReadOnlyList<ParseAssetResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
