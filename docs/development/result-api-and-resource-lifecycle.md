@@ -25,8 +25,8 @@ Blocks use `afterSequence` for stable cursor pagination, and `nextSequence` in t
 
 `markdown` returns the canonical Markdown Artifact as it was stored. `markdown/preview` returns the same result rendered as a self-contained HTML page, for display rather than for saving. It is the HTML export byte for byte — the same renderer, link rewriting, and bounded image inlining — and differs in two ways that are the reason it is a separate route:
 
-- reading a result is not exporting it, so it requires read access to the Parse Run rather than the `export` permission;
-- it is served inline rather than as an attachment, because a browser that downloads a preview has not shown one.
+- it is served inline rather than as an attachment, because a browser that downloads a preview has not shown one;
+- it is admitted by read access to the Parse Run rather than the `export` permission, which withholds nothing here because the bytes are the same. See [What `export` Gates](#what-export-gates).
 
 Both `markdown/preview` and the download routes answer with `Content-Security-Policy: sandbox`, which puts Provider-authored content in an opaque origin. That is also why the preview inlines images instead of linking them at their authorized endpoints: a request back to this service from an opaque origin carries no session cookie, so a linked image would be a broken one. A result whose images exceed the inlining budget previews with those images missing; they remain downloadable through the Asset routes.
 
@@ -38,6 +38,12 @@ Provider Markdown references images by the Provider's own archive layout, typica
 - **zip** contains `document.md` plus authorized Assets under `assets/`, with the bundled Markdown's image links pointing at those entries. Colliding Asset file names are disambiguated by Asset ID.
 - **html** renders the Markdown to a single self-contained page with Assets inlined as `data:` URIs, bounded per Asset and in total; Assets beyond the budget keep their original link.
 - **pdf** returns the `normalized-pdf` Artifact when an Office source required conversion, and otherwise the original Document when it is already a PDF. A Parse Run with neither returns `409`.
+
+### What `export` Gates
+
+`export` is not a confidentiality boundary. Every byte an export produces is already reachable with read access: `exports/markdown` is the canonical Markdown Artifact that `markdown` returns, `exports/html` is the page `markdown/preview` renders, `exports/zip` bundles Assets each downloadable from `assets/{assetId}/content`, and `exports/pdf` returns the `normalized-pdf` Artifact or the original Document, both readable in their own right. A grant that gives `read` and withholds `export` does not stop the grantee from obtaining the result; it stops them from asking for it in one packaged piece.
+
+That is the distinction worth granting separately, and it is a real one. A caller reading Blocks through the result API and a caller pulling a run down as a zip are doing different things to the same data, and a deployment may want the second one granted deliberately, metered, and visible in an audit trail. What it is not is a way to let someone read a result without letting them keep a copy — a reader can already assemble one, and `markdown` hands them the canonical file as an attachment.
 
 Link rewriting matches on file name, because the canonical Asset display name is the archive entry's final segment. A file name shared by more than one Asset is ambiguous and is left untouched rather than guessed, and an unmatched link is preserved so an export never silently drops a reference it could not resolve. Absolute and `data:` targets are never rewritten.
 

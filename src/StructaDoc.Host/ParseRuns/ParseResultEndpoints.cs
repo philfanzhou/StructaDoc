@@ -69,9 +69,11 @@ public static class ParseResultEndpoints
     /// <remarks>
     /// The page is byte-for-byte the HTML export, which is what makes this cheap: the same renderer,
     /// the same Provider-relative link rewriting, and the same bounded image inlining. Two things
-    /// differ, and both are the reason it is a separate route. Reading a result is not exporting it,
-    /// so this asks for read access rather than the export permission; and it is served inline
-    /// instead of as an attachment, because a browser that downloads a preview has not shown one.
+    /// differ, and both are the reason it is a separate route. It asks for read access rather than
+    /// the export permission, which costs nothing to withhold here because this route returns the
+    /// export's own bytes: what the export permission separates is the packaged deliverable, not
+    /// the content. And it is served inline instead of as an attachment, because a browser that
+    /// downloads a preview has not shown one.
     ///
     /// Images are inlined rather than linked at their authorized endpoints because
     /// <c>Content-Security-Policy: sandbox</c> puts the page in an opaque origin, where a request
