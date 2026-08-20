@@ -122,7 +122,24 @@ Following [ADR-0008](../adr/0008-api-client-resource-isolation.md), an API clien
 | OIDC user | what `(issuer, subject)` owns or was granted |
 | API client | what `(structadoc:api-client, <client id>)` owns or was granted |
 
-The published API description states this per endpoint: which scope each one needs, and which are reachable only from a browser. See [API Description](./api-description.md).
+The published API description states this per endpoint: which scope each one needs, which permission on the Document it needs beyond that scope, and which endpoints are reachable only from a browser. See [API Description](./api-description.md).
+
+### Document Permissions
+
+A grant carries a set of permissions on one Document. An owner holds all of them. They are the vocabulary `POST /api/v1/documents/{id}/access-grants` accepts, and the API description names the one each operation requires.
+
+| Permission | Admits |
+|---|---|
+| `read` | the Document, its original file, its Parse Runs, and everything a run produced — Pages, Blocks, Assets, Artifacts, the canonical Markdown, and the HTML preview |
+| `parse` | starting a Parse Run on the Document, and cancelling one |
+| `export` | the packaged export routes under `parse-runs/{parseRunId}/exports/` |
+| `delete` | deleting the Document, or one of its Parse Runs |
+| `share` | listing, granting, and revoking access grants on the Document |
+| `write` | nothing that exists yet |
+
+`export` is not a confidentiality boundary: it separates the packaged deliverable from the result surface, and a grantee holding `read` without it can still obtain every byte an export would produce. See [What `export` Gates](./result-api-and-resource-lifecycle.md#what-export-gates) before relying on it to withhold content.
+
+`write` is accepted by the grant endpoint and checked by nothing, because there is no operation that modifies a Document in place — a Document's content is the file that was uploaded. Granting it today neither adds nor withholds anything.
 
 `structadoc:api-client` is a reserved issuer and cannot collide with a real one: a valid OIDC issuer is an absolute `http`/`https` URI, which this is not. Documents uploaded by an API client record it as their owner, and an owner holds every document permission.
 
