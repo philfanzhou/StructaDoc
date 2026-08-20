@@ -29,7 +29,12 @@ public static class DocumentAccessGrantEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> ListAsync(Guid documentId, HttpContext context, IDocumentAuthorizationService service, CancellationToken cancellationToken)
+    /// <summary>Lists the explicit access grants on a Document.</summary>
+    /// <remarks>
+    /// Permission names use the <c>read</c>, <c>parse</c>, <c>export</c>, <c>delete</c>, and
+    /// <c>share</c> vocabulary.
+    /// </remarks>
+    internal static async Task<IResult> ListAsync(Guid documentId, HttpContext context, IDocumentAuthorizationService service, CancellationToken cancellationToken)
     {
         var access = ResourceAccessContextFactory.Create(context.User);
         if (!await service.HasPermissionAsync(documentId, access, RequiredDocumentPermission.Of(context), cancellationToken)) return NotFound(documentId);
@@ -37,7 +42,13 @@ public static class DocumentAccessGrantEndpoints
         return Results.Ok(grants.Select(ToResponse));
     }
 
-    private static async Task<IResult> SetAsync(Guid documentId, DocumentAccessGrantRequest request, HttpContext context, IAntiforgery antiforgery, IDocumentAuthorizationService service, TimeProvider clock, CancellationToken cancellationToken)
+    /// <summary>Creates or replaces a grant for one OIDC user or API client.</summary>
+    /// <remarks>
+    /// Permission names are <c>read</c>, <c>parse</c>, <c>export</c>, <c>delete</c>, and
+    /// <c>share</c>. The service returns 400 for an invalid identity, an unknown permission, an
+    /// empty permission set, or a failed browser antiforgery check.
+    /// </remarks>
+    internal static async Task<IResult> SetAsync(Guid documentId, DocumentAccessGrantRequest request, HttpContext context, IAntiforgery antiforgery, IDocumentAuthorizationService service, TimeProvider clock, CancellationToken cancellationToken)
     {
         var antiforgeryFailure = await ValidateAntiforgeryAsync(context, antiforgery);
         if (antiforgeryFailure is not null) return antiforgeryFailure;
@@ -56,7 +67,9 @@ public static class DocumentAccessGrantEndpoints
         return grant is null ? NotFound(documentId) : Results.Ok(ToResponse(grant));
     }
 
-    private static async Task<IResult> RevokeAsync(Guid documentId, Guid grantId, HttpContext context, IAntiforgery antiforgery, IDocumentAuthorizationService service, CancellationToken cancellationToken)
+    /// <summary>Revokes one explicit access grant.</summary>
+    /// <remarks>A failed browser antiforgery check returns 400.</remarks>
+    internal static async Task<IResult> RevokeAsync(Guid documentId, Guid grantId, HttpContext context, IAntiforgery antiforgery, IDocumentAuthorizationService service, CancellationToken cancellationToken)
     {
         var antiforgeryFailure = await ValidateAntiforgeryAsync(context, antiforgery);
         if (antiforgeryFailure is not null) return antiforgeryFailure;

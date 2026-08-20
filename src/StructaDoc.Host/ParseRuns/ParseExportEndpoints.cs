@@ -38,7 +38,12 @@ public static class ParseExportEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> ExportAsync(Guid parseRunId, string format, HttpContext context, IParseResultReadService readService, IDocumentAuthorizationService authorization, IParseExportService exports, CancellationToken cancellationToken)
+    /// <summary>Creates a packaged Markdown, HTML, ZIP, or PDF deliverable.</summary>
+    /// <remarks>
+    /// Export permission gates the packaged deliverable, not confidentiality: a caller with read
+    /// permission can still retrieve the stored result resources and rendered HTML preview.
+    /// </remarks>
+    internal static async Task<IResult> ExportAsync(Guid parseRunId, string format, HttpContext context, IParseResultReadService readService, IDocumentAuthorizationService authorization, IParseExportService exports, CancellationToken cancellationToken)
     {
         if (!Formats.Contains(format, StringComparer.OrdinalIgnoreCase)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["format"] = [$"Format must be one of: {string.Join(", ", Formats)}."] });
         var access = ResourceAccessContextFactory.Create(context.User);
