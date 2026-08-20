@@ -75,7 +75,12 @@ public static class ParseRunEndpoints
         return Results.Ok(new ParseExecutionStatusResponse(options.Enabled, credentialMissing));
     }
 
-    private static async Task<IResult> CancelAsync(
+    /// <summary>Requests best-effort cancellation of a Parse Run.</summary>
+    /// <remarks>
+    /// Cancellation is idempotent and stops local processing, but work already submitted to an
+    /// online Provider may continue remotely when that Provider has no task-cancellation contract.
+    /// </remarks>
+    internal static async Task<IResult> CancelAsync(
         Guid id,
         HttpContext context,
         IAntiforgery antiforgery,
@@ -152,7 +157,12 @@ public static class ParseRunEndpoints
         title: "Parse Run not found",
         detail: $"Parse Run '{id:D}' does not exist or is not accessible.");
 
-    private static async Task<IResult> CreateAsync(
+    /// <summary>Creates a durable Parse Run for a Document.</summary>
+    /// <remarks>
+    /// The run snapshots the selected Provider configuration and parsing options. An
+    /// <c>Idempotency-Key</c> replays the original response instead of creating duplicate work.
+    /// </remarks>
+    internal static async Task<IResult> CreateAsync(
         Guid documentId,
         StructaDoc.Contracts.ParseRuns.ParseRunCreateRequest request,
         HttpContext context,

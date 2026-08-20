@@ -307,6 +307,27 @@ public sealed class ApiDescriptionTests
         }
     }
 
+    [Theory]
+    [InlineData("/api/v1/parse-runs/{parseRunId}/markdown", "get", "Returns the stored Markdown Artifact without rendering it.")]
+    [InlineData("/api/v1/parse-runs/{parseRunId}/markdown/preview", "get", "The Markdown result rendered as a self-contained HTML page, for display rather than for saving.")]
+    [InlineData("/api/v1/parse-runs/{parseRunId}/exports/{format}", "get", "Creates a packaged Markdown, HTML, ZIP, or PDF deliverable.")]
+    [InlineData("/api/v1/documents/{documentId}/access-grants", "get", "Lists the explicit access grants on a Document.")]
+    [InlineData("/api/v1/documents/{documentId}/access-grants", "post", "Creates or replaces a grant for one OIDC user or API client.")]
+    [InlineData("/api/v1/documents/{documentId}/access-grants/{grantId}", "delete", "Revokes one explicit access grant.")]
+    [InlineData("/api/v1/documents/{documentId}/parse-runs", "post", "Creates a durable Parse Run for a Document.")]
+    [InlineData("/api/v1/parse-runs/{id}/cancel", "post", "Requests best-effort cancellation of a Parse Run.")]
+    [InlineData("/api/v1/parse-runs/{parseRunId}/blocks", "get", "Lists Blocks in stable reading order.")]
+    public async Task Operations_whose_routes_do_not_explain_their_semantics_have_summaries(
+        string path,
+        string method,
+        string summary)
+    {
+        using var document = await ReadDescriptionAsync();
+        var operation = document.RootElement.GetProperty("paths").GetProperty(path).GetProperty(method);
+
+        Assert.Equal(summary, operation.GetProperty("summary").GetString());
+    }
+
     private static bool DescribesSuccess(JsonElement operation)
     {
         if (!operation.TryGetProperty("responses", out var responses))
