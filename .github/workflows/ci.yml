@@ -106,6 +106,89 @@ jobs:
           path: artifacts/test-results
           if-no-files-found: ignore
 
+  sdk-generation:
+    name: Generate and compile consumer SDK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore Host dependencies
+        run: dotnet restore src/StructaDoc.Host/StructaDoc.Host.csproj
+
+      - name: Build Host
+        run: dotnet build src/StructaDoc.Host/StructaDoc.Host.csproj --configuration Release --no-restore
+
+      - name: Export consumer OpenAPI document
+        env:
+          Database__Provider: Sqlite
+          Database__ConnectionString: Data Source=${{ runner.temp }}/structadoc-openapi.db
+          Storage__Provider: Local
+          Storage__RootPath: ${{ runner.temp }}/structadoc-openapi-storage
+          Authentication__DataProtectionKeyPath: ${{ runner.temp }}/structadoc-openapi-keys
+          Worker__Enabled: 'false'
+        run: |
+          mkdir -p artifacts/openapi
+          dotnet run \
+            --project src/StructaDoc.Host/StructaDoc.Host.csproj \
+            --configuration Release \
+            --no-build \
+            --no-launch-profile \
+            --urls http://127.0.0.1:5080 \
+            > artifacts/openapi/host.log 2>&1 &
+          host_pid=$!
+          trap 'kill "$host_pid" 2>/dev/null || true' EXIT
+
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error \
+              http://127.0.0.1:5080/api/v1/openapi.json \
+              --output artifacts/openapi/structadoc-v1.json; then
+              curl --fail --silent --show-error http://127.0.0.1:5080/api/v1/system/info
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat artifacts/openapi/host.log
+          exit 1
+
+      # A structural assertion can still pass while a real generator rejects a legal-but-poorly
+      # supported schema. Pinning the generator makes that compatibility target reviewable.
+      - name: Generate C# consumer SDK
+        run: >-
+          docker run --rm
+          --user "$(id -u):$(id -g)"
+          --env HOME=/tmp
+          --volume "$PWD:/workspace"
+          openapitools/openapi-generator-cli:v7.24.0 generate
+          --input-spec /workspace/artifacts/openapi/structadoc-v1.json
+          --generator-name csharp
+          --output /workspace/artifacts/generated-client
+          --additional-properties packageName=StructaDoc.GeneratedClient,targetFramework=net8.0,nullableReferenceTypes=true
+          --global-property apiTests=false,modelTests=false,apiDocs=false,modelDocs=false
+
+      - name: Compile generated C# consumer SDK
+        run: |
+          client_project=$(find artifacts/generated-client -name '*.csproj' -print -quit)
+          test -n "$client_project"
+          dotnet build "$client_project" --configuration Release
+
+      - name: Upload OpenAPI generation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: openapi-sdk-generation
+          path: |
+            artifacts/openapi
+            artifacts/generated-client
+          if-no-files-found: ignore
+
   database-contracts:
     name: PostgreSQL, MySQL, and MariaDB contracts
     runs-on: ubuntu-24.04
@@ -279,7 +362,7 @@ jobs:
     # `build-and-test` and would otherwise have quietly stopped gating anything, which is the one
     # way this split could have made the pipeline weaker: an image carrying a high-severity advisory
     # is exactly what should not acquire a registry tag.
-    needs: [audit-web, build-and-test, database-contracts, container-and-browser]
+    needs: [audit-web, build-and-test, sdk-generation, database-contracts, container-and-browser]
     # Two things publish and they publish different kinds of name. A release tag produces the names a
     # deployment is pinned to. A push to the default branch produces `edge`, which is one mutable name
     # meaning whatever `main` currently is; it exists so that a change can be pulled and tried before

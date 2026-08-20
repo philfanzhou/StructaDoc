@@ -18,13 +18,16 @@ public static class DocumentReadEndpoints
             .RequireAuthorization(AuthorizationPolicies.DocumentsRead);
 
         group.MapGet("", ListAsync)
+            .WithName("ListDocuments")
             .Produces<DocumentListResponse>()
             .ProducesValidationProblem();
         group.MapGet("/{id:guid}", GetAsync)
+            .WithName("GetDocument")
             .RequiresDocumentPermission(DocumentPermissions.Read)
             .Produces<DocumentResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapGet("/{id:guid}/content", DownloadAsync)
+            .WithName("DownloadDocumentContent")
             .RequiresDocumentPermission(DocumentPermissions.Read)
             .Produces<Stream>(StatusCodes.Status200OK, contentType: "application/octet-stream")
             .ProducesProblem(StatusCodes.Status404NotFound)

@@ -23,6 +23,7 @@ public static class ParseRunEndpoints
     public static IEndpointRouteBuilder MapParseRunEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/v1/documents/{documentId:guid}/parse-runs", CreateAsync)
+            .WithName("CreateParseRun")
             .RequireAuthorization(AuthorizationPolicies.ParsesWrite)
             .RequiresDocumentPermission(DocumentPermissions.Parse)
             .Produces<ParseRunResponse>(StatusCodes.Status201Created)
@@ -33,16 +34,19 @@ public static class ParseRunEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         endpoints.MapGet("/api/v1/parse-runs/{id:guid}", GetAsync)
+            .WithName("GetParseRun")
             .RequireAuthorization(AuthorizationPolicies.ParsesRead)
             .RequiresDocumentPermission(DocumentPermissions.Read)
             .Produces<ParseRunResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         endpoints.MapGet("/api/v1/documents/{documentId:guid}/parse-runs", ListForDocumentAsync)
+            .WithName("ListDocumentParseRuns")
             .RequireAuthorization(AuthorizationPolicies.ParsesRead)
             .RequiresDocumentPermission(DocumentPermissions.Read)
             .Produces<IReadOnlyList<ParseRunResponse>>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         endpoints.MapPost("/api/v1/parse-runs/{id:guid}/cancel", CancelAsync)
+            .WithName("CancelParseRun")
             .RequireAuthorization(AuthorizationPolicies.ParsesWrite)
             .RequiresDocumentPermission(DocumentPermissions.Parse)
             .Produces<ParseRunResponse>(StatusCodes.Status202Accepted)
@@ -53,6 +57,7 @@ public static class ParseRunEndpoints
         // Whoever is watching one cannot tell that from a queue about to move, and cannot fix it
         // either, so the least the service can do is say which it is.
         endpoints.MapGet("/api/v1/parse-execution", GetExecutionStatus)
+            .WithName("GetParseExecutionStatus")
             .RequireAuthorization(AuthorizationPolicies.ParsesRead)
             .Produces<ParseExecutionStatusResponse>();
         return endpoints;

@@ -18,16 +18,16 @@ public static class ParseResultEndpoints
     public static IEndpointRouteBuilder MapParseResultEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/parse-runs/{parseRunId:guid}").RequireAuthorization(AuthorizationPolicies.ParsesRead).RequiresDocumentPermission(DocumentPermissions.Read);
-        group.MapGet("/pages", ListPagesAsync).Produces<IReadOnlyList<ParsePageResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
-        group.MapGet("/blocks", ListBlocksAsync).Produces<ParseBlockListResponse>().ProducesValidationProblem().ProducesProblem(StatusCodes.Status404NotFound);
-        group.MapGet("/assets", ListAssetsAsync).Produces<IReadOnlyList<ParseAssetResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/pages", ListPagesAsync).WithName("ListParsePages").Produces<IReadOnlyList<ParsePageResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/blocks", ListBlocksAsync).WithName("ListParseBlocks").Produces<ParseBlockListResponse>().ProducesValidationProblem().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/assets", ListAssetsAsync).WithName("ListParseAssets").Produces<IReadOnlyList<ParseAssetResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
         // Declared as a binary stream because the response carries the media type of the stored
         // item, which is whatever the parse produced rather than one type this route could name.
-        group.MapGet("/assets/{assetId:guid}/content", DownloadAssetAsync).Produces<Stream>(StatusCodes.Status200OK, contentType: "application/octet-stream").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
-        group.MapGet("/artifacts", ListArtifactsAsync).Produces<IReadOnlyList<ParseArtifactResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
-        group.MapGet("/artifacts/{artifactId:guid}/content", DownloadArtifactAsync).Produces<Stream>(StatusCodes.Status200OK, contentType: "application/octet-stream").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
-        group.MapGet("/markdown", DownloadMarkdownAsync).Produces<Stream>(StatusCodes.Status200OK, contentType: "text/markdown").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
-        group.MapGet("/markdown/preview", PreviewMarkdownAsync).Produces<Stream>(StatusCodes.Status200OK, contentType: "text/html").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+        group.MapGet("/assets/{assetId:guid}/content", DownloadAssetAsync).WithName("DownloadParseAsset").Produces<Stream>(StatusCodes.Status200OK, contentType: "application/octet-stream").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+        group.MapGet("/artifacts", ListArtifactsAsync).WithName("ListParseArtifacts").Produces<IReadOnlyList<ParseArtifactResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/artifacts/{artifactId:guid}/content", DownloadArtifactAsync).WithName("DownloadParseArtifact").Produces<Stream>(StatusCodes.Status200OK, contentType: "application/octet-stream").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+        group.MapGet("/markdown", DownloadMarkdownAsync).WithName("DownloadParseMarkdown").Produces<Stream>(StatusCodes.Status200OK, contentType: "text/markdown").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+        group.MapGet("/markdown/preview", PreviewMarkdownAsync).WithName("PreviewParseMarkdown").Produces<Stream>(StatusCodes.Status200OK, contentType: "text/html").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         return endpoints;
     }
 
