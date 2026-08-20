@@ -1,11 +1,19 @@
 using System.IO.Compression;
 using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Storage;
+using StructaDoc.Contracts.Authentication;
+using StructaDoc.Contracts.Documents;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.ParseRuns;
 using StructaDoc.Adapters.Persistence;
@@ -105,6 +113,137 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
             $"data:image/png;base64,{Convert.ToBase64String(ImageBytes)}",
             html,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_matching_preview_entity_tag_skips_rendering()
+    {
+        var exports = new CountingParseExportService();
+        using var specializedFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IParseExportService>();
+                services.AddSingleton<IParseExportService>(exports);
+            }));
+        using var client = specializedFactory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+        var parseRunId = Guid.NewGuid();
+
+        using var first = await client.GetAsync(
+            $"/api/v1/parse-runs/{parseRunId:D}/markdown/preview",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.NotNull(first.Headers.ETag);
+        var entityTag = first.Headers.ETag;
+        Assert.Equal(1, exports.CreateCallCount);
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/api/v1/parse-runs/{parseRunId:D}/markdown/preview");
+        request.Headers.IfNoneMatch.Add(entityTag);
+        using var second = await client.SendAsync(
+            request,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotModified, second.StatusCode);
+        Assert.Equal(entityTag, second.Headers.ETag);
+        // The status alone is not the optimization: this count proves the renderer was not entered.
+        Assert.Equal(1, exports.CreateCallCount);
+    }
+
+    [Fact]
+    public async Task Replacing_an_inlined_asset_changes_the_preview_entity_tag()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+        var seeded = await SeedSucceededResultAsync(sourceIsPdf: true);
+
+        using var first = await client.GetAsync(
+            $"/api/v1/parse-runs/{seeded.ParseRunId:D}/markdown/preview",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.NotNull(first.Headers.ETag);
+        var firstTag = first.Headers.ETag;
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+            var replacement = await WriteAsync(
+                storage,
+                $"parse-runs/{seeded.ParseRunId:N}/assets/replacement.png",
+                [.. ImageBytes, 0x04]);
+            var asset = await dbContext.ParseAssets.SingleAsync(
+                item => item.Id == seeded.AssetId,
+                TestContext.Current.CancellationToken);
+            asset.StorageRef = replacement.StorageRef;
+            asset.SizeBytes = replacement.SizeBytes;
+            asset.Sha256 = replacement.Sha256;
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        using var second = await client.GetAsync(
+            $"/api/v1/parse-runs/{seeded.ParseRunId:D}/markdown/preview",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.NotEqual(firstTag, second.Headers.ETag);
+    }
+
+    // This protects the documentation's security statement, not the Export permission itself:
+    // withholding Export must never be presented as withholding result bytes from a reader.
+    [Fact]
+    public async Task Read_without_export_still_reaches_every_resource_an_export_uses()
+    {
+        using var administrator = factory.CreateClient();
+        await administrator.LoginAsAdministratorAsync();
+        var seeded = await SeedSucceededResultAsync(sourceIsPdf: true);
+
+        using var createdResponse = await administrator.PostAsJsonAsync(
+            "/api/v1/admin/api-clients",
+            new ApiClientRequest("Read-only result consumer", [.. AuthenticationScopes.All]),
+            TestContext.Current.CancellationToken);
+        createdResponse.EnsureSuccessStatusCode();
+        var created = await createdResponse.Content.ReadFromJsonAsync<ApiClientCredentialResponse>(
+            TestContext.Current.CancellationToken)
+            ?? throw new InvalidOperationException("API client creation returned no response.");
+        using var grantResponse = await administrator.PostAsJsonAsync(
+            $"/api/v1/documents/{seeded.DocumentId:D}/access-grants",
+            new DocumentAccessGrantRequest(
+                PrincipalIdentity.ApiClientIssuer,
+                PrincipalIdentity.ApiClientSubject(created.Client.Id),
+                ["read"]),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, grantResponse.StatusCode);
+
+        using var grantee = factory.CreateClient();
+        grantee.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "ApiKey",
+            created.Credential);
+
+        using var export = await grantee.GetAsync(
+            $"/api/v1/parse-runs/{seeded.ParseRunId:D}/exports/html",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, export.StatusCode);
+
+        await AssertBytesAsync(
+            grantee,
+            $"/api/v1/parse-runs/{seeded.ParseRunId:D}/markdown",
+            seeded.MarkdownBytes);
+        await AssertBytesAsync(
+            grantee,
+            $"/api/v1/parse-runs/{seeded.ParseRunId:D}/artifacts/{seeded.MarkdownArtifactId:D}/content",
+            seeded.MarkdownBytes);
+        await AssertBytesAsync(
+            grantee,
+            $"/api/v1/parse-runs/{seeded.ParseRunId:D}/assets/{seeded.AssetId:D}/content",
+            ImageBytes);
+
+        using var preview = await grantee.GetAsync(
+            $"/api/v1/parse-runs/{seeded.ParseRunId:D}/markdown/preview",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+        var html = await preview.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(Convert.ToBase64String(ImageBytes), html, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -214,8 +353,13 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
     }
 
     private async Task<Guid> SeedSucceededRunAsync(bool sourceIsPdf)
+        => (await SeedSucceededResultAsync(sourceIsPdf)).ParseRunId;
+
+    private async Task<SeededResult> SeedSucceededResultAsync(bool sourceIsPdf)
     {
         var parseRunId = Guid.NewGuid();
+        var markdownArtifactId = Guid.NewGuid();
+        var assetId = Guid.NewGuid();
         var sourceMediaType = sourceIsPdf
             ? "application/pdf"
             : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -265,7 +409,7 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         });
         dbContext.ParseArtifacts.Add(new ParseArtifactEntity
         {
-            Id = Guid.NewGuid(),
+            Id = markdownArtifactId,
             ParseRunId = parseRunId,
             Type = ArtifactTypes.Markdown,
             Name = "document.md",
@@ -277,7 +421,7 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         });
         dbContext.ParseAssets.Add(new ParseAssetEntity
         {
-            Id = Guid.NewGuid(),
+            Id = assetId,
             ParseRunId = parseRunId,
             Name = "diagram.png",
             MediaType = "image/png",
@@ -288,12 +432,55 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         });
         await dbContext.SaveChangesAsync();
 
-        return parseRunId;
+        return new SeededResult(
+            parseRunId,
+            document.Id,
+            markdownArtifactId,
+            assetId,
+            markdownBytes);
+    }
+
+    private static async Task AssertBytesAsync(HttpClient client, string path, byte[] expected)
+    {
+        using var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(
+            expected,
+            await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
     }
 
     private static async Task<StoredFile> WriteAsync(IFileStorage storage, string storageRef, byte[] content)
     {
         await using var stream = new MemoryStream(content, writable: false);
         return await storage.WriteAsync(storageRef, stream, content.Length);
+    }
+
+    private sealed record SeededResult(
+        Guid ParseRunId,
+        Guid DocumentId,
+        Guid MarkdownArtifactId,
+        Guid AssetId,
+        byte[] MarkdownBytes);
+
+    private sealed class CountingParseExportService : IParseExportService
+    {
+        private const string Fingerprint = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        public int CreateCallCount { get; private set; }
+
+        public Task<string?> GetHtmlEntityTagAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(Fingerprint);
+
+        public Task<ParseResultContent?> CreateAsync(Guid parseRunId, string format, ResourceAccessContext access, CancellationToken cancellationToken = default)
+        {
+            CreateCallCount++;
+            var bytes = "<!doctype html><p>preview</p>"u8.ToArray();
+            return Task.FromResult<ParseResultContent?>(new ParseResultContent(
+                new MemoryStream(bytes, writable: false),
+                $"{parseRunId:D}.html",
+                "text/html; charset=utf-8",
+                bytes.Length,
+                Fingerprint));
+        }
     }
 }

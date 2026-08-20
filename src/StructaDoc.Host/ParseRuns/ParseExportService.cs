@@ -13,6 +13,10 @@ public sealed class ParseExportService(
     IParseResultReadService results,
     IDocumentReadService documents) : IParseExportService
 {
+    // Increment this whenever HTML rendering, link rewriting, or asset inlining changes. Existing
+    // entity tags must stop validating when the same inputs would render different bytes.
+    private const int HtmlRendererVersion = 1;
+
     /// <summary>
     /// Total inlined image bytes allowed in one HTML export. A self-contained page must stay
     /// bounded, so images beyond the budget keep their original link instead of being embedded.
@@ -20,6 +24,28 @@ public sealed class ParseExportService(
     private const long MaximumInlinedAssetBytes = 32L * 1024 * 1024;
 
     private const long MaximumInlinedAssetItemBytes = 8L * 1024 * 1024;
+
+    public async Task<string?> GetHtmlEntityTagAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    {
+        var artifacts = await results.ListArtifactsAsync(parseRunId, access, cancellationToken);
+        var markdown = artifacts?.FirstOrDefault(item => item.Type == ArtifactTypes.Markdown);
+        if (markdown is null) return null;
+
+        var assets = await results.ListAssetsAsync(parseRunId, access, cancellationToken);
+        if (assets is null) return null;
+
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        AppendHashComponent(hash, HtmlRendererVersion.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendHashComponent(hash, MaximumInlinedAssetBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendHashComponent(hash, MaximumInlinedAssetItemBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendHashComponent(hash, markdown.Sha256);
+        foreach (var asset in SelectInlineableAssets(OrderAssets(assets)))
+        {
+            AppendHashComponent(hash, asset.Sha256);
+        }
+
+        return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+    }
 
     public async Task<ParseResultContent?> CreateAsync(Guid parseRunId, string format, ResourceAccessContext access, CancellationToken cancellationToken = default)
     {
@@ -65,7 +91,7 @@ public sealed class ParseExportService(
     {
         var markdown = await ReadMarkdownAsync(parseRunId, access, cancellationToken);
         if (markdown is null) return null;
-        var assets = await results.ListAssetsAsync(parseRunId, access, cancellationToken) ?? [];
+        var assets = OrderAssets(await results.ListAssetsAsync(parseRunId, access, cancellationToken) ?? []);
         var inlined = await InlineAssetsAsync(parseRunId, assets, access, cancellationToken);
         var source = ExportAssetLinkRewriter.Rewrite(
             markdown,
@@ -145,6 +171,29 @@ public sealed class ParseExportService(
         }
 
         return inlined;
+    }
+
+    private static IReadOnlyList<ParseAssetRecord> OrderAssets(IReadOnlyList<ParseAssetRecord> assets) =>
+        [.. assets.OrderBy(asset => asset.Name, StringComparer.Ordinal).ThenBy(asset => asset.Id)];
+
+    private static IEnumerable<ParseAssetRecord> SelectInlineableAssets(IReadOnlyList<ParseAssetRecord> assets)
+    {
+        var remainingBytes = MaximumInlinedAssetBytes;
+        foreach (var asset in assets)
+        {
+            if (asset.SizeBytes > MaximumInlinedAssetItemBytes || asset.SizeBytes > remainingBytes) continue;
+            remainingBytes -= asset.SizeBytes;
+            yield return asset;
+        }
+    }
+
+    private static void AppendHashComponent(IncrementalHash hash, string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value);
+        Span<byte> length = stackalloc byte[sizeof(int)];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(length, bytes.Length);
+        hash.AppendData(length);
+        hash.AppendData(bytes);
     }
 
     private static Dictionary<Guid, string> BuildUniqueEntryNames(IReadOnlyList<ParseAssetRecord> assets)
