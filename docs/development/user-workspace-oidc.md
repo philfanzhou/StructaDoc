@@ -42,7 +42,6 @@ The Host handles OIDC tokens and creates an encrypted HttpOnly application sessi
 A document records the principal that created it, whether that was an OIDC user or an API client. Owners have full document permission. Explicit grants target another `(issuer, subject)`, which may be either kind of principal, and contain a subset of:
 
 - `read`
-- `write`
 - `parse`
 - `export`
 - `delete`
