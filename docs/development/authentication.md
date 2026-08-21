@@ -46,6 +46,14 @@ The separation is deliberate. The business database is something an administrato
 
 Administrators are identified by a username, not an email address. The account is local to one deployment and never federated, so an email address would imply a mailbox the service neither verifies nor uses. A username is 3–64 characters of ASCII letters, digits, `.`, `_`, or `-`, starts and ends with a letter or digit, and is unique case-insensitively.
 
+Deployments upgrading from the former business-database administrator table are migrated before the
+business migration is allowed to remove that table. Every account, password hash, enabled state, and
+security stamp is copied into the local control plane in one transaction. The old email remains a
+login alias while the account receives a deterministic local username. The import is idempotent, and
+an import failure stops startup rather than discarding the only administrator and reopening anonymous
+first-run setup. Once any control-plane administrator exists, normal startup no longer depends on the
+business database, preserving break-glass access when that database is unavailable.
+
 ## First-Run Setup
 
 While no administrator exists, `GET /api/v1/setup` reports `setupRequired`, `GET /api/v1/session` repeats it so the web application can route without a second request, and every client route leads to `/setup`. `POST /api/v1/setup` creates the first administrator and signs it in. Once an administrator exists the endpoint returns `404` and the client route redirects away.

@@ -211,6 +211,13 @@ The complete upstream cancellation path remains an implementation gap because th
 ## 14. Deletion Interaction
 
 - A Document with non-final Parse Runs cannot enter deletion.
+- Parse Run creation and Document deletion use the Document concurrency version as one transaction
+  boundary: creation both verifies `active` and advances that version before inserting, while
+  deletion advances it when marking the Document pending. A concurrent request must reload and
+  observe the winner rather than creating work underneath a Cleanup Job.
+- Parse Run creation advances the selected Provider Config concurrency version in the same
+  transaction. Provider Config deletion either observes the new Parse Run or loses that concurrency
+  check, so no Run can reference a configuration version deleted underneath it.
 - A non-final Parse Run cannot be deleted; cancelling it first is what makes it deletable.
 - Any final Parse Run can be deleted individually, whatever its final status and even as its Document's last one. Its Document survives with its original file and returns to being unparsed.
 - Execution never continues with a revoked storage reference.

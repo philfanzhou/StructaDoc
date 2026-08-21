@@ -71,4 +71,9 @@ A Parse Run is deletable on its own terms once it is final, whether it succeeded
 
 A non-final Parse Run cannot be deleted, and a Document with active Parse Runs cannot be deleted. This prevents cleanup and execution Workers from racing for the same resources. Cancellation is therefore the supported way to release a Document whose Parse Run will never complete on its own, including every run created on a Host started without Workers. See [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) section 13.
 
+The active-state check and Parse Run insertion are guarded by the same Document concurrency version
+that deletion advances. Consequently a creation racing deletion either commits first and makes the
+deletion retry observe an active Run, or loses and reports the Document unavailable; a Cleanup Job
+can never acquire new work after its object-reference snapshot was taken.
+
 Persistent Cleanup Jobs make failed deletion observable and retryable; they do not hide object-storage failures behind prematurely removed database rows.

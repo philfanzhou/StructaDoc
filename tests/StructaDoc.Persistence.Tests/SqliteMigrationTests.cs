@@ -31,18 +31,14 @@ public sealed class SqliteMigrationTests
                 "20260819055237_AttributeApiClientDocumentOwnership",
                 TestContext.Current.CancellationToken);
 
-            dbContext.Documents.Add(new DocumentEntity
-            {
-                Id = documentId,
-                OriginalFileName = "preserved.pdf",
-                MediaType = "application/pdf",
-                Extension = ".pdf",
-                SizeBytes = 128,
-                Sha256 = new string('a', 64),
-                StorageRef = "documents/preserved.pdf",
-                CreatedAtUtc = DateTime.UtcNow,
-            });
-            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO documents
+                    (id, original_file_name, media_type, extension, size_bytes, sha256,
+                     storage_ref, lifecycle_state, created_at_utc)
+                VALUES
+                    ({documentId}, {"preserved.pdf"}, {"application/pdf"}, {".pdf"}, {128},
+                     {new string('a', 64)}, {"documents/preserved.pdf"}, {"active"}, {DateTime.UtcNow})
+                """, TestContext.Current.CancellationToken);
             await dbContext.Database.ExecuteSqlRawAsync(
                 "UPDATE documents SET metadata_json = '{{\"legacy\":true}}' WHERE id = {0}",
                 [documentId],
