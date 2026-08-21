@@ -78,10 +78,9 @@ public static class ParseResultEndpoints
     /// the content. And it is served inline instead of as an attachment, because a browser that
     /// downloads a preview has not shown one.
     ///
-    /// Images are inlined rather than linked at their authorized endpoints because
-    /// <c>Content-Security-Policy: sandbox</c> puts the page in an opaque origin, where a request
-    /// back to this service carries no session cookie and would load nothing. Inlining is bounded,
-    /// so a result whose images exceed the export budget previews with those images missing.
+    /// Images are inlined rather than linked at their authorized endpoints. The page disables raw
+    /// Provider HTML, removes non-embedded image sources, and uses a deny-by-default CSP; images
+    /// beyond the bounded inline budget are deliberately missing rather than fetched by the browser.
     /// </remarks>
     internal static async Task<IResult> PreviewMarkdownAsync(Guid parseRunId, HttpContext context, IParseExportService exports, CancellationToken cancellationToken)
     {
@@ -128,7 +127,10 @@ public static class ParseResultEndpoints
     {
         context.Response.Headers.CacheControl = "private, max-age=0, must-revalidate";
         context.Response.Headers.XContentTypeOptions = "nosniff";
-        context.Response.Headers["Content-Security-Policy"] = "sandbox";
+        context.Response.Headers["Content-Security-Policy"] =
+            "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
+            + "base-uri 'none'; form-action 'none'; frame-src 'none'; sandbox";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
     }
 
     private static IResult ContentUnavailable() => Results.Problem(statusCode: 503, title: "Parse result content unavailable", detail: "The result metadata exists, but its stored content is currently unavailable.");

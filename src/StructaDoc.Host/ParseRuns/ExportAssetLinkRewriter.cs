@@ -73,6 +73,25 @@ public static partial class ExportAssetLinkRewriter
             match => ReplaceGroup(match, "url", assetsByFileName, resolve));
     }
 
+    /// <summary>
+    /// Removes every image source that was not embedded as a data URI. HTML previews and exports
+    /// must not turn Provider-authored Markdown into browser requests to external or internal hosts.
+    /// </summary>
+    public static string RemoveNonEmbeddedImages(string markdown)
+    {
+        ArgumentNullException.ThrowIfNull(markdown);
+        var sanitized = MarkdownImagePattern().Replace(markdown, RemoveNonDataTarget);
+        return HtmlImagePattern().Replace(sanitized, RemoveNonDataTarget);
+    }
+
+    public static string RewriteSegmentImages(
+        string markdown,
+        IReadOnlyDictionary<string, ParseAssetRecord> assetsByFileName,
+        int segmentIndex) => Rewrite(
+            markdown,
+            assetsByFileName,
+            asset => EncodeUriPath($"segment-{segmentIndex:D4}-{asset.Name}"));
+
     private static string ReplaceGroup(
         Match match,
         string groupName,
@@ -99,6 +118,20 @@ public static partial class ExportAssetLinkRewriter
         return string.Concat(
             match.Value.AsSpan(0, group.Index - match.Index),
             replacement,
+            match.Value.AsSpan(group.Index - match.Index + group.Length));
+    }
+
+    private static string RemoveNonDataTarget(Match match)
+    {
+        var group = match.Groups["url"];
+        if (!group.Success
+            || group.Value.Trim().StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return match.Value;
+        }
+
+        return string.Concat(
+            match.Value.AsSpan(0, group.Index - match.Index),
             match.Value.AsSpan(group.Index - match.Index + group.Length));
     }
 

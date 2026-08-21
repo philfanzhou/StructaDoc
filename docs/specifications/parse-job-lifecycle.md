@@ -155,7 +155,7 @@ Success occurs in this order:
 
 A run cannot be `succeeded` while canonical data is incomplete. If object storage succeeds and database commit fails, retry reuses the same logical keys; later orphan reconciliation handles objects that never obtained a database reference.
 
-Large PDFs use deterministic segment identities and stored per-segment stages/checkpoints. The parent succeeds only after all segments normalize and merge into one globally ordered bundle.
+Large PDFs use deterministic segment identities and stored per-segment stages/checkpoints. The parent succeeds only after all segments normalize and merge into one globally ordered bundle. Before segment Markdown is concatenated, its image links are rewritten against that segment's own Asset map to the same segment-prefixed names used by the merged canonical Assets. This keeps equal file names from different segments bound to their own images in Markdown, HTML, and ZIP exports.
 
 ## 12. Retry Policy
 

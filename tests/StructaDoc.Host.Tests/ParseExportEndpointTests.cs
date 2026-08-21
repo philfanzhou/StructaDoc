@@ -80,7 +80,7 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
             html,
             StringComparison.Ordinal);
         Assert.DoesNotContain("src=\"images/diagram.png\"", html, StringComparison.Ordinal);
-        Assert.Contains("images/missing.png", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("images/missing.png", html, StringComparison.Ordinal);
     }
 
     // The preview is the HTML export served for display. What is worth testing is not the rendering,
@@ -101,9 +101,14 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
         // A browser that saves the preview has not shown one.
         Assert.NotEqual("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
-        // The page carries Provider-authored content, so it is served into an opaque origin where
-        // it cannot reach the session that asked for it.
-        Assert.Equal("sandbox", Assert.Single(response.Headers.GetValues("Content-Security-Policy")));
+        var contentSecurityPolicy = Assert.Single(
+            response.Headers.GetValues("Content-Security-Policy"));
+        Assert.Contains("default-src 'none'", contentSecurityPolicy, StringComparison.Ordinal);
+        Assert.Contains("img-src data:", contentSecurityPolicy, StringComparison.Ordinal);
+        Assert.Contains("sandbox", contentSecurityPolicy, StringComparison.Ordinal);
+        Assert.Equal(
+            "no-referrer",
+            Assert.Single(response.Headers.GetValues("Referrer-Policy")));
 
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("<h1", html, StringComparison.Ordinal);
@@ -113,6 +118,56 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
             $"data:image/png;base64,{Convert.ToBase64String(ImageBytes)}",
             html,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Markdown_preview_cannot_emit_provider_authored_network_sources()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+        var seeded = await SeedSucceededResultAsync(sourceIsPdf: true);
+        var unsafeMarkdown = Encoding.UTF8.GetBytes("""
+            # Untrusted result
+
+            ![](https://attacker.example/tracker.png)
+
+            <img src="http://192.0.2.1/internal.png">
+            <iframe src="https://attacker.example/frame"></iframe>
+            """);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
+            var stored = await WriteAsync(
+                storage,
+                $"parse-runs/{seeded.ParseRunId:N}/unsafe.md",
+                unsafeMarkdown);
+            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+            var artifact = await dbContext.ParseArtifacts.SingleAsync(
+                item => item.Id == seeded.MarkdownArtifactId,
+                TestContext.Current.CancellationToken);
+            artifact.StorageRef = stored.StorageRef;
+            artifact.SizeBytes = stored.SizeBytes;
+            artifact.Sha256 = stored.Sha256;
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        using var response = await client.GetAsync(
+            $"/api/v1/parse-runs/{seeded.ParseRunId:D}/markdown/preview",
+            TestContext.Current.CancellationToken);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain(
+            "src=\"https://attacker.example",
+            html,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "src=\"http://192.0.2.1",
+            html,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<iframe", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("&lt;iframe", html, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -350,6 +405,27 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         // Two Assets share this file name, so the link is ambiguous and is not guessed.
         Assert.Contains("images/shared.png", rewritten, StringComparison.Ordinal);
         Assert.Contains("assets/replaced.png", rewritten, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Segment_rewriter_keeps_same_named_images_bound_to_their_own_segment()
+    {
+        var first = new ParseAssetRecord(
+            Guid.NewGuid(), "figure.png", "image/png", 1, new string('a', 64), null, null);
+        var second = new ParseAssetRecord(
+            Guid.NewGuid(), "figure.png", "image/png", 1, new string('b', 64), null, null);
+
+        var firstMarkdown = ExportAssetLinkRewriter.RewriteSegmentImages(
+            "![](images/figure.png)",
+            ExportAssetLinkRewriter.BuildAssetsByFileName([first]),
+            0);
+        var secondMarkdown = ExportAssetLinkRewriter.RewriteSegmentImages(
+            "![](images/figure.png)",
+            ExportAssetLinkRewriter.BuildAssetsByFileName([second]),
+            1);
+
+        Assert.Equal("![](segment-0000-figure.png)", firstMarkdown);
+        Assert.Equal("![](segment-0001-figure.png)", secondMarkdown);
     }
 
     private async Task<Guid> SeedSucceededRunAsync(bool sourceIsPdf)
