@@ -10,6 +10,7 @@ using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
+using StructaDoc.Host.ParseRuns;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
 
@@ -124,14 +125,25 @@ public sealed class LargePdfParseOrchestrator(
 
     private async Task<ParseBundle> MergeAsync(Guid parseRunId, IReadOnlyList<(ParseSegmentEntity Segment, ParseBundle Bundle)> items, CancellationToken cancellationToken)
     {
-        var pages = new List<ParsePage>(); var blocks = new List<ParseBlock>(); var assets = new List<ParseAsset>(); var artifacts = new List<ParseArtifact>(); var markdownArtifacts = new List<ParseArtifact>();
+        var pages = new List<ParsePage>(); var blocks = new List<ParseBlock>(); var assets = new List<ParseAsset>(); var artifacts = new List<ParseArtifact>(); var markdownArtifacts = new List<(ParseArtifact Artifact, IReadOnlyDictionary<string, ParseAssetRecord> Assets, int SegmentIndex)>();
         foreach (var (segment, bundle) in items.OrderBy(item => item.Segment.StartPage))
         {
             var offset = segment.StartPage - 1;
             pages.AddRange(bundle.Pages.Select(page => page with { Number = page.Number + offset }));
             blocks.AddRange(bundle.Blocks.Select(block => block with { Sequence = blocks.Count, PageNumber = block.PageNumber + offset }));
             assets.AddRange(bundle.Assets.Select(asset => asset with { Name = $"segment-{segment.Index:D4}-{asset.Name}" }));
-            markdownArtifacts.AddRange(bundle.Artifacts.Where(artifact => artifact.Type == ArtifactTypes.Markdown));
+            var segmentAssets = ExportAssetLinkRewriter.BuildAssetsByFileName(
+                bundle.Assets.Select(asset => new ParseAssetRecord(
+                    asset.Id,
+                    asset.Name,
+                    asset.MediaType,
+                    asset.SizeBytes,
+                    asset.Sha256,
+                    asset.Width,
+                    asset.Height)).ToArray());
+            markdownArtifacts.AddRange(bundle.Artifacts
+                .Where(artifact => artifact.Type == ArtifactTypes.Markdown)
+                .Select(artifact => (artifact, segmentAssets, segment.Index)));
             artifacts.AddRange(bundle.Artifacts.Where(artifact => artifact.Type != ArtifactTypes.Markdown).Select(artifact => artifact with { Name = $"segment-{segment.Index:D4}-{artifact.Name}" }));
             artifacts.Add(new ParseArtifact(DeterministicId(parseRunId, $"source-segment:{segment.Index}"), ArtifactTypes.SourceSegment, $"segment-{segment.Index:D4}.pdf", "application/pdf", segment.SizeBytes, segment.Sha256, segment.StorageRef, JsonSerializer.Serialize(new { segment.StartPage, segment.EndPage })));
         }
@@ -146,9 +158,17 @@ public sealed class LargePdfParseOrchestrator(
                     for (var index = 0; index < markdownArtifacts.Count; index++)
                     {
                         if (index > 0) await writer.WriteAsync("\n\n---\n\n");
-                        await using var input = await storage.OpenReadAsync(markdownArtifacts[index].StorageRef, cancellationToken);
+                        var markdownArtifact = markdownArtifacts[index];
+                        await using var input = await storage.OpenReadAsync(
+                            markdownArtifact.Artifact.StorageRef,
+                            cancellationToken);
                         using var reader = new StreamReader(input, Encoding.UTF8, true, leaveOpen: false);
-                        await writer.WriteAsync(await reader.ReadToEndAsync(cancellationToken));
+                        var markdown = await reader.ReadToEndAsync(cancellationToken);
+                        var rewritten = ExportAssetLinkRewriter.RewriteSegmentImages(
+                            markdown,
+                            markdownArtifact.Assets,
+                            markdownArtifact.SegmentIndex);
+                        await writer.WriteAsync(rewritten);
                     }
                 }
                 await using var merged = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);

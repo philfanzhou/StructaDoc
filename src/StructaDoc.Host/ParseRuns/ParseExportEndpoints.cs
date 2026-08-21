@@ -54,7 +54,10 @@ public static class ParseExportEndpoints
         if (export is null) return Results.Problem(statusCode: 409, title: "Export unavailable", detail: "The requested export is not available for this Parse Run.");
         context.Response.Headers.CacheControl = "private, max-age=0, must-revalidate";
         context.Response.Headers.XContentTypeOptions = "nosniff";
-        context.Response.Headers["Content-Security-Policy"] = "sandbox";
+        context.Response.Headers["Content-Security-Policy"] =
+            "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
+            + "base-uri 'none'; form-action 'none'; frame-src 'none'; sandbox";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
         return Results.File(export.Content, export.MediaType, export.Name, entityTag: new EntityTagHeaderValue($"\"{export.Sha256}\""), enableRangeProcessing: true);
     }
 }

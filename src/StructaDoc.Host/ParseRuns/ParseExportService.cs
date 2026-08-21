@@ -15,11 +15,11 @@ public sealed class ParseExportService(
 {
     // Increment this whenever HTML rendering, link rewriting, or asset inlining changes. Existing
     // entity tags must stop validating when the same inputs would render different bytes.
-    private const int HtmlRendererVersion = 1;
+    private const int HtmlRendererVersion = 2;
 
     /// <summary>
     /// Total inlined image bytes allowed in one HTML export. A self-contained page must stay
-    /// bounded, so images beyond the budget keep their original link instead of being embedded.
+    /// bounded, so images beyond the budget are omitted instead of being fetched by the browser.
     /// </summary>
     private const long MaximumInlinedAssetBytes = 32L * 1024 * 1024;
 
@@ -97,7 +97,10 @@ public sealed class ParseExportService(
             markdown,
             ExportAssetLinkRewriter.BuildAssetsByFileName(assets),
             asset => inlined.TryGetValue(asset.Id, out var dataUri) ? dataUri : null);
-        var body = Markdown.ToHtml(source, new MarkdownPipelineBuilder().UseAdvancedExtensions().Build());
+        source = ExportAssetLinkRewriter.RemoveNonEmbeddedImages(source);
+        var body = Markdown.ToHtml(
+            source,
+            new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml().Build());
         var html = $"<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>StructaDoc export</title><style>body{{font:16px/1.65 system-ui,sans-serif;max-width:960px;margin:40px auto;padding:0 24px;color:#17231d}}img{{max-width:100%}}pre{{overflow:auto;background:#f2f5f3;padding:16px}}table{{border-collapse:collapse}}td,th{{border:1px solid #cad4ce;padding:6px 10px}}</style></head><body>{body}</body></html>";
         return FromBytes(Encoding.UTF8.GetBytes(html), $"{parseRunId:D}.html", "text/html; charset=utf-8");
     }
