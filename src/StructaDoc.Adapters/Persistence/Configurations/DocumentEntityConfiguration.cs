@@ -49,6 +49,9 @@ internal sealed class DocumentEntityConfiguration : IEntityTypeConfiguration<Doc
             .IsUnicode(false);
         builder.Property(document => document.DeletionRequestedAtUtc)
             .HasColumnName("deletion_requested_at_utc");
+        builder.Property(document => document.ConcurrencyVersion)
+            .HasColumnName("concurrency_version")
+            .IsConcurrencyToken();
         builder.Property(document => document.CreatedAtUtc)
             .HasColumnName("created_at_utc");
         builder.HasIndex(document => document.Sha256)

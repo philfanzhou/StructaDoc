@@ -9,6 +9,7 @@ using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
+using StructaDoc.Domain.Resources;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.Documents;
 using StructaDoc.Adapters.Persistence;
@@ -28,6 +29,7 @@ internal static class ParseRunLeaseContract
     {
         var options = CreateOptions(provider, connectionString, serverVersion);
         await InitializeAsync(options);
+        await AssertCreationGuardsAsync(options);
 
         var nowUtc = DateTime.UtcNow;
         var claims = await Task.WhenAll(
@@ -400,6 +402,95 @@ internal static class ParseRunLeaseContract
             optionsBuilder,
             databaseOptions);
         return optionsBuilder.Options;
+    }
+
+    private static async Task AssertCreationGuardsAsync(
+        DbContextOptions<StructaDocDbContext> options)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var documentId = Guid.NewGuid();
+        var configId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        await using (var seed = new StructaDocDbContext(options))
+        {
+            seed.Documents.Add(new DocumentEntity
+            {
+                Id = documentId,
+                OriginalFileName = "creation-guard.pdf",
+                MediaType = "application/pdf",
+                Extension = ".pdf",
+                SizeBytes = 1,
+                Sha256 = new string('f', 64),
+                StorageRef = "documents/creation-guard.pdf",
+                CreatedAtUtc = nowUtc,
+            });
+            var config = new ProviderConfigEntity
+            {
+                Id = configId,
+                Name = "Creation guard",
+                ProviderType = "mineru-local",
+                IsEnabled = true,
+                CurrentVersionId = versionId,
+                CreatedAtUtc = nowUtc,
+                UpdatedAtUtc = nowUtc,
+            };
+            seed.ProviderConfigs.Add(config);
+            seed.ProviderConfigVersions.Add(new ProviderConfigVersionEntity
+            {
+                Id = versionId,
+                ProviderConfigId = configId,
+                ProviderConfig = config,
+                VersionNumber = 1,
+                BaseUrl = "http://provider.test/",
+                CreatedAtUtc = nowUtc,
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var staleDocumentContext = new StructaDocDbContext(options);
+        await using var staleProviderContext = new StructaDocDbContext(options);
+        var staleDocument = await staleDocumentContext.Documents.SingleAsync(
+            document => document.Id == documentId);
+        var staleProvider = await staleProviderContext.ProviderConfigs.SingleAsync(
+            config => config.Id == configId);
+
+        await using (var creationContext = new StructaDocDbContext(options))
+        {
+            var result = await new EfCoreParseRunService(creationContext).CreateAsync(
+                new ParseRunCreateRequest(
+                    documentId,
+                    configId,
+                    "{}",
+                    3,
+                    "contract-test",
+                    null,
+                    nowUtc));
+            Assert.Equal(ParseRunCreationStatus.Created, result.Status);
+        }
+
+        staleDocument.LifecycleState = ResourceLifecycleStates.DeletionPending;
+        staleDocument.DeletionRequestedAtUtc = nowUtc;
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(
+            () => staleDocumentContext.SaveChangesAsync());
+
+        await using (var transaction = await staleProviderContext.Database.BeginTransactionAsync())
+        {
+            await staleProviderContext.ProviderConfigVersions
+                .Where(version => version.ProviderConfigId == configId)
+                .ExecuteDeleteAsync();
+            staleProviderContext.ProviderConfigs.Remove(staleProvider);
+            await Assert.ThrowsAsync<DbUpdateConcurrencyException>(
+                () => staleProviderContext.SaveChangesAsync());
+            await transaction.RollbackAsync();
+        }
+
+        await using var cleanup = new StructaDocDbContext(options);
+        await cleanup.ParseRuns.Where(run => run.DocumentId == documentId).ExecuteDeleteAsync();
+        await cleanup.ProviderConfigVersions
+            .Where(version => version.ProviderConfigId == configId)
+            .ExecuteDeleteAsync();
+        await cleanup.ProviderConfigs.Where(config => config.Id == configId).ExecuteDeleteAsync();
+        await cleanup.Documents.Where(document => document.Id == documentId).ExecuteDeleteAsync();
     }
 
     private static async Task InitializeAsync(

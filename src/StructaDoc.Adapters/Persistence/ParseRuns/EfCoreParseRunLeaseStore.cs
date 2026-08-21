@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
+using StructaDoc.Domain.Resources;
 
 namespace StructaDoc.Adapters.Persistence.ParseRuns;
 
@@ -23,6 +24,8 @@ public sealed class EfCoreParseRunLeaseStore(StructaDocDbContext dbContext)
             .AsNoTracking()
             .Where(parseRun =>
                 parseRun.Status == ParseRunStatuses.Queued
+                && parseRun.LifecycleState == ResourceLifecycleStates.Active
+                && parseRun.Document.LifecycleState == ResourceLifecycleStates.Active
                 && parseRun.NextAttemptAtUtc <= nowUtc)
             .OrderBy(parseRun => parseRun.NextAttemptAtUtc)
             .ThenBy(parseRun => parseRun.CreatedAtUtc)
@@ -41,6 +44,8 @@ public sealed class EfCoreParseRunLeaseStore(StructaDocDbContext dbContext)
                 .Where(parseRun =>
                     parseRun.Id == candidate.Id
                     && parseRun.Status == ParseRunStatuses.Queued
+                    && parseRun.LifecycleState == ResourceLifecycleStates.Active
+                    && parseRun.Document.LifecycleState == ResourceLifecycleStates.Active
                     && parseRun.NextAttemptAtUtc <= nowUtc
                     && parseRun.ConcurrencyVersion == candidate.ConcurrencyVersion)
                 .ExecuteUpdateAsync(

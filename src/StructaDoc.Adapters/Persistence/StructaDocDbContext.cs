@@ -95,6 +95,14 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
             }
         }
 
+        foreach (var entry in ChangeTracker.Entries<DocumentEntity>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.ConcurrencyVersion++;
+            }
+        }
+
         foreach (var entry in ChangeTracker.Entries<ParseRunEntity>())
         {
             if (entry.State == EntityState.Modified)
