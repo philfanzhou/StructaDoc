@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using StructaDoc.Adapters.ControlPlane;
 
@@ -10,9 +11,11 @@ using StructaDoc.Adapters.ControlPlane;
 namespace StructaDoc.Migrations.Sqlite.Migrations.ControlPlane
 {
     [DbContext(typeof(ControlPlaneDbContext))]
-    partial class ControlPlaneDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260821020635_AddLegacyAdministratorLogin")]
+    partial class AddLegacyAdministratorLogin
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
