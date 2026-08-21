@@ -22,10 +22,14 @@ public sealed class AdministratorAuthenticationService(
                 ? password
                 : string.Empty;
         var normalizedUsername = AdministratorUsernamePolicy.Normalize(username);
-        var user = normalizedUsername is null
+        var legacyNormalizedLogin = NormalizeLegacyLogin(username);
+        var user = normalizedUsername is null && legacyNormalizedLogin is null
             ? null
             : await dbContext.AdminUsers.SingleOrDefaultAsync(
-                candidate => candidate.NormalizedUsername == normalizedUsername,
+                candidate => (normalizedUsername != null
+                        && candidate.NormalizedUsername == normalizedUsername)
+                    || (legacyNormalizedLogin != null
+                        && candidate.LegacyNormalizedLogin == legacyNormalizedLogin),
                 cancellationToken);
         var verificationResult = passwordVerifier.Verify(user, suppliedPassword);
 
@@ -57,5 +61,18 @@ public sealed class AdministratorAuthenticationService(
         {
             throw new ArgumentException("Authentication timestamps must use UTC.", nameof(value));
         }
+    }
+
+    private static string? NormalizeLegacyLogin(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= 320 && trimmed.Contains('@', StringComparison.Ordinal)
+            ? trimmed.ToUpperInvariant()
+            : null;
     }
 }

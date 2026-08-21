@@ -21,6 +21,10 @@ internal sealed class AdminUserEntityConfiguration : IEntityTypeConfiguration<Ad
             .HasColumnName("normalized_username")
             .HasMaxLength(AdministratorUsernamePolicy.MaximumLength)
             .IsUnicode(false);
+        builder.Property(user => user.LegacyNormalizedLogin)
+            .HasColumnName("legacy_normalized_login")
+            .HasMaxLength(320)
+            .IsUnicode(false);
         builder.Property(user => user.DisplayName)
             .HasColumnName("display_name")
             .HasMaxLength(255);
@@ -38,5 +42,8 @@ internal sealed class AdminUserEntityConfiguration : IEntityTypeConfiguration<Ad
         builder.HasIndex(user => user.NormalizedUsername)
             .IsUnique()
             .HasDatabaseName("ux_admin_users_normalized_username");
+        builder.HasIndex(user => user.LegacyNormalizedLogin)
+            .IsUnique()
+            .HasDatabaseName("ux_admin_users_legacy_normalized_login");
     }
 }

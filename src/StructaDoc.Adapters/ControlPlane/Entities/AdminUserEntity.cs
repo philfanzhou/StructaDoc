@@ -5,6 +5,7 @@ public sealed class AdminUserEntity
     public Guid Id { get; set; }
     public required string Username { get; set; }
     public required string NormalizedUsername { get; set; }
+    public string? LegacyNormalizedLogin { get; set; }
     public required string DisplayName { get; set; }
     public required string PasswordHash { get; set; }
     public bool IsActive { get; set; }
