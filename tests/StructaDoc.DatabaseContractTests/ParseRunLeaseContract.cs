@@ -473,8 +473,11 @@ internal static class ParseRunLeaseContract
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(
             () => staleDocumentContext.SaveChangesAsync());
 
-        await using (var transaction = await staleProviderContext.Database.BeginTransactionAsync())
+        var executionStrategy = staleProviderContext.Database.CreateExecutionStrategy();
+        await executionStrategy.ExecuteAsync(async () =>
         {
+            await using var transaction =
+                await staleProviderContext.Database.BeginTransactionAsync();
             await staleProviderContext.ProviderConfigVersions
                 .Where(version => version.ProviderConfigId == configId)
                 .ExecuteDeleteAsync();
@@ -482,7 +485,7 @@ internal static class ParseRunLeaseContract
             await Assert.ThrowsAsync<DbUpdateConcurrencyException>(
                 () => staleProviderContext.SaveChangesAsync());
             await transaction.RollbackAsync();
-        }
+        });
 
         await using var cleanup = new StructaDocDbContext(options);
         await cleanup.ParseRuns.Where(run => run.DocumentId == documentId).ExecuteDeleteAsync();
