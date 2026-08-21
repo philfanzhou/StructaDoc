@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Providers;
 using StructaDoc.Domain.ParseRuns;
+using StructaDoc.Domain.Resources;
 using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Adapters.Persistence.ParseRuns;
@@ -26,83 +27,129 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
             }
         }
 
-        var document = await dbContext.Documents.AsNoTracking()
-            .Where(item => item.Id == request.DocumentId)
-            .Select(item => new { item.Id, item.MediaType })
-            .SingleOrDefaultAsync(cancellationToken);
-        if (document is null)
+        var executionStrategy = dbContext.Database.CreateExecutionStrategy();
+        return await executionStrategy.ExecuteAsync(async () =>
         {
-            return new(ParseRunCreationStatus.DocumentNotFound);
-        }
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(
+                cancellationToken);
 
-        var configQuery = dbContext.ProviderConfigs.AsNoTracking();
-        var config = request.ProviderConfigId.HasValue
-            ? await configQuery.SingleOrDefaultAsync(item => item.Id == request.ProviderConfigId.Value, cancellationToken)
-            : await configQuery.SingleOrDefaultAsync(item => item.DefaultMarker == DefaultMarker, cancellationToken);
-        if (config is null)
-        {
-            return new(request.ProviderConfigId.HasValue
-                ? ParseRunCreationStatus.ProviderConfigNotFound
-                : ParseRunCreationStatus.ProviderUnavailable);
-        }
+            var document = await dbContext.Documents.AsNoTracking()
+                .Where(item => item.Id == request.DocumentId
+                    && item.LifecycleState == ResourceLifecycleStates.Active)
+                .Select(item => new { item.Id, item.MediaType, item.ConcurrencyVersion })
+                .SingleOrDefaultAsync(cancellationToken);
+            if (document is null)
+            {
+                return new ParseRunCreationResult(ParseRunCreationStatus.DocumentNotFound);
+            }
 
-        if (!config.IsEnabled)
-        {
-            return new(ParseRunCreationStatus.ProviderUnavailable);
-        }
+            var configQuery = dbContext.ProviderConfigs.AsNoTracking();
+            var config = request.ProviderConfigId.HasValue
+                ? await configQuery.SingleOrDefaultAsync(
+                    item => item.Id == request.ProviderConfigId.Value,
+                    cancellationToken)
+                : await configQuery.SingleOrDefaultAsync(
+                    item => item.DefaultMarker == DefaultMarker,
+                    cancellationToken);
+            if (config is null)
+            {
+                return new ParseRunCreationResult(request.ProviderConfigId.HasValue
+                    ? ParseRunCreationStatus.ProviderConfigNotFound
+                    : ParseRunCreationStatus.ProviderUnavailable);
+            }
 
-        var version = await dbContext.ProviderConfigVersions.AsNoTracking()
-            .Where(item => item.Id == config.CurrentVersionId)
-            .Select(item => new { HasCredential = item.ProtectedCredential != null })
-            .SingleOrDefaultAsync(cancellationToken);
-        if (version is null)
-        {
-            return new(ParseRunCreationStatus.ProviderUnavailable);
-        }
+            if (!config.IsEnabled)
+            {
+                return new ParseRunCreationResult(ParseRunCreationStatus.ProviderUnavailable);
+            }
 
-        // A Provider that authenticates every call cannot do anything without its credential. The
-        // deployment ships with the official endpoint already configured and deliberately without
-        // one, so this is the ordinary state of a service nobody has finished setting up: saying so
-        // here is what keeps it from becoming a queue of Parse Runs that were always going to fail.
-        if (!version.HasCredential
-            && ProviderTypeDescriptors.RequiresCredential(config.ProviderType))
-        {
-            return new(ParseRunCreationStatus.ProviderCredentialMissing);
-        }
+            var version = await dbContext.ProviderConfigVersions.AsNoTracking()
+                .Where(item => item.Id == config.CurrentVersionId
+                    && item.ProviderConfigId == config.Id)
+                .Select(item => new { HasCredential = item.ProtectedCredential != null })
+                .SingleOrDefaultAsync(cancellationToken);
+            if (version is null)
+            {
+                return new ParseRunCreationResult(ParseRunCreationStatus.ProviderUnavailable);
+            }
 
-        var entity = new ParseRunEntity
-        {
-            Id = Guid.NewGuid(),
-            DocumentId = document.Id,
-            Status = ParseRunStatuses.Queued,
-            ProviderType = config.ProviderType,
-            ProviderConfigId = config.Id,
-            ProviderConfigVersion = config.CurrentVersionId,
-            OptionsJson = request.OptionsJson,
-            SourceMediaType = document.MediaType,
-            SubmittedMediaType = document.MediaType,
-            AttemptCount = 0,
-            MaxAttempts = request.MaxAttempts,
-            NextAttemptAtUtc = request.CreatedAtUtc,
-            CreatedBy = request.CreatedBy,
-            IdempotencyKey = request.IdempotencyKey,
-            CreatedAtUtc = request.CreatedAtUtc,
-        };
+            if (!version.HasCredential
+                && ProviderTypeDescriptors.RequiresCredential(config.ProviderType))
+            {
+                return new ParseRunCreationResult(ParseRunCreationStatus.ProviderCredentialMissing);
+            }
 
-        try
-        {
-            dbContext.ParseRuns.Add(entity);
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return new(ParseRunCreationStatus.Created, ToRecord(entity));
-        }
-        catch (DbUpdateException) when (request.IdempotencyKey is not null)
-        {
-            dbContext.ChangeTracker.Clear();
-            var replay = await FindReplayAsync(request, cancellationToken);
-            return replay is null
-                ? new(ParseRunCreationStatus.Conflict)
-                : new(ParseRunCreationStatus.Replayed, replay);
-        }
+            // These conditional version increments are the cross-database lock shared with both
+            // deletion paths. They and the Parse Run insert commit as one unit.
+            var documentGuard = await dbContext.Documents
+                .Where(item => item.Id == document.Id
+                    && item.LifecycleState == ResourceLifecycleStates.Active
+                    && item.ConcurrencyVersion == document.ConcurrencyVersion)
+                .ExecuteUpdateAsync(
+                    updates => updates.SetProperty(
+                        item => item.ConcurrencyVersion,
+                        item => item.ConcurrencyVersion + 1),
+                    cancellationToken);
+            if (documentGuard != 1)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new ParseRunCreationResult(ParseRunCreationStatus.DocumentNotFound);
+            }
+
+            var providerGuard = await dbContext.ProviderConfigs
+                .Where(item => item.Id == config.Id
+                    && item.IsEnabled
+                    && item.CurrentVersionId == config.CurrentVersionId
+                    && item.ConcurrencyVersion == config.ConcurrencyVersion)
+                .ExecuteUpdateAsync(
+                    updates => updates.SetProperty(
+                        item => item.ConcurrencyVersion,
+                        item => item.ConcurrencyVersion + 1),
+                    cancellationToken);
+            if (providerGuard != 1)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new ParseRunCreationResult(ParseRunCreationStatus.ProviderUnavailable);
+            }
+
+            var entity = new ParseRunEntity
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = document.Id,
+                Status = ParseRunStatuses.Queued,
+                ProviderType = config.ProviderType,
+                ProviderConfigId = config.Id,
+                ProviderConfigVersion = config.CurrentVersionId,
+                OptionsJson = request.OptionsJson,
+                SourceMediaType = document.MediaType,
+                SubmittedMediaType = document.MediaType,
+                AttemptCount = 0,
+                MaxAttempts = request.MaxAttempts,
+                NextAttemptAtUtc = request.CreatedAtUtc,
+                CreatedBy = request.CreatedBy,
+                IdempotencyKey = request.IdempotencyKey,
+                CreatedAtUtc = request.CreatedAtUtc,
+            };
+
+            try
+            {
+                dbContext.ParseRuns.Add(entity);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return new ParseRunCreationResult(
+                    ParseRunCreationStatus.Created,
+                    ToRecord(entity));
+            }
+            catch (DbUpdateException) when (request.IdempotencyKey is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                var replay = await FindReplayAsync(request, cancellationToken);
+                return replay is null
+                    ? new ParseRunCreationResult(ParseRunCreationStatus.Conflict)
+                    : new ParseRunCreationResult(ParseRunCreationStatus.Replayed, replay);
+            }
+        });
     }
 
     public Task<ParseRunRecord?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>

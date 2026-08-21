@@ -12,22 +12,71 @@ namespace StructaDoc.Adapters.Resources;
 public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext) : IResourceDeletionService
 {
     private static readonly string[] FinalStatuses = ParseRunStatuses.Final;
+    private const int DeletionAttempts = 3;
 
     public async Task<ResourceDeletionResult> RequestDocumentDeletionAsync(Guid documentId, ResourceAccessContext access, DateTime nowUtc, CancellationToken cancellationToken = default)
     {
-        var document = await ApplyAccess(dbContext.Documents.Include(item => item.ParseRuns).ThenInclude(run => run.Assets).Include(item => item.ParseRuns).ThenInclude(run => run.Artifacts).Include(item => item.ParseRuns).ThenInclude(run => run.Segments).Where(item => item.Id == documentId), access, DocumentPermissions.Delete).SingleOrDefaultAsync(cancellationToken);
-        if (document is null) return new(ResourceDeletionStatus.NotFound);
-        if (document.LifecycleState != ResourceLifecycleStates.Active) return new(ResourceDeletionStatus.AlreadyPending, await ExistingJobIdAsync(CleanupTargetTypes.Document, documentId, cancellationToken));
-        if (document.ParseRuns.Any(run => !FinalStatuses.Contains(run.Status))) return new(ResourceDeletionStatus.ActiveParseRuns);
+        for (var attempt = 0; attempt < DeletionAttempts; attempt++)
+        {
+            var document = await ApplyAccess(
+                    dbContext.Documents
+                        .Include(item => item.ParseRuns).ThenInclude(run => run.Assets)
+                        .Include(item => item.ParseRuns).ThenInclude(run => run.Artifacts)
+                        .Include(item => item.ParseRuns).ThenInclude(run => run.Segments)
+                        .Where(item => item.Id == documentId),
+                    access,
+                    DocumentPermissions.Delete)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (document is null)
+            {
+                return new(ResourceDeletionStatus.NotFound);
+            }
 
-        var refs = document.ParseRuns.SelectMany(StorageRefsForRun).Append(document.StorageRef).Distinct(StringComparer.Ordinal).ToArray();
-        document.LifecycleState = ResourceLifecycleStates.DeletionPending;
-        document.DeletionRequestedAtUtc = nowUtc;
-        foreach (var run in document.ParseRuns) { run.LifecycleState = ResourceLifecycleStates.DeletionPending; run.DeletionRequestedAtUtc = nowUtc; }
-        var job = NewJob(CleanupTargetTypes.Document, documentId, refs, nowUtc);
-        dbContext.CleanupJobs.Add(job);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return new(ResourceDeletionStatus.Accepted, job.Id);
+            if (document.LifecycleState != ResourceLifecycleStates.Active)
+            {
+                return new(
+                    ResourceDeletionStatus.AlreadyPending,
+                    await ExistingJobIdAsync(
+                        CleanupTargetTypes.Document,
+                        documentId,
+                        cancellationToken));
+            }
+
+            if (document.ParseRuns.Any(run => !FinalStatuses.Contains(run.Status)))
+            {
+                return new(ResourceDeletionStatus.ActiveParseRuns);
+            }
+
+            var refs = document.ParseRuns
+                .SelectMany(StorageRefsForRun)
+                .Append(document.StorageRef)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            document.LifecycleState = ResourceLifecycleStates.DeletionPending;
+            document.DeletionRequestedAtUtc = nowUtc;
+            foreach (var run in document.ParseRuns)
+            {
+                run.LifecycleState = ResourceLifecycleStates.DeletionPending;
+                run.DeletionRequestedAtUtc = nowUtc;
+            }
+
+            var job = NewJob(CleanupTargetTypes.Document, documentId, refs, nowUtc);
+            dbContext.CleanupJobs.Add(job);
+            try
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return new(ResourceDeletionStatus.Accepted, job.Id);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt + 1 < DeletionAttempts)
+            {
+                // Parse Run creation increments the same Document concurrency version in its
+                // transaction. Reloading makes the next pass observe that new active run.
+                dbContext.ChangeTracker.Clear();
+            }
+        }
+
+        throw new DbUpdateConcurrencyException(
+            $"Document '{documentId:D}' kept changing while deletion was requested.");
     }
 
     public async Task<ResourceDeletionResult> RequestParseRunDeletionAsync(Guid parseRunId, ResourceAccessContext access, DateTime nowUtc, CancellationToken cancellationToken = default)

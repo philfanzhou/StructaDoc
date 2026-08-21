@@ -26,6 +26,8 @@ public sealed class DocumentEntity
 
     public DateTime? DeletionRequestedAtUtc { get; set; }
 
+    public long ConcurrencyVersion { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 
     public ICollection<ParseRunEntity> ParseRuns { get; } = [];
