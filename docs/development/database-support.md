@@ -23,7 +23,10 @@ MySQL and MariaDB retain separate migrations and tests even though they use one 
 The StructaDoc business database requires InnoDB's `DYNAMIC` row format and
 `innodb_page_size` of at least 16 KiB on MySQL and MariaDB. Index-key limits are lower
 with smaller pages or `COMPACT`/`REDUNDANT` rows, so those configurations are outside
-the supported boundary. See the upstream [MySQL row-format
+the supported boundary. This qualification amends ADR-0004's general database
+portability decision; see [ADR-0009](../adr/0009-canonical-persisted-actor-identity.md)
+and the cross-reference in
+[ADR-0004](../adr/0004-relational-database-portability.md). See the upstream [MySQL row-format
 limits](https://dev.mysql.com/doc/refman/8.4/en/innodb-row-format.html) and [MariaDB
 InnoDB limitations](https://mariadb.com/docs/server/server-usage/storage-engines/innodb/innodb-limitations).
 The canonical actor-identity migration defined by
@@ -90,6 +93,14 @@ dotnet tool restore
 ```
 
 Every shared model change requires a generated and reviewed migration in all four migration projects. Design-time factories exist only for generation; their placeholder connection strings are not runtime credentials.
+
+The actor-identity replacement migrations defined by
+[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) require an exclusive
+application-version cutover. Stop every old StructaDoc instance before applying
+those migrations and start only the new version after they complete. This prevents
+an old writer from creating a legacy actor row after the new pre-insert replay path
+has established that the migrated legacy set is immutable; a rolling mixed-version
+deployment is not supported for this schema change.
 
 ## Contract Tests
 

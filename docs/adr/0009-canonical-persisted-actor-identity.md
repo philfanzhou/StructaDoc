@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-25
+- Amends: [ADR-0004](./0004-relational-database-portability.md)
 
 ## Context
 
@@ -41,7 +42,7 @@ Persist a new actor as the structured pair
 |---|---|---|
 | OIDC user | ASCII bytes of the validated OIDC issuer claim | ASCII bytes of the validated OIDC subject claim |
 | API client | ASCII bytes of `structadoc:api-client` | ASCII bytes of the client ID as a lowercase `D`-format UUID |
-| Local administrator | ASCII bytes of `structadoc:administrator` | ASCII bytes of the administrator ID as a lowercase `D`-format UUID |
+| Local administrator session (`SubjectTypes.Administrator`) | ASCII bytes of `structadoc:administrator` | ASCII bytes of the administrator ID as a lowercase `D`-format UUID |
 
 Each accepted ASCII code unit is stored as its one-byte value, including `0x00`.
 `created_by_issuer` accepts at most 512 bytes and `created_by_subject` accepts at most
@@ -49,15 +50,27 @@ Each accepted ASCII code unit is stored as its one-byte value, including `0x00`.
 text type being able to represent every accepted subject.
 
 Each affected audit record also has a nullable `created_by_legacy` binary field of at
-most 1024 bytes. Exactly one of these states is valid:
+most 1024 bytes. Documents and Parse Runs allow exactly one of these states:
 
 - both canonical fields are present and `created_by_legacy` is absent;
 - both canonical fields are absent and `created_by_legacy` is present; or
 - all three fields are absent for historical or system-authored data for which no
   actor was recorded.
 
+Access grants allow only the first two states. Their actor was required before this
+change and every access-grant write has an authenticated actor, so an access grant
+must have either a canonical pair or a legacy payload. The all-absent state is
+forbidden by its schema constraint.
+
 New authenticated writes always use the canonical pair. They never write the legacy
 field.
+
+Actor classification uses `StructaDocClaimTypes.SubjectType`, not an authorization
+predicate. Only a `SubjectTypes.Administrator` principal maps to
+`structadoc:administrator`. A `SubjectTypes.User` principal always maps to the OIDC
+row using its external issuer and subject, even when its OIDC role adds the
+administrator claim and authorization treats it as an administrator. Consequently,
+`IsAdministrator` must not select the persisted actor representation.
 
 OIDC values are persisted exactly as accepted by `ExternalIdentityConstraints`.
 StructaDoc does not trim, case-fold, URI-normalize, percent-decode, or apply Unicode
@@ -91,17 +104,23 @@ and MariaDB. This preserves the existing public API and persistence contracts; t
 ADR does not broaden the accepted Idempotency-Key input.
 
 Operators and application code decode each canonical byte as the same-valued ASCII
-code unit. API-client and administrator subjects resolve through their respective
-control-plane records. An OIDC pair resolves through the configured identity
+code unit. API-client subjects resolve through `api_clients` in the business
+database. Local-administrator subjects resolve through `admin_users` in the separate
+control-plane database. An OIDC pair resolves through the configured identity
 provider; StructaDoc does not create a shadow user directory merely for audit
-display.
+display. Restoring a business database alongside a different control-plane database
+does not damage the stored actor bytes, but a local-administrator subject cannot be
+resolved unless the matching control-plane record was restored too. Deployments that
+require that resolution must back up and restore the two databases as a matched set.
 
 `DocumentAccessGrantResponse.CreatedBy` remains a required string in `/api/v1`.
 For a canonical row it is projected in the existing display form:
 `oidc:{issuer}|{subject}`, `api-client:{subject}`, or
 `administrator:{subject}`. For a legacy row it is the decoded former value. This
 keeps the v1 DTO backward compatible while making only the persisted representation
-canonical; the flattened response is not an identity key.
+canonical; the flattened response is not an identity key. Because an access grant
+cannot use the all-absent state, this projection is always non-null as required by the
+v1 contract.
 
 ### InnoDB index budget
 
@@ -174,18 +193,31 @@ contains information the old writer never stored. Legacy payloads are compatibil
 records, not a fourth kind of identity accepted for new writes.
 
 Idempotency-Key replay recorded before the upgrade remains addressable. For a request
-that has an Idempotency-Key, Parse Run creation checks both:
+that has an Idempotency-Key, Parse Run creation performs a pre-insert lookup that
+checks both:
 
 1. the request's canonical structured pair; and
 2. the UTF-8 legacy payload for the exact actor string produced by the old Parse Run
    writer.
 
 An existing legacy match is replayed; a newly created run stores only the canonical
-pair. This intentionally preserves the old writer's comparison domain for already
-recorded operations. If two formerly accepted OIDC pairs produced the same delimited
-legacy string, the old row cannot be disambiguated after the fact and retains its
-pre-upgrade replay behavior. New rows cannot have that collision because their two
-fields are compared separately.
+pair. The lookup must run before the Parse Run is added and before creation mutates
+the Document or Provider configuration concurrency guards. It cannot be deferred to
+the unique-constraint exception path: unique-index entries for legacy rows contain
+null actor parts and therefore do not conflict with a canonical insert on any
+supported database.
+
+The migration requires an exclusive application-version cutover: operators stop all
+old application instances before the replacement columns are migrated, and the new
+application never writes `created_by_legacy`. The set of legacy rows is therefore
+immutable after the cutover, so the pre-insert lookup needs no gap lock or
+serializable transaction. A concurrent new canonical insert is still serialized by
+`ux_parse_runs_idempotency`; its loser catches the unique violation and re-reads the
+canonical row. This intentionally preserves the old writer's comparison domain for
+already recorded operations. If two formerly accepted OIDC pairs produced the same
+delimited legacy string, the old row cannot be disambiguated after the fact and
+retains its pre-upgrade replay behavior. New rows cannot have that collision because
+their two fields are compared separately.
 
 ### Migration ownership and ordering
 
@@ -195,7 +227,9 @@ Issue #35 requires schema migrations for all four databases. Its migration:
    three-field state, and removes `documents.created_by`;
 2. converts Document owner issuer and subject fields to the canonical binary mapping;
 3. adds the three access-grant actor fields, backfills their legacy payload, validates
-   the state, and removes `document_access_grants.created_by`; and
+   that every row has either a canonical pair or a legacy payload, adds the stronger
+   access-grant state constraint, and removes `document_access_grants.created_by`;
+   and
 4. converts access-grant principal issuer and subject fields to the canonical binary
    mapping while preserving the v1 `CreatedBy` response projection described above.
 
@@ -212,8 +246,9 @@ issue #26 in the same migration series. That series performs the following order
 5. remove `parse_runs.created_by` and apply the ordinal `idempotency_key` mapping;
 6. create `ux_parse_runs_idempotency` once over
    `(created_by_issuer, created_by_subject, document_id, idempotency_key)`; and
-7. add the legacy replay helper index and switch creation and replay lookup to
-   canonical-pair-plus-legacy-payload lookup.
+7. add the legacy replay helper index and make the
+   canonical-pair-plus-legacy-payload lookup a pre-insert step, while retaining the
+   unique-violation re-read for concurrent canonical creation.
 
 Thus #35 has its own Document schema change, #36 has a Parse Run schema change, and
 #26 is implemented by #36's one index/collation migration rather than by a second
@@ -285,6 +320,8 @@ enqueue duplicate Provider work.
 - Parse Run replay temporarily needs a second lookup representation for rows created
   before the migration. That compatibility path cannot be removed while such rows
   are retained.
+- Resolving a local-administrator actor after restore requires the matching
+  control-plane backup; API-client resolution remains within the business database.
 - Historical Document rows whose old actor omitted an OIDC issuer remain historical
   strings; the migration cannot recover an issuer that was never stored.
 - MySQL and MariaDB deployments require InnoDB `DYNAMIC` row format with a page size
