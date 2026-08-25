@@ -229,7 +229,22 @@ The image declares `/data` and prepares:
 
 Named volumes inherit the image's non-root ownership. For bind mounts, grant the image `APP_UID` write access in advance; do not switch back to root to bypass permissions.
 
-Backups must include the database, storage, and key ring as one consistent recovery set. Restoring the database without its objects breaks resource references; restoring encrypted Provider data without its key ring makes it unreadable.
+Backups must include the business database, `/data/control.db`, storage, and key ring
+as one consistent recovery set. When the business database is PostgreSQL, MySQL, or
+MariaDB outside `/data`, match its snapshot with `/data/control.db`, `/data/storage`,
+and `/data/keys`. Restoring the business database without its objects breaks resource
+references; restoring encrypted Provider data without its key ring makes it
+unreadable. After the actor transition in
+[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md), restoring a different
+control-plane database also prevents canonical local-administrator audit subjects
+from resolving to accounts even though the stored audit bytes remain intact.
+
+Target upgrade procedure pending #35 and #36: the ADR-0009 actor-replacement
+migrations require an exclusive application-version cutover. Stop every old
+StructaDoc instance before applying that migration set and start only the new version
+after it completes; a rolling mixed-version deployment is not supported for this
+schema change. These replacement migrations do not exist yet, so this note does not
+describe a command available in the current image.
 
 That cuts the other way too, and the service says so at every start: `No XML encryptor configured. Key … may be persisted to storage in unencrypted form.` The key ring under `/data/keys` is written in the clear, because a single container on Linux has nothing to encrypt it with that would not itself have to be stored somewhere — and it is the key that makes stored Provider tokens readable. Anyone holding a copy of `/data` holds those tokens. Treat the directory, and every backup and snapshot of it, as a secret: restrict it to the `APP_UID`, keep backups encrypted, and rotate a Provider credential that was in a copy which left the host. A deployment that needs the key ring itself encrypted at rest needs a master key held outside `/data`, which this image does not yet support.
 

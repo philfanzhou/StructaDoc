@@ -50,8 +50,10 @@ Each accepted ASCII code unit is stored as its one-byte value, including `0x00`.
 255 bytes. This encoding is one-to-one and reversible; it does not rely on a database
 text type being able to represent every accepted subject.
 
-Each affected audit record also has a nullable `created_by_legacy` binary field of at
-most 1024 bytes. Documents and Parse Runs allow exactly one of these states:
+Each affected audit record also has a nullable binary `created_by_legacy` field.
+Documents and Parse Runs allow at most 1024 bytes; access grants allow at most 4096
+bytes so every value admitted by their former `varchar(1024)` schema remains
+representable. Documents and Parse Runs allow exactly one of these states:
 
 - both canonical fields are present and `created_by_legacy` is absent;
 - both canonical fields are absent and `created_by_legacy` is present; or
@@ -123,6 +125,13 @@ canonical; the flattened response is not an identity key. Because an access gran
 cannot use the all-absent state, this projection is always non-null as required by the
 v1 contract.
 
+`DocumentAccessGrantResponse.Issuer` and `Subject` also remain required strings.
+Their canonical bytes are decoded one-for-one to the same-valued ASCII code units;
+this includes a subject byte `0x00`, which the JSON serializer emits as the escaped
+character `\u0000`. The binary persistence change therefore does not narrow or
+nullify either v1 field. Upgrade and endpoint tests must cover these two projections
+as well as `CreatedBy`.
+
 The canonical Document model's optional `createdBy` field remains the logical actor
 audit fact; removing the old scalar database column does not remove that model
 field. New rows represent it with the canonical pair and migrated rows represent it
@@ -148,16 +157,36 @@ on the MySQL and MariaDB mapping is:
 The total is 2013 bytes below InnoDB's 3072-byte limit. That limit requires the
 `DYNAMIC` row format and an InnoDB page size of at least 16 KiB; it is not an
 unconditional InnoDB limit. These settings are part of StructaDoc's MySQL and MariaDB
-support boundary. For application-managed migrations, the implementation must read
-and validate both `innodb_page_size >= 16384` and
-`innodb_default_row_format = DYNAMIC` in the startup migration orchestration after
-creating the business database context but before calling
-`Database.MigrateAsync()`. This preflight runs before any pending business migration,
-including on an empty database; it is not a step inside #36's later migration series.
-An external migration runner must perform the same preflight before applying the
-migration set. The Parse Run migration then explicitly requests
-`ROW_FORMAT=DYNAMIC` and verifies the resulting table row format before it rebuilds
-the index. An unsupported configuration therefore fails before an older 2080-byte
+support boundary. The application-managed migration path first determines whether a
+pending migration creates or rebuilds an index that depends on that boundary. If no
+such migration is pending, startup does not reject a database merely because the
+server's current default row format later changed.
+
+When the configured database does not exist, startup performs the gated preflight
+through a server connection derived from the configured connection string but with
+no default database selected. Database existence is checked on that connection; an
+absent migration-history schema is treated as making the complete migration set
+pending. The preflight validates `innodb_page_size >= 16384` and
+`innodb_default_row_format = DYNAMIC`, then lets `Database.MigrateAsync()` create the
+database and apply its migrations. The preflight must not open the database-qualified
+connection first, which would fail with an unknown-database error before EF Core can
+create an empty database.
+
+When the database exists, the gated preflight validates the global page size and the
+actual `ROW_FORMAT` of every existing table whose index will be created or rebuilt,
+using `information_schema` table metadata. It consults
+`innodb_default_row_format` only for a table that does not exist yet. This prevents a
+`DYNAMIC` default from falsely accepting a restored `COMPACT` table and prevents a
+changed `COMPACT` default from rejecting an already-migrated database when no
+relevant migration remains. The affected replacement migrations explicitly request
+`ROW_FORMAT=DYNAMIC` and verify each resulting table format before recreating its
+indexes.
+
+All of these checks run in startup migration orchestration before the relevant call
+to `Database.MigrateAsync()`; they are not steps inside #35 or #36's later migration
+series. An external migration runner performs the same pending-migration, page-size,
+and actual-table checks before applying the migration set. An unsupported
+configuration therefore fails with an actionable message before an older 2080-byte
 index migration can produce a raw key-too-long database error.
 
 The new 1059-byte index alone would fit the 1536-byte limit of an 8 KiB `DYNAMIC`
@@ -192,10 +221,19 @@ encoded as strict UTF-8 without a byte-order mark and copied into
 OIDC and preserves ASCII control bytes such as NUL in a binary field. Null legacy
 actors remain the all-absent state.
 
-That legacy copy also uses explicit provider conversion: SQLite selects
-`CAST(created_by AS BLOB)`, PostgreSQL uses `convert_to(created_by, 'UTF8')`, and
-MySQL and MariaDB use `CONVERT(created_by USING binary)`. The migration validates the
-encoded byte length before it drops the scalar source column.
+The SQLite migration first asserts `PRAGMA encoding = 'UTF-8'`. Before any destructive
+DDL, it reads each source value's raw `CAST(column_name AS BLOB)` bytes and validates
+them with a strict UTF-8 decoder; owner and principal values additionally must decode
+to their accepted ASCII domains. Only after those checks pass may the SQLite table
+rebuild use `CAST(... AS BLOB)`. A UTF-16 database or malformed UTF-8 value fails
+with an actionable message before any column or index is changed. A length check
+alone is not sufficient.
+
+PostgreSQL uses `convert_to(created_by, 'UTF8')`. MySQL and MariaDB first assert that
+each source column uses `utf8mb4`, then use `CONVERT(created_by USING binary)`. Every
+provider validates the encoded bytes and their length before dropping a scalar source
+column. These preconditions make the resulting compatibility payload strict UTF-8
+rather than merely assuming the database's native text encoding is UTF-8.
 
 The compatibility field covers the actual old writer domains rather than trusting
 unenforced EF Core length metadata:
@@ -203,13 +241,16 @@ unenforced EF Core length metadata:
 - the Document writer can persist 255 .NET characters, including non-ASCII values;
   valid Unicode of that length needs at most 765 UTF-8 bytes;
 - the Parse Run and access-grant writers can emit
-  `oidc:` + 512 issuer bytes + `|` + 255 subject bytes, or 773 UTF-8 bytes; and
+  `oidc:` + 512 issuer bytes + `|` + 255 subject bytes, or 773 UTF-8 bytes;
+- the former access-grant `varchar(1024)` schema on server databases admits as many
+  as 4096 UTF-8 bytes even though the application writer emits less; and
 - administrator and API-client forms are shorter.
 
-The 1024-byte compatibility field therefore preserves every application-produced old
-value. A migration fails with an actionable error only for an invalid Unicode value
-or a value beyond these old writer domains, which indicates manual or out-of-band
-data rather than treating a valid deployment as corrupt.
+The 1024-byte Document and Parse Run fields and 4096-byte access-grant field therefore
+preserve both the application-produced values and the full declared server-side
+access-grant domain. A migration fails with an actionable error only for invalid
+Unicode, an unsupported SQLite database encoding, or a value beyond the applicable
+former column domain.
 
 This preserves the exact historical audit text for operators without pretending it
 contains information the old writer never stored. Legacy payloads are compatibility
@@ -221,7 +262,8 @@ ASCII code unit becomes the same-valued byte. The migration must not rely on a
 literal provider-generated in-place `AlterColumn` for this text-to-binary change. It
 uses provider-specific conversion while copying or rebuilding the columns:
 
-- SQLite table rebuilds select each value with an explicit
+- after the SQLite encoding and strict byte validation above, its table rebuilds
+  select each value with an explicit
   `CAST(owner_issuer AS BLOB)` / `CAST(owner_subject AS BLOB)` (and the equivalent
   principal expressions), so the rebuilt columns contain the BLOB storage class
   rather than TEXT values in BLOB-affinity columns;
@@ -230,10 +272,19 @@ uses provider-specific conversion while copying or rebuilding the columns:
 - MySQL and MariaDB copy through `CONVERT(column_name USING binary)` into replacement
   `varbinary` columns before swapping them into place.
 
+Before converting an indexed pair, every provider migration drops the complete
+dependent index: `ix_documents_owner_created_at` for the Document owner pair and
+`ux_document_access_grants_principal` for the grant principal pair. After both binary
+columns are in place, it recreates the index with exactly its former column order and
+uniqueness. It never lets a provider implicitly remove one converted column from a
+still-named index.
+
 Each provider migration validates the maximum byte lengths and the pair-nullability
 invariants before dropping the text columns. Upgrade contract tests must seed
 pre-migration owner and grantee identities, migrate them, assert their raw binary
-bytes and storage types, and prove the same principals still pass authorization.
+bytes and storage types, inspect the recreated index definitions, and prove the same
+principals still pass authorization. The unique-grant test includes two issuers with
+the same subject on one Document so an accidentally shortened unique index is caught.
 
 Idempotency-Key replay recorded before the upgrade remains addressable. For a request
 that has an Idempotency-Key, Parse Run creation performs a pre-insert lookup that
@@ -256,33 +307,49 @@ application never writes `created_by_legacy`. The set of legacy rows is therefor
 immutable after the cutover, so the pre-insert lookup needs no gap lock or
 serializable transaction. A concurrent new canonical insert is still serialized by
 `ux_parse_runs_idempotency`; its loser catches the unique violation and re-reads the
-canonical row. This intentionally preserves the old writer's comparison domain for
-already recorded operations. If two formerly accepted OIDC pairs produced the same
-delimited legacy string, the old row cannot be disambiguated after the fact and
-retains its pre-upgrade replay behavior. New rows cannot have that collision because
-their two fields are compared separately.
+canonical row.
+
+Legacy replay is byte-exact after the upgrade. In particular, MySQL and MariaDB rows
+created under a case- or accent-insensitive table collation no longer replay when a
+later request changes the case or accents of the actor display string or changes the
+case of the Idempotency-Key. The same bytes still replay, but aliases that only the
+former collation treated as equal can create a new Parse Run. This is an intentional
+compatibility narrowing that restores the already documented ordinal identity and
+visible-ASCII Idempotency-Key contracts; the migration does not claim to emulate an
+arbitrary historical database collation. If two formerly accepted OIDC pairs
+produced the same delimited legacy string, an exact legacy match still cannot be
+disambiguated after the fact. New rows cannot have that collision because their two
+fields are compared separately.
 
 ### Migration ownership and ordering
 
 Issue #35 requires schema migrations for all four databases. Its migration:
 
-1. adds the three Document actor fields, backfills the legacy payload, validates the
+1. performs the SQLite encoding/strict-value preflight where applicable, adds the
+   three Document actor fields, backfills the legacy payload, validates the
    three-field state, and removes `documents.created_by`;
-2. converts Document owner issuer and subject fields to the canonical binary mapping;
+2. drops `ix_documents_owner_created_at`, makes and verifies the Document table
+   `DYNAMIC` on MySQL and MariaDB, converts Document owner issuer and subject fields
+   to the canonical binary mapping, and recreates the complete non-unique index over
+   `(owner_issuer, owner_subject, created_at_utc)`;
 3. adds the three access-grant actor fields, backfills their legacy payload, validates
    that every row has either a canonical pair or a legacy payload, adds the stronger
    access-grant state constraint, and removes `document_access_grants.created_by`;
    and
-4. converts access-grant principal issuer and subject fields to the canonical binary
-   mapping while preserving the v1 `CreatedBy` response projection described above.
+4. drops `ux_document_access_grants_principal`, makes and verifies the access-grant
+   table `DYNAMIC` on MySQL and MariaDB, converts its principal issuer and subject
+   fields to the canonical binary mapping, recreates the complete unique index over
+   `(document_id, principal_issuer, principal_subject)`, and preserves all three
+   required v1 string projections described above.
 
 Document ingestion and access-grant creation then write only canonical actor pairs.
 
 Issue #36 also requires schema migrations for all four databases and must deliver
 issue #26 in the same migration series. That series performs the following order:
 
-1. after the separate pre-`Database.MigrateAsync()` InnoDB server preflight, make the
-   Parse Run table `DYNAMIC` on MySQL and MariaDB and verify its row format;
+1. after the separate gated pre-`Database.MigrateAsync()` InnoDB preflight (and the
+   SQLite encoding/strict-value preflight where applicable), make the Parse Run table
+   `DYNAMIC` on MySQL and MariaDB and verify its row format;
 2. add the three Parse Run actor fields with the binary mappings above;
 3. backfill and validate the legacy payload state;
 4. drop `ux_parse_runs_idempotency` once;
@@ -295,7 +362,8 @@ issue #26 in the same migration series. That series performs the following order
 
 Issue #36 also owns the application-startup InnoDB preflight described above, because
 placing it inside this migration series is too late for an empty database that must
-first apply the older 2080-byte index migration.
+first apply the older 2080-byte index migration. The preflight covers the related
+#35 index rebuilds as well as #36 and the older index-creating migrations.
 
 Thus #35 has its own Document schema change, #36 has a Parse Run schema change, and
 #26 is implemented by #36's one index/collation migration rather than by a second
@@ -352,9 +420,10 @@ enqueue duplicate Provider work.
 - Audit rows remain reversibly readable through the defined ASCII decoding, and exact
   identity equality is not reduced to a hash-collision assumption.
 - OIDC issuer and subject are no longer flattened into an ambiguous string.
-- Legacy audit text, including old non-ASCII Document actors and 773-character SQLite
-  Parse Run actors, and Idempotency-Key replay remain available without inventing
-  missing identity information.
+- Legacy audit text, including old non-ASCII Document actors, 773-character SQLite
+  Parse Run actors, and the full former 4096-byte server-side access-grant domain,
+  remains available without inventing missing identity information; exact
+  Idempotency-Key replay remains available too.
 - Access-grant actor auditing uses the same representation without breaking its v1
   `CreatedBy` field.
 - #26 and #36 have one explicit index rebuild and one collation contract.
@@ -367,9 +436,13 @@ enqueue duplicate Provider work.
 - Parse Run replay temporarily needs a second lookup representation for rows created
   before the migration. That compatibility path cannot be removed while such rows
   are retained.
+- Legacy replay is exact after the migration; case- or accent-insensitive aliases
+  that matched only because of a former MySQL or MariaDB collation are not preserved.
 - Resolving a local-administrator actor after restore requires the matching
   control-plane backup; API-client resolution remains within the business database.
 - Historical Document rows whose old actor omitted an OIDC issuer remain historical
   strings; the migration cannot recover an issuer that was never stored.
 - MySQL and MariaDB deployments require InnoDB `DYNAMIC` row format with a page size
   of at least 16 KiB.
+- SQLite actor-replacement migrations require a UTF-8 database and fail before
+  mutation for another database encoding or malformed UTF-8 source text.

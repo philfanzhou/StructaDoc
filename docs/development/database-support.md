@@ -30,15 +30,32 @@ and the cross-reference in
 [ADR-0004](../adr/0004-relational-database-portability.md). See the upstream [MySQL row-format
 limits](https://dev.mysql.com/doc/refman/8.4/en/innodb-row-format.html) and [MariaDB
 InnoDB limitations](https://mariadb.com/docs/server/server-usage/storage-engines/innodb/innodb-limitations).
-Target behavior pending #36: the application-managed migration path will validate
-`innodb_page_size >= 16384` and `innodb_default_row_format = DYNAMIC` before its call
-to `Database.MigrateAsync()`, including for an empty database. The later Parse Run
-migration will explicitly request `ROW_FORMAT=DYNAMIC` and verify the resulting row
-format before rebuilding its idempotency index. This preflight and row-format
-validation are required by
+Target behavior pending #36: the application-managed migration path will perform this
+preflight only when a pending migration creates or rebuilds an index that depends on
+the larger InnoDB key limit. For an absent database it will use a server connection
+with no default database selected to validate `innodb_page_size >= 16384` and
+`innodb_default_row_format = DYNAMIC` before EF Core creates the database. For an
+existing database it will validate the global page size and the actual `ROW_FORMAT`
+of each affected existing table from `information_schema`, consulting the server
+default only for a table that does not exist yet. With no relevant pending migration,
+a later change to the server default will not block an already-migrated deployment.
+The replacement migrations will explicitly request `ROW_FORMAT=DYNAMIC` and verify
+the resulting table formats before rebuilding their indexes. This preflight and
+row-format validation are required by
 [ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) but are not implemented
 yet. At present an unsupported server can instead fail in an existing migration with
 the database's raw key-too-long error.
+
+### SQLite encoding requirement
+
+SQLite actor-identity replacement is also target behavior pending #35 and #36. Those
+migrations will require `PRAGMA encoding = 'UTF-8'` and strictly validate the raw
+UTF-8 bytes of every affected text value before destructive DDL. A restored UTF-16
+database or malformed text will fail with an actionable error rather than copying
+bytes that the new binary identity mapping cannot compare. Current StructaDoc-created
+SQLite databases use SQLite's UTF-8 default; the replacement migrations and their
+preflight do not exist yet. See SQLite's
+[`PRAGMA encoding`](https://www.sqlite.org/pragma.html#pragma_encoding) contract.
 
 ## Provider Choice
 
