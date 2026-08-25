@@ -2,7 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-08-05
-- Amended by: [ADR-0009](./0009-canonical-persisted-actor-identity.md)
+- Superseded in part by:
+  [ADR-0009](./0009-canonical-persisted-actor-identity.md)
 
 ## Context
 

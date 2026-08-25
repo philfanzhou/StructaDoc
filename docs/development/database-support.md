@@ -23,16 +23,22 @@ MySQL and MariaDB retain separate migrations and tests even though they use one 
 The StructaDoc business database requires InnoDB's `DYNAMIC` row format and
 `innodb_page_size` of at least 16 KiB on MySQL and MariaDB. Index-key limits are lower
 with smaller pages or `COMPACT`/`REDUNDANT` rows, so those configurations are outside
-the supported boundary. This qualification amends ADR-0004's general database
-portability decision; see [ADR-0009](../adr/0009-canonical-persisted-actor-identity.md)
+the supported boundary. This qualification supersedes part of ADR-0004's general
+database portability decision; see
+[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md)
 and the cross-reference in
 [ADR-0004](../adr/0004-relational-database-portability.md). See the upstream [MySQL row-format
 limits](https://dev.mysql.com/doc/refman/8.4/en/innodb-row-format.html) and [MariaDB
 InnoDB limitations](https://mariadb.com/docs/server/server-usage/storage-engines/innodb/innodb-limitations).
-The canonical actor-identity migration defined by
-[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) will validate the page
-size before applying business migrations, request `ROW_FORMAT=DYNAMIC` for Parse
-Runs, and verify the resulting row format before rebuilding its idempotency index.
+Target behavior pending #36: the application-managed migration path will validate
+`innodb_page_size >= 16384` and `innodb_default_row_format = DYNAMIC` before its call
+to `Database.MigrateAsync()`, including for an empty database. The later Parse Run
+migration will explicitly request `ROW_FORMAT=DYNAMIC` and verify the resulting row
+format before rebuilding its idempotency index. This preflight and row-format
+validation are required by
+[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) but are not implemented
+yet. At present an unsupported server can instead fail in an existing migration with
+the database's raw key-too-long error.
 
 ## Provider Choice
 
@@ -94,13 +100,15 @@ dotnet tool restore
 
 Every shared model change requires a generated and reviewed migration in all four migration projects. Design-time factories exist only for generation; their placeholder connection strings are not runtime credentials.
 
-The actor-identity replacement migrations defined by
-[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) require an exclusive
-application-version cutover. Stop every old StructaDoc instance before applying
-those migrations and start only the new version after they complete. This prevents
-an old writer from creating a legacy actor row after the new pre-insert replay path
-has established that the migrated legacy set is immutable; a rolling mixed-version
-deployment is not supported for this schema change.
+Target procedure pending #35 and #36: the actor-identity replacement migrations
+defined by
+[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) will require an
+exclusive application-version cutover. Operators will have to stop every old
+StructaDoc instance before applying those migrations and start only the new version
+after they complete. This prevents an old writer from creating a legacy actor row
+after the new pre-insert replay path has established that the migrated legacy set is
+immutable; a rolling mixed-version deployment will not be supported for this schema
+change. Those replacement migrations do not exist yet.
 
 ## Contract Tests
 

@@ -2,7 +2,9 @@
 
 - Status: Implemented specification
 - Version: 1.0-draft
-- Last updated: 2026-08-20
+- Last updated: 2026-08-25
+- Pending transition: ADR-0009 actor persistence is target behavior until #35 is
+  implemented
 
 ## 1. Purpose
 
@@ -66,7 +68,7 @@ A Document represents the immutable original managed by StructaDoc.
 | `sizeBytes` | Yes | Original bytes |
 | `sha256` | Yes | Lowercase original-content hash |
 | `storageRef` | Internal | Storage reference excluded from public APIs |
-| `createdBy` | No | Opaque uploader/API-client fact |
+| `createdBy` | No | Internal actor audit fact; target persistence under [ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) uses a canonical `(issuer, subject)` pair for new rows and an exact opaque payload for migrated rows |
 | `owner` | No | External owner identified by `(issuer, subject)` |
 | `createdAt` | Yes | Creation time |
 
@@ -79,6 +81,9 @@ A Document represents the immutable original managed by StructaDoc.
   stable ID unless a future version defines an explicit contract for them.
 - Physical content deduplication, if introduced, does not merge distinct Document resources.
 - Deletion-pending Documents are unavailable to ordinary reads.
+- `createdBy` is not exposed by the current `/api/v1` `DocumentResponse`; its
+  canonical pair and legacy compatibility payload are persistence details, not
+  public storage fields.
 
 ## 6. Parse Run
 

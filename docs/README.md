@@ -23,7 +23,7 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | [ADR-0006](./adr/0006-user-workspace-and-oidc.md) | Accepted | Provide a user workspace, generic OIDC, and resource-level authorization |
 | [ADR-0007](./adr/0007-resource-lifecycle-and-cleanup.md) | Accepted | Use ownership, explicit sharing, and durable resource cleanup |
 | [ADR-0008](./adr/0008-api-client-resource-isolation.md) | Accepted | Bound API clients by ownership and grants rather than trusting them across the workspace |
-| [ADR-0009](./adr/0009-canonical-persisted-actor-identity.md) | Accepted | Persist actor identities as structured, ordinal issuer/subject pairs |
+| [ADR-0009](./adr/0009-canonical-persisted-actor-identity.md) | Accepted | Persist actor identities as structured pairs; supersede parts of ADR-0004 and ADR-0008 |
 
 ## Specifications
 

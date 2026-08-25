@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-08-19
 - Supersedes in part: [ADR-0005](./0005-authentication-and-api-clients.md), [ADR-0006](./0006-user-workspace-and-oidc.md), [ADR-0007](./0007-resource-lifecycle-and-cleanup.md)
+- Superseded in part by:
+  [ADR-0009](./0009-canonical-persisted-actor-identity.md)
 
 ## Context
 
@@ -28,7 +30,13 @@ An API client is a principal in the workspace, not a service with administrative
 - Administrators are unchanged and still reach every resource. A Document uploaded by an administrator stays unowned, because an administrator is not a workspace principal and needs no ownership to reach it.
 - Scopes are unchanged and still gate endpoints. A scope now answers which verbs, and ownership answers which resources; neither substitutes for the other.
 
-Existing Documents are attributed rather than orphaned. `created_by` already records which client uploaded each one, so a migration recovers ownership from it in all four supported databases.
+Existing Documents were attributed rather than orphaned. At the time this decision
+was implemented, the scalar `created_by` column recorded which API client uploaded a
+Document, so the migration recovered ownership from it in all four supported
+databases. ADR-0009 later replaces that audit representation with a canonical actor
+pair or legacy compatibility payload and adds `structadoc:administrator` as another
+reserved persisted-actor issuer. It does not change the owner attribution already
+performed by this decision.
 
 ## Consequences
 
