@@ -101,10 +101,11 @@ These types compare the persisted bytes directly and can represent every accepte
 subject, including NUL. They need no character set or collation.
 
 The client-supplied `idempotency_key` remains limited to one to 256 visible ASCII
-characters (`0x21` through `0x7e`) and also compares ordinally: `BINARY` on SQLite,
-`C` on PostgreSQL, and the `ascii` character set with `ascii_bin` collation on MySQL
-and MariaDB. This preserves the existing public API and persistence contracts; this
-ADR does not broaden the accepted Idempotency-Key input.
+characters (`0x21` through `0x7e`). As part of this transition it also begins
+comparing ordinally: `BINARY` on SQLite, `C` on PostgreSQL, and the `ascii` character
+set with `ascii_bin` collation on MySQL and MariaDB. This preserves the existing
+public API input contract while establishing the documented ordinal persistence
+contract; this ADR does not broaden the accepted Idempotency-Key input.
 
 Operators and application code decode each canonical byte as the same-valued ASCII
 code unit. API-client subjects resolve through `api_clients` in the business
