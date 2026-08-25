@@ -166,7 +166,7 @@ server's current default row format later changed.
 When the configured database does not exist, startup performs the gated preflight
 through a server connection derived from the configured connection string but with
 no default database selected. Database existence is checked on that connection; an
-absent migration-history schema is treated as making the complete migration set
+absent migration history table is treated as making the complete migration set
 pending. The preflight validates `innodb_page_size >= 16384` and
 `innodb_default_row_format = DYNAMIC`, then lets `Database.MigrateAsync()` create the
 database and apply its migrations. The preflight must not open the database-qualified
