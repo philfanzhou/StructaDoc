@@ -1,7 +1,7 @@
 # Database Support
 
 - Status: Implementation note
-- Last updated: 2026-08-10
+- Last updated: 2026-08-25
 
 ## Purpose
 
@@ -17,6 +17,19 @@ This document records the implementation of [ADR-0004](../adr/0004-relational-da
 | MariaDB 11.4 | `Microting.EntityFrameworkCore.MySql` | `StructaDoc.Migrations.MariaDb` | Independent real Testcontainers contract passes in GitHub Actions |
 
 MySQL and MariaDB retain separate migrations and tests even though they use one EF Core Provider package.
+
+### InnoDB storage requirements
+
+The StructaDoc business database requires InnoDB's `DYNAMIC` row format and
+`innodb_page_size` of at least 16 KiB on MySQL and MariaDB. Index-key limits are lower
+with smaller pages or `COMPACT`/`REDUNDANT` rows, so those configurations are outside
+the supported boundary. See the upstream [MySQL row-format
+limits](https://dev.mysql.com/doc/refman/8.4/en/innodb-row-format.html) and [MariaDB
+InnoDB limitations](https://mariadb.com/docs/server/server-usage/storage-engines/innodb/innodb-limitations).
+The canonical actor-identity migration defined by
+[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) will validate the page
+size before applying business migrations, request `ROW_FORMAT=DYNAMIC` for Parse
+Runs, and verify the resulting row format before rebuilding its idempotency index.
 
 ## Provider Choice
 
