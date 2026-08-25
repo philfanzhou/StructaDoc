@@ -27,9 +27,30 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
             }
         }
 
+        var parseRunId = Guid.NewGuid();
         var executionStrategy = dbContext.Database.CreateExecutionStrategy();
         return await executionStrategy.ExecuteAsync(async () =>
         {
+            // A retry can mean the transaction committed but its acknowledgement was lost. The
+            // operation ID is stable across every invocation of this delegate, so durable state
+            // settles that unknown outcome before any concurrency guards are advanced again.
+            var committedRun = await GetAsync(parseRunId, cancellationToken);
+            if (committedRun is not null)
+            {
+                return new ParseRunCreationResult(
+                    ParseRunCreationStatus.Created,
+                    committedRun);
+            }
+
+            // A failed attempt can leave its uncommitted entity tracked even though the database
+            // transaction rolled back. Detach only this operation's entity before rebuilding it.
+            var trackedRun = dbContext.ChangeTracker.Entries<ParseRunEntity>()
+                .SingleOrDefault(entry => entry.Entity.Id == parseRunId);
+            if (trackedRun is not null)
+            {
+                trackedRun.State = EntityState.Detached;
+            }
+
             await using var transaction = await dbContext.Database.BeginTransactionAsync(
                 cancellationToken);
 
@@ -114,7 +135,7 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
 
             var entity = new ParseRunEntity
             {
-                Id = Guid.NewGuid(),
+                Id = parseRunId,
                 DocumentId = document.Id,
                 Status = ParseRunStatuses.Queued,
                 ProviderType = config.ProviderType,
