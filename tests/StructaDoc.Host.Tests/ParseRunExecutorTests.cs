@@ -1,13 +1,17 @@
+using System.Collections.Concurrent;
 using System.IO.Compression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using StructaDoc.Application.Canonical;
 using StructaDoc.Application.Conversion;
 using StructaDoc.Application.ParseRuns;
+using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Workers;
+using StructaDoc.Adapters.Storage;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Adapters.Persistence.ParseRuns;
@@ -127,12 +131,63 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         Assert.True(provider.StatusCount > 1);
     }
 
+    [Fact]
+    public async Task Large_pdf_orchestrator_segments_and_merges_a_real_multi_page_pdf()
+    {
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+        var storageOperations = new ConcurrentQueue<FileStorageOperation>();
+
+        var result = await ExecuteAsync(
+            provider,
+            workerSettings: new Dictionary<string, string>
+            {
+                ["Worker:HeartbeatInterval"] = "00:00:20",
+            },
+            largePdfPageCount: 5,
+            configureServices: services =>
+            {
+                services.RemoveAll<IFileStorage>();
+                services.AddSingleton<IFileStorage>(serviceProvider =>
+                    new CallbackFileStorage(
+                        new LocalFileStorage(
+                            serviceProvider.GetRequiredService<FileStorageOptions>()),
+                        storageOperations.Enqueue));
+            });
+
+        var bundle = Assert.IsType<ParseBundle>(result.MergedBundle);
+        Assert.Equal(result.ParseRunId, bundle.ParseRunId);
+        Assert.Equal(3, provider.SubmitCount);
+        Assert.Equal(3, provider.StatusCount);
+        Assert.Equal(3, provider.ResultCount);
+        Assert.Collection(
+            result.Segments,
+            segment => Assert.Equal(new SegmentResult(0, 1, 2, "normalized"), segment),
+            segment => Assert.Equal(new SegmentResult(1, 3, 4, "normalized"), segment),
+            segment => Assert.Equal(new SegmentResult(2, 5, 5, "normalized"), segment));
+        Assert.Equal(
+            3,
+            bundle.Artifacts.Count(artifact => artifact.Type == ArtifactTypes.SourceSegment));
+        Assert.Single(bundle.Artifacts, artifact => artifact.Type == ArtifactTypes.Markdown);
+        Assert.Equal(
+            3,
+            storageOperations.Count(operation =>
+                operation.Kind == FileStorageOperationKind.Write
+                && operation.StorageRef.Contains("/segments/", StringComparison.Ordinal)));
+        Assert.Contains(
+            storageOperations,
+            operation => operation.Kind == FileStorageOperationKind.Write
+                && operation.StorageRef ==
+                    $"parse-runs/{result.ParseRunId:N}/artifacts/document.md");
+    }
+
     private async Task<ExecutionResult> ExecuteAsync(
         TestParseProvider provider,
         string sourceMediaType = "application/pdf",
         IDocumentConverter? converter = null,
         bool seedConversion = false,
-        IReadOnlyDictionary<string, string>? workerSettings = null)
+        IReadOnlyDictionary<string, string>? workerSettings = null,
+        int? largePdfPageCount = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         using var application = factory.WithWebHostBuilder(builder =>
         {
@@ -150,6 +205,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                     services.RemoveAll<IDocumentConverter>();
                     services.AddSingleton(converter);
                 }
+
+                configureServices?.Invoke(services);
             });
         });
         using var client = application.CreateClient();
@@ -157,14 +214,17 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         var sourceExtension = sourceMediaType == "application/pdf" ? ".pdf" : ".xlsx";
         var sourceStorageRef = $"documents/{parseRunId:N}/source{sourceExtension}";
         var sourceBytes = sourceMediaType == "application/pdf"
-            ? "%PDF-1.7\nexecutor-test"u8.ToArray()
+            ? largePdfPageCount.HasValue
+                ? PdfTestDocument.Create(largePdfPageCount.Value)
+                : "%PDF-1.7\nexecutor-test"u8.ToArray()
             : "executor-spreadsheet-test"u8.ToArray();
+        StoredFile storedSource;
 
         await using (var scope = application.Services.CreateAsyncScope())
         {
             var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
             await using var source = new MemoryStream(sourceBytes, writable: false);
-            var storedSource = await storage.WriteAsync(
+            storedSource = await storage.WriteAsync(
                 sourceStorageRef,
                 source,
                 sourceBytes.Length);
@@ -244,6 +304,7 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             await dbContext.SaveChangesAsync();
         }
 
+        ParseBundle? mergedBundle = null;
         await using (var scope = application.Services.CreateAsyncScope())
         {
             var nowUtc = DateTime.UtcNow;
@@ -252,9 +313,46 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 $"executor-test-{parseRunId:N}",
                 nowUtc,
                 TimeSpan.FromMinutes(2)));
-            await scope.ServiceProvider.GetRequiredService<ParseRunExecutor>().ExecuteAsync(
-                lease,
-                alreadyRunning: false);
+            if (largePdfPageCount.HasValue)
+            {
+                await using var session = scope.ServiceProvider
+                    .GetRequiredService<ParseRunLeaseHeartbeat>()
+                    .StartSession(lease, TestContext.Current.CancellationToken);
+                Assert.NotNull(await session.TryStartAsync(
+                    ParseRunStages.Validating,
+                    TestContext.Current.CancellationToken));
+                var context = Assert.IsType<ParseRunExecutionContext>(
+                    await session.LoadExecutionContextAsync(
+                        TestContext.Current.CancellationToken));
+                var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
+                var source = new ProviderDocumentSource(
+                    $"executor-test{sourceExtension}",
+                    sourceMediaType,
+                    storedSource.SizeBytes,
+                    token => storage.OpenReadAsync(storedSource.StorageRef, token));
+                var capabilities = await provider.GetCapabilitiesAsync(
+                    context.ProviderConfiguration,
+                    TestContext.Current.CancellationToken);
+                var normalizer = scope.ServiceProvider
+                    .GetServices<IProviderResultNormalizer>()
+                    .Single(candidate => candidate.Supports(provider.ProviderType));
+                mergedBundle = await scope.ServiceProvider
+                    .GetRequiredService<LargePdfParseOrchestrator>()
+                    .ExecuteAsync(
+                        session,
+                        context,
+                        source,
+                        capabilities,
+                        provider,
+                        normalizer,
+                        TestContext.Current.CancellationToken);
+            }
+            else
+            {
+                await scope.ServiceProvider.GetRequiredService<ParseRunExecutor>().ExecuteAsync(
+                    lease,
+                    alreadyRunning: false);
+            }
         }
 
         await using (var scope = application.Services.CreateAsyncScope())
@@ -268,7 +366,18 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             var hasConversionArtifact = await dbContext.ParseArtifacts.AnyAsync(
                 artifact => artifact.ParseRunId == parseRunId
                     && artifact.Type == "normalized-pdf");
+            var segments = await dbContext.ParseSegments
+                .AsNoTracking()
+                .Where(segment => segment.ParseRunId == parseRunId)
+                .OrderBy(segment => segment.Index)
+                .Select(segment => new SegmentResult(
+                    segment.Index,
+                    segment.StartPage,
+                    segment.EndPage,
+                    segment.Status))
+                .ToListAsync();
             return new ExecutionResult(
+                parseRunId,
                 run.Status,
                 run.ErrorCode,
                 run.ExternalTaskId,
@@ -277,14 +386,17 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 run.SubmittedMediaType,
                 run.ConversionJson,
                 artifactCount,
-                hasConversionArtifact);
+                hasConversionArtifact,
+                segments,
+                mergedBundle);
         }
     }
 
     private sealed class TestParseProvider(
         bool failSubmission,
         bool useCheckpoint = false,
-        bool stayRunning = false) : IParseProvider
+        bool stayRunning = false,
+        int? maxPages = null) : IParseProvider
     {
         public string ProviderType => useCheckpoint
             ? ProviderTypes.MinerUCloud
@@ -307,7 +419,7 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             CancellationToken cancellationToken = default) => Task.FromResult(new ProviderCapabilities(
                 ["application/pdf"],
                 maxFileBytes: 1024 * 1024,
-                maxPages: null,
+                maxPages,
                 supportsCancellation: false));
 
         public Task<ProviderSubmissionCheckpoint?> PrepareSubmissionAsync(
@@ -425,6 +537,7 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
     }
 
     private sealed record ExecutionResult(
+        Guid ParseRunId,
         string Status,
         string? ErrorCode,
         string? ExternalTaskId,
@@ -433,5 +546,13 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         string SubmittedMediaType,
         string? ConversionJson,
         int ArtifactCount,
-        bool HasConversionArtifact);
+        bool HasConversionArtifact,
+        IReadOnlyList<SegmentResult> Segments,
+        ParseBundle? MergedBundle);
+
+    private sealed record SegmentResult(
+        int Index,
+        int StartPage,
+        int EndPage,
+        string Status);
 }
