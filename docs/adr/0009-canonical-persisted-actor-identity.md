@@ -64,10 +64,11 @@ must enforce the same comparison:
 - PostgreSQL uses the built-in `C` collation;
 - MySQL and MariaDB use the `ascii` character set with `ascii_bin` collation.
 
-The client-supplied `idempotency_key` remains Unicode-capable and also compares
-ordinally: `BINARY` on SQLite, `C` on PostgreSQL, and `utf8mb4_bin` on MySQL and
-MariaDB. It must not be changed to `ascii_bin` because its accepted input is not
-restricted to ASCII.
+The client-supplied `idempotency_key` remains limited to one to 256 visible ASCII
+characters (`0x21` through `0x7e`) and also compares ordinally: `BINARY` on SQLite,
+`C` on PostgreSQL, and the `ascii` character set with `ascii_bin` collation on MySQL
+and MariaDB. This preserves the existing public API and persistence contracts; this
+ADR does not broaden the accepted Idempotency-Key input.
 
 Operators can read a new actor directly from the two columns. API-client and
 administrator subjects resolve through their respective control-plane records.
@@ -85,10 +86,10 @@ MySQL and MariaDB mapping is:
 | `created_by_issuer` | 512 ASCII characters | 512 |
 | `created_by_subject` | 255 ASCII characters | 255 |
 | `document_id` | `char(36)` ASCII UUID | 36 |
-| `idempotency_key` | 256 `utf8mb4` characters, 4 bytes each | 1024 |
-| **Total** | | **1827** |
+| `idempotency_key` | 256 ASCII characters | 256 |
+| **Total** | | **1059** |
 
-The total is 1245 bytes below InnoDB's 3072-byte limit. It uses the widest current
+The total is 2013 bytes below InnoDB's 3072-byte limit. It uses the widest current
 UUID mapping rather than assuming a future 16-byte binary UUID. Therefore every
 identity accepted by `ExternalIdentityConstraints` fits the index on MySQL and
 MariaDB. SQLite and PostgreSQL do not impose the InnoDB key limit, and use the same
@@ -158,7 +159,7 @@ index rebuild.
 The evaluated form was a 32-byte SHA-256 digest of a version byte, a four-byte
 big-endian issuer length, the exact issuer ASCII bytes, a four-byte big-endian
 subject length, and the exact subject ASCII bytes. It would use ordinal binary
-comparison and reduce the current InnoDB index budget to `32 + 36 + 1024 = 1092`
+comparison and reduce the current InnoDB index budget to `32 + 36 + 256 = 324`
 bytes. Its collision semantics would be probabilistic, with a second-preimage chance
 bounded by SHA-256 rather than impossible by representation.
 
