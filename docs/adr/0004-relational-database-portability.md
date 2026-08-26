@@ -2,6 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-08-05
+- Superseded in part by:
+  [ADR-0009](./0009-canonical-persisted-actor-identity.md)
 
 ## Context
 
@@ -19,6 +21,10 @@ The database stores ordinary business data and is also the authoritative Parse R
 - **MariaDB:** an independent target, not an assumption based on MySQL compatibility.
 
 Only database versions exercised by contract tests are declared supported.
+MySQL and MariaDB support additionally requires the InnoDB row-format, page-size,
+and migration preflight conditions defined by
+[ADR-0009](./0009-canonical-persisted-actor-identity.md). Existing server deployments
+can be reused only when they meet those storage requirements.
 
 ### 2. Code boundary
 
@@ -74,7 +80,8 @@ SQLite tests use temporary file databases rather than `:memory:` when file locki
 ### Positive
 
 - Small deployments need only one application container and volume.
-- Operators can reuse existing PostgreSQL, MySQL, or MariaDB deployments.
+- Operators can reuse existing PostgreSQL deployments and MySQL or MariaDB
+  deployments that meet the declared InnoDB storage requirements.
 - Domain and public contracts do not depend on one database.
 - “Supported” includes reliable job behavior, not only CRUD.
 

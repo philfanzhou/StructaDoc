@@ -1,7 +1,7 @@
 # Authentication
 
 - Status: Implementation note
-- Last updated: 2026-08-08
+- Last updated: 2026-08-25
 
 ## Current Boundary
 
@@ -87,7 +87,16 @@ Two rules protect against locking a deployment out of itself:
 
 Sequentially the first rule already covers the second: the only active administrator is always the caller. The second exists for the case the first cannot cover, two administrators removing each other at the same time, and is enforced by the condition travelling into the `UPDATE` or `DELETE` statement rather than being read first. Disabling takes effect on the account's next request, because cookie validation rejects an inactive account.
 
-Deleting is irreversible and drops the account's history, while disabling keeps it and can be undone. `created_by` values recorded in the business database are plain strings, so deleting an account does not remove what it created; it removes the ability to resolve who that was.
+Deleting is irreversible and drops the account's history, while disabling keeps it
+and can be undone. Today the business database's `created_by` audit values are plain
+strings, so deleting an account does not remove those values; it removes the ability
+to resolve who the actor was. Target behavior pending #35 and #36 replaces those
+strings with the binary canonical pair or an opaque legacy payload defined by
+[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md). The stored bytes still
+survive account deletion, but resolving a canonical local-administrator subject then
+requires its matching `admin_users` row in the control-plane database. The business
+and control-plane databases must therefore be restored as a matched set when that
+audit resolution matters.
 
 ## Local Administrator Session Flow
 
@@ -154,7 +163,13 @@ A grant may name an API client, so `POST /api/v1/documents/{id}/access-grants` a
 
 A resource outside the caller's boundary answers `404`, not `403`, so holding a key does not confirm which resource IDs exist.
 
-Upgrading attributes existing Documents rather than orphaning them. `created_by` already records which client uploaded each one, and the `AttributeApiClientDocumentOwnership` migration recovers ownership from it in all four supported databases. Documents uploaded by an administrator stay unowned and remain administrator-only, which is what they already were.
+The implemented ownership upgrade attributed existing Documents rather than
+orphaning them. At that point the scalar `created_by` audit value recorded which
+client uploaded each Document, and the `AttributeApiClientDocumentOwnership`
+migration recovered ownership from it in all four supported databases. Target
+behavior pending #35 replaces that audit column under ADR-0009 but does not change
+the already-recovered owner pair. Documents uploaded by an administrator stay
+unowned and remain administrator-only, which is what they already were.
 
 ## Data Protection
 
