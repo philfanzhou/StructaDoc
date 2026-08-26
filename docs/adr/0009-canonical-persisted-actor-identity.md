@@ -130,8 +130,7 @@ v1 contract.
 Their canonical bytes are decoded one-for-one to the same-valued ASCII code units;
 this includes a subject byte `0x00`, which the JSON serializer emits as the escaped
 character `\u0000`. The binary persistence change therefore does not narrow or
-nullify either v1 field. Upgrade and endpoint tests must cover these two projections
-as well as `CreatedBy`.
+nullify either v1 field.
 
 The canonical Document model's optional `createdBy` field remains the logical actor
 audit fact; removing the old scalar database column does not remove that model
@@ -163,32 +162,8 @@ pending migration creates or rebuilds an index that depends on that boundary. If
 such migration is pending, startup does not reject a database merely because the
 server's current default row format later changed.
 
-When the configured database does not exist, startup performs the gated preflight
-through a server connection derived from the configured connection string but with
-no default database selected. Database existence is checked on that connection; an
-absent migration history table is treated as making the complete migration set
-pending. The preflight validates `innodb_page_size >= 16384` and
-`innodb_default_row_format = DYNAMIC`, then lets `Database.MigrateAsync()` create the
-database and apply its migrations. The preflight must not open the database-qualified
-connection first, which would fail with an unknown-database error before EF Core can
-create an empty database.
-
-When the database exists, the gated preflight validates the global page size and the
-actual `ROW_FORMAT` of every existing table whose index will be created or rebuilt,
-using `information_schema` table metadata. It consults
-`innodb_default_row_format` only for a table that does not exist yet. This prevents a
-`DYNAMIC` default from falsely accepting a restored `COMPACT` table and prevents a
-changed `COMPACT` default from rejecting an already-migrated database when no
-relevant migration remains. The affected replacement migrations explicitly request
-`ROW_FORMAT=DYNAMIC` and verify each resulting table format before recreating its
-indexes.
-
-All of these checks run in startup migration orchestration before the relevant call
-to `Database.MigrateAsync()`; they are not steps inside #35 or #36's later migration
-series. An external migration runner performs the same pending-migration, page-size,
-and actual-table checks before applying the migration set. An unsupported
-configuration therefore fails with an actionable message before an older 2080-byte
-index migration can produce a raw key-too-long database error.
+The preflight implementation and its execution point are owned by
+[issue #36](https://github.com/philfanzhou/StructaDoc/issues/36).
 
 The new 1059-byte index alone would fit the 1536-byte limit of an 8 KiB `DYNAMIC`
 page. StructaDoc requires 16 KiB because a fresh installation must first apply the
@@ -222,19 +197,9 @@ encoded as strict UTF-8 without a byte-order mark and copied into
 OIDC and preserves ASCII control bytes such as NUL in a binary field. Null legacy
 actors remain the all-absent state.
 
-The SQLite migration first asserts `PRAGMA encoding = 'UTF-8'`. Before any destructive
-DDL, it reads each source value's raw `CAST(column_name AS BLOB)` bytes and validates
-them with a strict UTF-8 decoder; owner and principal values additionally must decode
-to their accepted ASCII domains. Only after those checks pass may the SQLite table
-rebuild use `CAST(... AS BLOB)`. A UTF-16 database or malformed UTF-8 value fails
-with an actionable message before any column or index is changed. A length check
-alone is not sufficient.
-
-PostgreSQL uses `convert_to(created_by, 'UTF8')`. MySQL and MariaDB first assert that
-each source column uses `utf8mb4`, then use `CONVERT(created_by USING binary)`. Every
-provider validates the encoded bytes and their length before dropping a scalar source
-column. These preconditions make the resulting compatibility payload strict UTF-8
-rather than merely assuming the database's native text encoding is UTF-8.
+Provider-specific conversion and validation details are owned by
+[issue #35](https://github.com/philfanzhou/StructaDoc/issues/35) and
+[issue #36](https://github.com/philfanzhou/StructaDoc/issues/36).
 
 The compatibility field covers the actual old writer domains rather than trusting
 unenforced EF Core length metadata:
@@ -259,56 +224,17 @@ records, not a fourth kind of identity accepted for new writes.
 
 Existing Document-owner and access-grant-principal pairs are already canonical
 identity facts, so their migration changes only the physical encoding: each accepted
-ASCII code unit becomes the same-valued byte. The migration must not rely on a
-literal provider-generated in-place `AlterColumn` for this text-to-binary change. It
-uses provider-specific conversion while copying or rebuilding the columns:
-
-- after the SQLite encoding and strict byte validation above, its table rebuilds
-  select each value with an explicit
-  `CAST(owner_issuer AS BLOB)` / `CAST(owner_subject AS BLOB)` (and the equivalent
-  principal expressions), so the rebuilt columns contain the BLOB storage class
-  rather than TEXT values in BLOB-affinity columns;
-- PostgreSQL conversions use `USING convert_to(column_name, 'UTF8')` when changing
-  `text` or `character varying` to `bytea`; and
-- MySQL and MariaDB copy through `CONVERT(column_name USING binary)` into replacement
-  `varbinary` columns before swapping them into place.
-
-Before converting an indexed pair, every provider migration drops the complete
-dependent index: `ix_documents_owner_created_at` for the Document owner pair and
-`ux_document_access_grants_principal` for the grant principal pair. After both binary
-columns are in place, it recreates the index with exactly its former column order and
-uniqueness. It never lets a provider implicitly remove one converted column from a
-still-named index.
-
-Each provider migration validates the maximum byte lengths and the pair-nullability
-invariants before dropping the text columns. Upgrade contract tests must seed
-pre-migration owner and grantee identities, migrate them, assert their raw binary
-bytes and storage types, inspect the recreated index definitions, and prove the same
-principals still pass authorization. The unique-grant test includes two issuers with
-the same subject on one Document so an accidentally shortened unique index is caught.
+ASCII code unit becomes the same-valued byte. The conversion, index ordering, and
+upgrade-test details are owned by
+[issue #35](https://github.com/philfanzhou/StructaDoc/issues/35).
 
 Idempotency-Key replay recorded before the upgrade remains addressable. For a request
-that has an Idempotency-Key, Parse Run creation performs a pre-insert lookup that
-checks both:
-
-1. the request's canonical structured pair; and
-2. the UTF-8 legacy payload for the exact actor string produced by the old Parse Run
-   writer.
-
-An existing legacy match is replayed; a newly created run stores only the canonical
-pair. The lookup must run before the Parse Run is added and before creation mutates
-the Document or Provider configuration concurrency guards. It cannot be deferred to
-the unique-constraint exception path: unique-index entries for legacy rows contain
-null actor parts and therefore do not conflict with a canonical insert on any
-supported database.
-
-The migration requires an exclusive application-version cutover: operators stop all
-old application instances before the replacement columns are migrated, and the new
-application never writes `created_by_legacy`. The set of legacy rows is therefore
-immutable after the cutover, so the pre-insert lookup needs no gap lock or
-serializable transaction. A concurrent new canonical insert is still serialized by
-`ux_parse_runs_idempotency`; its loser catches the unique violation and re-reads the
-canonical row.
+that has an Idempotency-Key, Parse Run creation checks both the request's canonical
+structured pair and the UTF-8 legacy payload for the exact actor string produced by
+the old Parse Run writer. An existing legacy match is replayed; a newly created run
+stores only the canonical pair. Pre-insert ordering, concurrency handling, and
+cutover details are owned by
+[issue #36](https://github.com/philfanzhou/StructaDoc/issues/36).
 
 Legacy replay is byte-exact after the upgrade. In particular, MySQL and MariaDB rows
 created under a case- or accent-insensitive table collation no longer replay when a
@@ -322,53 +248,13 @@ produced the same delimited legacy string, an exact legacy match still cannot be
 disambiguated after the fact. New rows cannot have that collision because their two
 fields are compared separately.
 
-### Migration ownership and ordering
+### Migration ownership
 
-Issue #35 requires schema migrations for all four databases. Its migration:
-
-1. performs the SQLite encoding/strict-value preflight where applicable, adds the
-   three Document actor fields, backfills the legacy payload, validates the
-   three-field state, and removes `documents.created_by`;
-2. drops `ix_documents_owner_created_at`, makes and verifies the Document table
-   `DYNAMIC` on MySQL and MariaDB, converts Document owner issuer and subject fields
-   to the canonical binary mapping, and recreates the complete non-unique index over
-   `(owner_issuer, owner_subject, created_at_utc)`;
-3. adds the three access-grant actor fields, backfills their legacy payload, validates
-   that every row has either a canonical pair or a legacy payload, adds the stronger
-   access-grant state constraint, and removes `document_access_grants.created_by`;
-   and
-4. drops `ux_document_access_grants_principal`, makes and verifies the access-grant
-   table `DYNAMIC` on MySQL and MariaDB, converts its principal issuer and subject
-   fields to the canonical binary mapping, recreates the complete unique index over
-   `(document_id, principal_issuer, principal_subject)`, and preserves all three
-   required v1 string projections described above.
-
-Document ingestion and access-grant creation then write only canonical actor pairs.
-
-Issue #36 also requires schema migrations for all four databases and must deliver
-issue #26 in the same migration series. That series performs the following order:
-
-1. after the separate gated pre-`Database.MigrateAsync()` InnoDB preflight (and the
-   SQLite encoding/strict-value preflight where applicable), make the Parse Run table
-   `DYNAMIC` on MySQL and MariaDB and verify its row format;
-2. add the three Parse Run actor fields with the binary mappings above;
-3. backfill and validate the legacy payload state;
-4. drop `ux_parse_runs_idempotency` once;
-5. remove `parse_runs.created_by` and apply the ordinal `idempotency_key` mapping;
-6. create `ux_parse_runs_idempotency` once over
-   `(created_by_issuer, created_by_subject, document_id, idempotency_key)`; and
-7. add the legacy replay helper index and make the
-   canonical-pair-plus-legacy-payload lookup a pre-insert step, while retaining the
-   unique-violation re-read for concurrent canonical creation.
-
-Issue #36 also owns the application-startup InnoDB preflight described above, because
-placing it inside this migration series is too late for an empty database that must
-first apply the older 2080-byte index migration. The preflight covers the related
-#35 index rebuilds as well as #36 and the older index-creating migrations.
-
-Thus #35 has its own Document schema change, #36 has a Parse Run schema change, and
-#26 is implemented by #36's one index/collation migration rather than by a second
-index rebuild.
+[Issue #35](https://github.com/philfanzhou/StructaDoc/issues/35) owns the Document and
+access-grant schema changes; [issue #36](https://github.com/philfanzhou/StructaDoc/issues/36)
+owns the Parse Run schema change and application-startup InnoDB preflight; and
+[issue #26](https://github.com/philfanzhou/StructaDoc/issues/26) is implemented by
+#36's one index/collation migration rather than by a second index rebuild.
 
 ## Alternatives Considered
 

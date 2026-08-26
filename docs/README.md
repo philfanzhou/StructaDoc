@@ -63,7 +63,9 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 ## Documentation Rules
 
 - The README introduces and links; it does not duplicate field-level contracts.
-- ADRs record accepted decisions and their consequences.
+- ADRs record what was chosen, why it was chosen, the governing constraints, and
+  consequences. Migration implementation belongs in implementation issues; ADRs do
+  not include provider-specific SQL, numbered migration steps, or test checklists.
 - Specifications define behavior shared across components.
 - Implementation notes describe current code and verification facts.
 - Planning, implementation, and verification status must remain explicit.
