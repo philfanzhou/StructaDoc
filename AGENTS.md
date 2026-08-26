@@ -70,6 +70,10 @@ Features outside this boundary require user confirmation and a new ADR that chan
 
 ## 8. Documentation Impact
 
+ADRs record what was chosen, why it was chosen, and the governing constraints.
+Migration implementation belongs in implementation issues; ADRs do not include
+provider-specific SQL, numbered migration steps, or test checklists.
+
 Update authoritative documentation in the same change whenever changing:
 
 - the product boundary or explicit non-goals;
