@@ -29,7 +29,7 @@ The capability snapshot currently limits a single file to 200 MiB and 600 pages 
 2. `GET /tasks/{taskId}` maps `pending`, `processing`, `completed`, and `failed` into internal Provider states.
 3. `GET /tasks/{taskId}/result` streams the result ZIP.
 
-Local base URLs may use HTTP for a trusted host or network. An optional bearer credential supports protected reverse proxies. The adapter reports PDF, common images, DOC/DOCX, PPT/PPTX, and XLS/XLSX; it does not invent universal size or page limits absent from the protocol. The current protocol has no single-task cancellation route.
+Local base URLs may use HTTP for a trusted host or network. An optional bearer credential supports protected reverse proxies. The adapter reports PDF, common images, and the OOXML formats DOCX, PPTX, and XLSX as native inputs. Legacy DOC, PPT, and XLS uploads are intentionally omitted from that capability: the Parse Run executor uses the LibreOffice PDF fallback and submits the resulting PDF instead. The adapter does not invent universal size or page limits absent from the protocol. The current protocol has no single-task cancellation route.
 
 The normalizer recognizes both Local layouts such as `{document}/{method}/{document}.md` plus nested `images/` and Cloud's root `full.md`. It resolves only unique, validated candidates from the archive manifest.
 
