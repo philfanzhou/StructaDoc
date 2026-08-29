@@ -30,7 +30,8 @@ and the cross-reference in
 [ADR-0004](../adr/0004-relational-database-portability.md). See the upstream [MySQL row-format
 limits](https://dev.mysql.com/doc/refman/8.4/en/innodb-row-format.html) and [MariaDB
 InnoDB limitations](https://mariadb.com/docs/server/server-usage/storage-engines/innodb/innodb-limitations).
-Target behavior pending #36: the application-managed migration path will perform this
+Target behavior pending #43 and #45: both the application-managed and one-shot
+external migration paths will perform this
 preflight only when a pending migration creates or rebuilds an index that depends on
 the larger InnoDB key limit. For an absent database it will use a server connection
 with no default database selected to validate `innodb_page_size >= 16384` and
@@ -48,7 +49,8 @@ the database's raw key-too-long error.
 
 ### SQLite encoding requirement
 
-SQLite actor-identity replacement is also target behavior pending #35 and #36. Those
+SQLite actor-identity replacement is also target behavior pending #49, #50, #51,
+#52, and #36. Those
 migrations will require `PRAGMA encoding = 'UTF-8'` and strictly validate the raw
 UTF-8 bytes of every affected text value before destructive DDL. A restored UTF-16
 database or malformed text will fail with an actionable error rather than copying
@@ -117,7 +119,8 @@ dotnet tool restore
 
 Every shared model change requires a generated and reviewed migration in all four migration projects. Design-time factories exist only for generation; their placeholder connection strings are not runtime credentials.
 
-Target procedure pending #35 and #36: the actor-identity replacement migrations
+Target procedure pending the Document work tracked by #35, the access-grant work
+tracked by #44, and the Parse Run work in #36: the actor-identity replacement migrations
 defined by
 [ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) will require an
 exclusive application-version cutover. Operators will have to stop every old

@@ -162,8 +162,10 @@ pending migration creates or rebuilds an index that depends on that boundary. If
 such migration is pending, startup does not reject a database merely because the
 server's current default row format later changed.
 
-The preflight implementation and its execution point are owned by
-[issue #36](https://github.com/philfanzhou/StructaDoc/issues/36).
+The reusable preflight and application-managed execution point are owned by
+[issue #43](https://github.com/philfanzhou/StructaDoc/issues/43). The equivalent
+one-shot external migration entry point is owned by
+[issue #45](https://github.com/philfanzhou/StructaDoc/issues/45).
 
 The new 1059-byte index alone would fit the 1536-byte limit of an 8 KiB `DYNAMIC`
 page. StructaDoc requires 16 KiB because a fresh installation must first apply the
@@ -198,8 +200,11 @@ OIDC and preserves ASCII control bytes such as NUL in a binary field. Null legac
 actors remain the all-absent state.
 
 Provider-specific conversion and validation details are owned by
-[issue #35](https://github.com/philfanzhou/StructaDoc/issues/35) and
-[issue #36](https://github.com/philfanzhou/StructaDoc/issues/36).
+[issues #49](https://github.com/philfanzhou/StructaDoc/issues/49) and
+[#50](https://github.com/philfanzhou/StructaDoc/issues/50) for Documents,
+[issues #51](https://github.com/philfanzhou/StructaDoc/issues/51) and
+[#52](https://github.com/philfanzhou/StructaDoc/issues/52) for access grants, and
+[issue #36](https://github.com/philfanzhou/StructaDoc/issues/36) for Parse Runs.
 
 The compatibility field covers the actual old writer domains rather than trusting
 unenforced EF Core length metadata:
@@ -250,11 +255,18 @@ fields are compared separately.
 
 ### Migration ownership
 
-[Issue #35](https://github.com/philfanzhou/StructaDoc/issues/35) owns the Document and
-access-grant schema changes; [issue #36](https://github.com/philfanzhou/StructaDoc/issues/36)
-owns the Parse Run schema change and application-startup InnoDB preflight; and
+[Issue #48](https://github.com/philfanzhou/StructaDoc/issues/48) owns the shared
+canonical actor mapping. [Issues #49](https://github.com/philfanzhou/StructaDoc/issues/49)
+and [#50](https://github.com/philfanzhou/StructaDoc/issues/50) own the coordinated
+Document schema changes; [issues #51](https://github.com/philfanzhou/StructaDoc/issues/51)
+and [#52](https://github.com/philfanzhou/StructaDoc/issues/52) own the coordinated
+access-grant schema changes. [Issue #36](https://github.com/philfanzhou/StructaDoc/issues/36)
+owns the Parse Run schema change, and
 [issue #26](https://github.com/philfanzhou/StructaDoc/issues/26) is implemented by
-#36's one index/collation migration rather than by a second index rebuild.
+#36's one index/collation migration rather than by a second index rebuild. The reusable
+InnoDB preflight and its application-managed integration are owned by
+[issue #43](https://github.com/philfanzhou/StructaDoc/issues/43); the external migration
+entry point is owned by [issue #45](https://github.com/philfanzhou/StructaDoc/issues/45).
 
 ## Alternatives Considered
 
