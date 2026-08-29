@@ -106,6 +106,64 @@ jobs:
           path: artifacts/test-results
           if-no-files-found: ignore
 
+  libreoffice-integration:
+    name: LibreOffice legacy format integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STRUCTADOC_RUN_LIBREOFFICE_INTEGRATION_TESTS: 1
+      STRUCTADOC_LIBREOFFICE_EXECUTABLE: /usr/bin/libreoffice
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          global-json-file: global.json
+
+      # Keep this package list aligned with the LibreOffice component set in the production image.
+      # The fixture test reaches Writer, Calc, and Impress imports through the same headless process
+      # runner that production uses, so a missing filter fails here before an image can publish.
+      - name: Install production LibreOffice components
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+            libreoffice-calc-nogui \
+            libreoffice-core-nogui \
+            libreoffice-impress-nogui \
+            libreoffice-math-nogui \
+            libreoffice-writer-nogui
+
+      - name: Report LibreOffice diagnostics
+        run: |
+          libreoffice --headless --version
+          dpkg-query --show \
+            libreoffice-calc-nogui \
+            libreoffice-core-nogui \
+            libreoffice-impress-nogui \
+            libreoffice-math-nogui \
+            libreoffice-writer-nogui
+
+      - name: Restore persistence test dependencies
+        run: dotnet restore tests/StructaDoc.Persistence.Tests/StructaDoc.Persistence.Tests.csproj
+
+      - name: Convert real DOC, XLS, and PPT fixtures
+        run: >-
+          dotnet test tests/StructaDoc.Persistence.Tests/StructaDoc.Persistence.Tests.csproj
+          --configuration Release
+          --no-restore
+          --report-trx
+          --results-directory artifacts/libreoffice-integration-results
+
+      - name: Upload LibreOffice integration results
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: libreoffice-integration-results
+          path: artifacts/libreoffice-integration-results
+          if-no-files-found: ignore
+
   sdk-generation:
     name: Generate and compile consumer SDK
     runs-on: ubuntu-24.04
@@ -362,7 +420,7 @@ jobs:
     # `build-and-test` and would otherwise have quietly stopped gating anything, which is the one
     # way this split could have made the pipeline weaker: an image carrying a high-severity advisory
     # is exactly what should not acquire a registry tag.
-    needs: [audit-web, build-and-test, sdk-generation, database-contracts, container-and-browser]
+    needs: [audit-web, build-and-test, libreoffice-integration, sdk-generation, database-contracts, container-and-browser]
     # Two things publish and they publish different kinds of name. A release tag produces the names a
     # deployment is pinned to. A push to the default branch produces `edge`, which is one mutable name
     # meaning whatever `main` currently is; it exists so that a change can be pulled and tried before

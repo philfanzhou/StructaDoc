@@ -4,18 +4,19 @@ The repository [CI workflow](../../.github/workflows/ci.yml) runs on pushes, pul
 
 ## Jobs
 
-Five jobs run independently:
+Six jobs run independently:
 
 1. **Web dependency audit** runs `npm audit` against `web/package-lock.json`. It is its own job so that an advisory published upstream cannot end the run before anything has been built.
 2. **Build and unit tests** installs .NET 10 and Node.js 24, restores and builds the backend and frontend, and runs tests that do not require Docker.
-3. **Generated consumer SDK** starts the built Host, exports the consumer OpenAPI document, runs the pinned OpenAPI Generator C# client generator, and compiles the generated project. This catches schemas that are valid OpenAPI but unusable by the supported generator.
-4. **PostgreSQL, MySQL, and MariaDB contracts** sets `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`; Testcontainers starts PostgreSQL 17, MySQL 8.4, and MariaDB 11.4 and runs the same migration, persistence, lease, recovery, and canonical-commit contracts.
-5. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, checks that the running image reports the commit that built it, checks that a forwarded header from a peer nothing trusts is refused and reported, and uses Chromium to exercise administrator sign-in, Provider configuration, PDF upload, parsing, the administration area, and the API description page.
+3. **LibreOffice legacy format integration** installs the same LibreOffice no-GUI components as the production image, enables the environment-gated integration test, and converts checked-in real DOC, XLS, and PPT fixtures through the production converter and process runner.
+4. **Generated consumer SDK** starts the built Host, exports the consumer OpenAPI document, runs the pinned OpenAPI Generator C# client generator, and compiles the generated project. This catches schemas that are valid OpenAPI but unusable by the supported generator.
+5. **PostgreSQL, MySQL, and MariaDB contracts** sets `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`; Testcontainers starts PostgreSQL 17, MySQL 8.4, and MariaDB 11.4 and runs the same migration, persistence, lease, recovery, and canonical-commit contracts.
+6. **Production container and browser smoke test** builds the real Dockerfile, starts it with a read-only root filesystem and dropped capabilities, verifies health and system endpoints, checks that the running image reports the commit that built it, checks that a forwarded header from a peer nothing trusts is refused and reported, and uses Chromium to exercise administrator sign-in, Provider configuration, PDF upload, parsing, the administration area, and the API description page.
 
 Two more publish, and not for the same events:
 
-6. **Publish image to GitHub Container Registry** waits for all five, builds the same Dockerfile, and pushes it to `ghcr.io`. A `v*` tag publishes the release names; a push to `main` publishes `edge` and nothing else. See [Published Images](#published-images).
-7. **Publish GitHub release** runs for a `v*` tag alone. It waits for the image, then creates the release the tag names. Its notes are the ones GitHub generates from the pull requests merged since the previous tag, with the `docker pull` line placed above them.
+7. **Publish image to GitHub Container Registry** waits for all six, builds the same Dockerfile, and pushes it to `ghcr.io`. A `v*` tag publishes the release names; a push to `main` publishes `edge` and nothing else. See [Published Images](#published-images).
+8. **Publish GitHub release** runs for a `v*` tag alone. It waits for the image, then creates the release the tag names. Its notes are the ones GitHub generates from the pull requests merged since the previous tag, with the `docker pull` line placed above them.
 
 TRX results, Playwright HTML reports, screenshots, failure traces/videos, and container logs are uploaded as Actions artifacts. Temporary administrator credentials exist only in the isolated runner environment and are not repository secrets or production defaults.
 
@@ -33,7 +34,7 @@ Releasing is one push. `git tag -a v0.1.0 && git push origin v0.1.0` is what pro
 
 Both image-building jobs pass `SOURCE_REVISION`, and the container job then asks the running image for it. This is checked rather than assumed because nothing inside the image can derive it: `.dockerignore` excludes `.git`, so the SourceLink the SDK ships finds no repository and stamps nothing. A build argument that quietly stopped being passed would leave every deployment unable to say which commit it is, while every health check still passed.
 
-Publishing waits on all five jobs above it, so a tag in the registry is an image whose consumer SDK generated and compiled, and which built, started under the production security flags, answered readiness, and served a browser flow. An image that failed any of that is never pushed, which is what keeps `latest` from being the least tested thing in the registry. The release job waits on publishing in turn, so a release never names an image nobody can pull.
+Publishing waits on all six jobs above it, so a tag in the registry is an image whose legacy Office fixtures converted through real LibreOffice, whose consumer SDK generated and compiled, and which built, started under the production security flags, answered readiness, and served a browser flow. An image that failed any of that is never pushed, which is what keeps `latest` from being the least tested thing in the registry. The release job waits on publishing in turn, so a release never names an image nobody can pull.
 
 A tag whose run failed that way is not moved onto the fix. A name that has been pushed stays where it is even when it published nothing, and the next tag carries the release instead. A tag that can be repointed is not something a deployment can be pinned to, and the run that failed stays legible as what it was rather than being overwritten by a later attempt.
 
@@ -85,6 +86,22 @@ PowerShell:
 $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
 dotnet test tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj
 ```
+
+With LibreOffice installed, run the real legacy Office conversions:
+
+```bash
+STRUCTADOC_RUN_LIBREOFFICE_INTEGRATION_TESTS=1 \
+dotnet test tests/StructaDoc.Persistence.Tests/StructaDoc.Persistence.Tests.csproj
+```
+
+PowerShell:
+
+```powershell
+$env:STRUCTADOC_RUN_LIBREOFFICE_INTEGRATION_TESTS = '1'
+dotnet test tests/StructaDoc.Persistence.Tests/StructaDoc.Persistence.Tests.csproj
+```
+
+Set `STRUCTADOC_LIBREOFFICE_EXECUTABLE` only when the executable is not available as `libreoffice` on `PATH`.
 
 Browser tests default to `http://127.0.0.1:8080`. Override it with `STRUCTADOC_E2E_BASE_URL`; inject the test administrator through `STRUCTADOC_E2E_ADMIN_USERNAME` and `STRUCTADOC_E2E_ADMIN_PASSWORD`.
 
