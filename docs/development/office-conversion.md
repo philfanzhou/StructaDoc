@@ -56,6 +56,8 @@ Environment variables use double underscores, for example `LibreOffice__Executab
 
 ## Verification and Remaining Work
 
-Automated tests cover the Local native-versus-legacy capability contract, legacy Office fallback, native OOXML submission, isolated profiles, input limits, invalid PDFs, cleanup, lease-constrained snapshots, PDF submission, canonical Artifact commits, and crash recovery reuse. Real server-database contracts run in GitHub Actions, and the production image build validates the runtime composition.
+Unit tests use a fake process runner to cover argument construction, isolated profiles, input limits, invalid PDFs, and cleanup without requiring LibreOffice on a developer machine. Separate environment-gated integration tests check in minimal real DOC, XLS, and PPT Compound File Binary fixtures, verify their detected media types and hashes, and pass them through the real `LibreOfficeDocumentConverter` and `LibreOfficeProcessRunner`. The integration asserts a non-empty `%PDF-` output, the actual LibreOffice version, unchanged inputs, and work-directory cleanup.
 
-Deployment owners should still run representative DOC/DOCX, XLS/XLSX, and PPT/PPTX samples to verify the exact LibreOffice build, locale, and font set against their documents.
+GitHub Actions installs the same Writer, Calc, Impress, Math, and Core no-GUI components as the production image and enables those integration tests explicitly. The default solution test command leaves them skipped, so LibreOffice is not a local development prerequisite.
+
+Deployment owners should still run representative production documents to verify the deployed LibreOffice build, locale, and font set against their own formatting requirements. The checked-in fixtures prove basic legacy import and PDF export, not fidelity for every real-world document.

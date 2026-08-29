@@ -20,4 +20,8 @@
     <ProjectReference Include="..\..\src\StructaDoc.Migrations.Sqlite\StructaDoc.Migrations.Sqlite.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Fixtures\LibreOffice\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
