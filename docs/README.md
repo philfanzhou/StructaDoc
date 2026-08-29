@@ -70,4 +70,6 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 - Implementation notes describe current code and verification facts.
 - Planning, implementation, and verification status must remain explicit.
 - Database differences must not change the domain model, public API, or job lifecycle.
-- Repository documentation, code comments, logs, and exceptions use English.
+- Product and technical documentation, code comments, logs, and exceptions use English.
+  Repository workflow and constraint documents use Chinese as defined by
+  [`AGENTS.md`](../AGENTS.md).

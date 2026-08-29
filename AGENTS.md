@@ -1,104 +1,182 @@
-# StructaDoc Agent Contract
+# StructaDoc 协作规范
 
-## 1. Authority
+StructaDoc 是一个可自托管的文档摄取与结构化解析服务，负责异步解析、结果规范化、
+结构化持久化和版本化 API 输出。
 
-- The user's current request takes precedence over the default workflow in this file.
-- This file defines repository-wide collaboration and change rules.
-- `README.md` defines the product position, public boundary, and project entry points.
-- `docs/README.md` is the index for design decisions and specifications.
-- Accepted ADRs define architectural decisions that are difficult to reverse.
-- `docs/specifications/` defines target contracts shared across components.
+## 维护方式与规则优先级
 
-## 2. Read Before Changing
+- 用户当前的请求优先于本文件中的默认工作流程。
+- 本文件是仓库内 AI 协作流程与约束的唯一事实来源。
+- Codex 直接读取本文件；Claude Code 通过根目录 `CLAUDE.md` 导入本文件。
+- 修改通用规范时只改本文件。除非某条规则确实只适用于单个工具，否则不要把规则正文写进
+  `CLAUDE.md` 或其他工具入口文件，以免内容漂移或互相冲突。
+- `README.md` 定义产品定位、公开边界和项目入口。
+- `docs/README.md` 是设计决策与规范的索引。
+- 已接受的 ADR 定义难以逆转的架构决策。
+- `docs/specifications/` 定义跨组件共享的目标契约。
 
-1. Read `README.md` and confirm that the task is within StructaDoc's product boundary.
-2. Read `docs/README.md` and locate the relevant ADRs and specifications.
-3. For public structured data changes, read `docs/specifications/canonical-document-model.md`.
-4. For Parse Run, Worker, retry, or recovery changes, read `docs/specifications/parse-job-lifecycle.md`.
-5. Read the target code, tests, configuration, and deployment files before making changes.
+## 文档语言
 
-If an expected entry point is missing, locate the actual structure and report it. Do not invent files, behavior, or completion status.
+- **仓库内的流程与约束文档用中文**：本文件、`.github/ISSUE_TEMPLATE/` 下的 issue 模板、
+  `.github/pull_request_template.md`。
+- **提交到 GitHub 的 issue 和 PR，正文一律用中文。** issue 标题用中文；PR 标题沿用英文
+  conventional commit 格式（`feat:` / `fix:` / `docs:` 等），因为 squash 合并后它就是
+  `main` 上对应 commit 的标题。
+- **review 全程用中文**：PR 行内意见、review summary、回复，以及向用户汇报 review 发现的
+  问题，一律使用中文。引用的代码、标识符、编译器诊断码和命令行保持原样。
+- **产品与技术文档使用英文**：`README.md`、`docs/`、代码注释、日志、异常消息和面向 API
+  使用者的文字属于公开或工程交付物，应保持英文。最终用户界面文字遵循产品本地化策略。
+- 代码标识符和 commit message 保持英文。
 
-## 3. Truth Model
+## 修改前必读
 
-- Before a feature is implemented, the README, accepted ADRs, and specifications describe target behavior (to-be).
-- Code, tests, configuration, migrations, and deployment files describe current implementation facts (as-is).
-- When a specification and implementation conflict, determine whether implementation is incomplete, documentation is stale, or requirements changed.
-- Never describe planned endpoints, tables, deployment commands, or tests as available.
+1. 阅读 `README.md`，确认任务位于 StructaDoc 的产品边界内。
+2. 阅读 `docs/README.md`，定位相关 ADR、规范和实现说明。
+3. 修改公开结构化数据时，阅读 `docs/specifications/canonical-document-model.md`。
+4. 修改 Parse Run、Worker、重试或恢复逻辑时，阅读
+   `docs/specifications/parse-job-lifecycle.md`。
+5. 修改前完整阅读目标代码、测试、配置和部署文件；不能只读命中的几行。
 
-## 4. Product Boundary
+如果预期入口不存在，应查明实际结构并如实报告。不得虚构文件、行为或完成状态。
 
-- StructaDoc owns document ingestion, asynchronous parsing, result normalization, structured persistence, and versioned API output.
-- StructaDoc does not include full-text search, vector search, embeddings, RAG, or domain-specific data generation.
-- Consumers use the public API and do not directly access the StructaDoc database or object storage.
-- Interactive browser sessions and application API-client credentials remain separate.
-- Administrators configure parsing providers; regular uploaders and API clients cannot modify provider configuration.
+## 事实模型
 
-Features outside this boundary require user confirmation and a new ADR that changes the boundary before implementation.
+- 功能实现前，`README.md`、已接受的 ADR 和规范描述目标行为（to-be）。
+- 代码、测试、配置、迁移和部署文件描述当前实现事实（as-is）。
+- 规范与实现冲突时，应判断是实现未完成、文档过期还是需求已经变化。
+- 不得把计划中的端点、数据表、部署命令或测试描述为已经可用。
 
-## 5. Architecture Rules
+## 产品边界
 
-- MinerU Cloud, MinerU Local, and future parsers integrate through the Provider abstraction.
-- The public API must not expose a Provider task protocol or use raw Provider JSON as a stable contract.
-- Every Provider result is normalized to `canonical-document-model.md`.
-- Every Parse Run records the Provider, configuration version, and parsing-option snapshot.
-- Provider configuration versions are immutable. A version referenced by a non-final Parse Run cannot be deleted or made unusable.
-- Temporary external Provider state is not authoritative StructaDoc state.
-- Original uploads are retained. Converted PDFs are separate Artifacts and never replace originals.
-- Submit the source format when the Provider supports it; otherwise use the image's LibreOffice conversion fallback.
-- Store large files and raw parse results in local or S3-compatible storage. Store business metadata, structured fields, and storage references in the database.
-- Business persistence supports SQLite, PostgreSQL, MySQL, and MariaDB. Domain, application, and public API layers must not depend on one database dialect.
-- Workers atomically claim work, maintain leases, and recover from crashes on every supported database. SQLite supports one application instance; server databases support multiple Worker instances.
+- StructaDoc 负责文档摄取、异步解析、结果规范化、结构化持久化和版本化 API 输出。
+- StructaDoc 不包含全文搜索、向量搜索、embedding、RAG 或领域数据生成。
+- 消费者通过公共 API 使用服务，不直接访问 StructaDoc 的数据库或对象存储。
+- 交互式浏览器会话和应用 API 客户端凭据必须相互独立。
+- 解析 Provider 由管理员配置；普通上传者和 API 客户端不能修改 Provider 配置。
 
-## 6. Public Contract and Compatibility
+超出该边界的功能必须先获得用户确认，并新增改变产品边界的 ADR，之后才能实施。
 
-- Public HTTP APIs use versioned paths.
-- Breaking changes to public DTOs, status values, Block types, or coordinate semantics require a contract major-version change.
-- Within one major version, prefer additive optional fields.
-- API clients must tolerate unknown fields and Block types.
-- Provider-native fields belong only in explicitly unstable extensions or Raw Artifacts.
-- Internal database and storage references must not appear in public API fields.
+## 架构约束
 
-## 7. Security
+- MinerU Cloud、MinerU Local 和未来解析器必须通过 Provider 抽象集成。
+- 公共 API 不得暴露 Provider 任务协议，也不得把原始 Provider JSON 当作稳定契约。
+- 每个 Provider 结果都必须规范化为
+  `docs/specifications/canonical-document-model.md` 定义的模型。
+- 每个 Parse Run 都必须记录 Provider、配置版本和解析选项快照。
+- Provider 配置版本不可变。被非终态 Parse Run 引用的版本不得删除或变为不可用。
+- 临时的外部 Provider 状态不是 StructaDoc 的权威状态。
+- 原始上传必须保留；转换得到的 PDF 是独立 Artifact，不得替换原文件。
+- Provider 支持源格式时提交源文件；否则使用镜像内的 LibreOffice 转换回退。
+- 大文件和原始解析结果存入本地或 S3 兼容存储；业务元数据、结构化字段和存储引用存入数据库。
+- 业务持久化必须支持 SQLite、PostgreSQL、MySQL 和 MariaDB；Domain、Application 和公共 API
+  层不得依赖单一数据库方言。
+- Worker 必须在所有受支持数据库上原子领取任务、维护租约并从崩溃中恢复。SQLite 只支持一个
+  应用实例；服务端数据库支持多个 Worker 实例。
 
-- Never commit real tokens, passwords, connection strings, or private document samples.
-- Provider tokens and storage credentials must not be returned to browsers or written to logs.
-- Provider credentials stored in the database must be encrypted; inject the master key through environment variables or deployment secrets.
-- Online Providers transfer data externally; the UI and documentation must make that clear.
-- Upload validation must not trust client MIME types alone. Limit size, processing time, memory, and temporary disk usage.
-- Protect external URLs, presigned URLs, and callbacks against SSRF; use short lifetimes and least privilege.
+## 公共契约与兼容性
 
-## 8. Documentation Impact
+- 公共 HTTP API 使用带版本号的路径。
+- 对公共 DTO、状态值、Block 类型或坐标语义的破坏性变更，必须提升契约主版本。
+- 同一主版本内优先增加可选字段。
+- API 客户端必须容忍未知字段和未知 Block 类型。
+- Provider 原生字段只能出现在明确标记为不稳定的扩展或 Raw Artifact 中。
+- 内部数据库引用和存储引用不得出现在公共 API 字段中。
 
-ADRs record what was chosen, why it was chosen, and the governing constraints.
-Migration implementation belongs in implementation issues; ADRs do not include
-provider-specific SQL, numbered migration steps, or test checklists.
+## 安全约束
 
-Update authoritative documentation in the same change whenever changing:
+- 不得提交真实 token、密码、连接字符串或私有文档样本。
+- Provider token 和存储凭据不得返回浏览器或写入日志。
+- 数据库中的 Provider 凭据必须加密；主密钥通过环境变量或部署 secret 注入。
+- 在线 Provider 会把数据传输到外部，UI 和文档必须明确提示。
+- 上传校验不得只信任客户端 MIME 类型；必须限制文件大小、处理时间、内存和临时磁盘用量。
+- 外部 URL、预签名 URL 和 callback 必须防御 SSRF，并使用短有效期和最小权限。
 
-- the product boundary or explicit non-goals;
-- the public API, state machine, or canonical model;
-- Provider interfaces or capability semantics;
-- data ownership, Artifact retention, or deletion rules;
-- authentication, credentials, external transfer, or security boundaries;
-- deployment dependencies or critical operational procedures.
+## 范围纪律
 
-Internal refactoring, formatting, local renames, and behavior-preserving test additions do not normally require new design documentation.
+范围很窄的 issue 不应在实施或 review 中不断吸收邻近的既有缺陷。真实且可复现的问题也不等于
+属于当前改动；应把邻近债务拆成独立 issue，让当前工作按验收标准收敛。
 
-## 9. Coding and Dependencies
+### 在宣布一个 issue 可以开工之前
 
-- Follow the repository's established stack, structure, test tools, and dependencies.
-- Before adding a dependency, verify that existing code and platform capabilities do not provide an equivalent solution.
-- Behavioral changes and bug fixes require automated tests proportionate to their risk.
-- Database changes use reviewable, repeatable migrations rather than ad hoc startup DDL.
-- Maintain independently executable migrations for every supported database and run the same persistence and lifecycle contract tests against each.
-- Provider-specific code must not leak into Domain or public DTOs.
-- Logs, exceptions, comments, and repository documentation use English. End-user UI text follows the product localization policy.
+不能只看 issue 描述就判断它 ready。先把 issue 提到的每个文件和成员从头到尾读一遍。
 
-## 10. Verification and Safety
+在这些代码里发现、但 issue 没有要求修复的缺陷，都属于**邻近债务**。每一项都应单独创建
+issue，并在目标 issue 的 `## 已知邻近问题（本次不修）` 一节中链接。
 
-- Read-only analysis tasks must not make changes.
-- Preserve unrelated user changes. Do not revert, overwrite, commit, or push them.
-- Verify exact targets before deleting, moving, or bulk-rewriting files.
-- Report truthfully which builds and tests ran, which did not, and why failures occurred.
-- Before committing, check documentation links, formatting, secrets, and repository status.
+一个 issue 只有同时满足以下条件才算 ready：
+
+1. 已明确写出 `## 最小修改范围` 和 `## 验收标准`。
+2. 将要改动的代码已经完整读过。
+3. 已发现的邻近债务已经创建独立 issue 并完成链接；确认没有时明确写“无”。
+
+### 实施过程中
+
+- issue 的“最小修改范围”具有约束力。issue 明确排除的运行时行为不得修改；即使发现确定的
+  既有缺陷，也应创建独立 issue，而不是顺手修复。
+- 行为变更和 bug 修复必须配有与风险相称的自动化测试。
+- 如果必须越过原范围才能满足验收标准，应明确指出对应的验收标准并先更新 issue 范围。
+
+### review 过程中
+
+每条意见写下前先分类：
+
+- **本 PR 引入的**：缺陷位于本 PR 新增或实质修改的代码中，应在本 PR 修复。
+- **既有的**：缺陷位于仅被移动、重新缩进、改名波及或只是与 diff 相邻的代码中。应新建 issue，
+  在 review 意见中链接，并说明不属于本 PR 范围；不要在本 PR 修复。
+
+唯一例外是既有缺陷导致本 PR 自身的某条验收标准无法验证。援引该例外时，必须指出具体的
+验收标准。
+
+### 熔断线
+
+PR 进入第三轮 review 时，暂停继续写代码，逐个对照 commit 与 issue 的“最小修改范围”。任何
+无法追溯到某条验收标准的 commit 都属于范围违规，应从当前 PR 移除并改为独立 issue。
+
+## 文档影响
+
+ADR 记录选择、理由、约束和后果。迁移实施细节属于 implementation issue；ADR 不包含
+Provider 专用 SQL、编号迁移步骤或测试 checklist。
+
+以下内容发生变化时，必须在同一改动中更新权威文档：
+
+- 产品边界或明确的非目标；
+- 公共 API、状态机或 Canonical Model；
+- Provider 接口或 capability 语义；
+- 数据所有权、Artifact 保留或删除规则；
+- 认证、凭据、外部传输或安全边界；
+- 部署依赖或关键运维流程。
+
+内部重构、格式化、局部重命名和不改变行为的测试补充通常不需要新的设计文档。
+
+## 编码、依赖与数据库
+
+- 遵循仓库已有的技术栈、目录结构、测试工具和依赖管理方式。
+- 增加依赖前，确认现有代码和平台能力不能提供等效方案。
+- 数据库变更使用可审查、可重复执行的迁移，不得使用临时启动 DDL。
+- 每个受支持数据库都必须有可独立执行的迁移，并运行相同的持久化与生命周期契约测试。
+- Provider 专用代码不得泄漏到 Domain 或公共 DTO。
+
+## 验证与安全操作
+
+- 只读分析任务不得修改文件。
+- 保留用户已有且与任务无关的改动；不得回退、覆盖、提交或推送这些改动。
+- 删除、移动或批量改写前必须确认精确目标。
+- 如实报告运行了哪些构建和测试、哪些没有运行，以及失败原因。
+- 提交前检查文档链接、格式、secret 和仓库状态。
+
+## 合并 PR 后
+
+PR 合并不等于工作结束。合并后必须检查并合理处理以下事项：
+
+1. 确认远端 PR 已合并，目标分支已经包含合并结果。
+2. 检查关联 issue。已完成的 issue 应关闭；只完成一部分或仍有后续工作的 issue 应保持开启，
+   并更新说明或链接后续 issue。没有关联 issue 时，应在汇报中明确说明。
+3. 确认远端工作分支已按仓库策略删除；仍存在时应删除或说明保留原因。
+4. 用 `git worktree list` 检查残留 worktree。删除不再需要的 worktree 前，确认其中没有未提交
+   改动或独有 commit，之后运行 `git worktree prune`。
+5. 用 fast-forward 方式更新本地目标分支。若目标分支被其他 worktree 占用，应先安全处理该
+   worktree，或在对应 worktree 中更新并说明情况。
+6. 清理本地工作分支和远端跟踪引用。仓库使用 squash 合并时，不能把 `git branch -d` 失败
+   当作未合并的证据；应先通过 PR 状态或实质 diff 确认改动已进入目标分支，再决定是否强制删除。
+7. 向用户汇报 PR、issue、远端分支、本地分支和 worktree 的最终状态；未完成的清理必须说明
+   原因和后续动作。
