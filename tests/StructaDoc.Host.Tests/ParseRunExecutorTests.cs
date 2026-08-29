@@ -1,8 +1,13 @@
 using System.Collections.Concurrent;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Adapters.Persistence.ParseRuns;
+using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.Conversion;
 using StructaDoc.Application.ParseRuns;
@@ -11,10 +16,6 @@ using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Workers;
-using StructaDoc.Adapters.Storage;
-using StructaDoc.Adapters.Persistence;
-using StructaDoc.Adapters.Persistence.Entities;
-using StructaDoc.Adapters.Persistence.ParseRuns;
 
 namespace StructaDoc.Host.Tests;
 
@@ -65,11 +66,14 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         Assert.True(provider.SubmitObservedCheckpoint);
     }
 
-    [Fact]
-    public async Task Executor_converts_an_unsupported_office_source_and_commits_its_artifact()
+    [Theory]
+    [InlineData("application/msword", ".doc")]
+    [InlineData("application/vnd.ms-excel", ".xls")]
+    [InlineData("application/vnd.ms-powerpoint", ".ppt")]
+    public async Task Executor_converts_a_legacy_office_source_for_mineru_local(
+        string sourceMediaType,
+        string sourceExtension)
     {
-        const string sourceMediaType =
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
         var provider = new TestParseProvider(failSubmission: false);
         var converter = new TestDocumentConverter();
 
@@ -85,6 +89,48 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         Assert.Equal(DocumentConversionMediaTypes.Pdf, provider.SubmittedMediaType);
         Assert.True(result.ArtifactCount >= 3);
         Assert.True(result.HasConversionArtifact);
+        Assert.True(result.HasDownloadableConversionArtifact);
+        Assert.Equal(sourceMediaType, result.DocumentMediaType);
+        Assert.Equal(sourceExtension, result.DocumentExtension);
+        Assert.Equal(
+            $"documents/{result.ParseRunId:N}/source{sourceExtension}",
+            result.DocumentStorageRef);
+        Assert.Equal(
+            Convert.ToHexString(SHA256.HashData(CreateSourceBytes(sourceMediaType)))
+                .ToLowerInvariant(),
+            result.DocumentSha256);
+        Assert.True(result.OriginalSourcePreserved);
+    }
+
+    [Theory]
+    [InlineData("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx")]
+    [InlineData("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx")]
+    [InlineData("application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx")]
+    public async Task Executor_submits_a_native_ooxml_source_without_conversion(
+        string sourceMediaType,
+        string sourceExtension)
+    {
+        var provider = new TestParseProvider(
+            failSubmission: false,
+            supportedMediaTypes: [DocumentConversionMediaTypes.Pdf, sourceMediaType]);
+        var converter = new TestDocumentConverter();
+
+        var result = await ExecuteAsync(provider, sourceMediaType, converter);
+
+        Assert.Equal(ParseRunStatuses.Succeeded, result.Status);
+        Assert.Equal(sourceMediaType, result.SubmittedMediaType);
+        Assert.Null(result.ConversionJson);
+        Assert.Equal(0, converter.ConversionCount);
+        Assert.False(converter.ResultDisposed);
+        Assert.Equal(sourceMediaType, provider.SubmittedMediaType);
+        Assert.False(result.HasConversionArtifact);
+        Assert.False(result.HasDownloadableConversionArtifact);
+        Assert.Equal(sourceMediaType, result.DocumentMediaType);
+        Assert.Equal(sourceExtension, result.DocumentExtension);
+        Assert.Equal(
+            $"documents/{result.ParseRunId:N}/source{sourceExtension}",
+            result.DocumentStorageRef);
+        Assert.True(result.OriginalSourcePreserved);
     }
 
     [Fact]
@@ -211,13 +257,13 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         });
         using var client = application.CreateClient();
         var parseRunId = Guid.NewGuid();
-        var sourceExtension = sourceMediaType == "application/pdf" ? ".pdf" : ".xlsx";
+        var sourceExtension = GetSourceExtension(sourceMediaType);
         var sourceStorageRef = $"documents/{parseRunId:N}/source{sourceExtension}";
         var sourceBytes = sourceMediaType == "application/pdf"
             ? largePdfPageCount.HasValue
                 ? PdfTestDocument.Create(largePdfPageCount.Value)
                 : "%PDF-1.7\nexecutor-test"u8.ToArray()
-            : "executor-spreadsheet-test"u8.ToArray();
+            : CreateSourceBytes(sourceMediaType);
         StoredFile storedSource;
 
         await using (var scope = application.Services.CreateAsyncScope())
@@ -363,9 +409,34 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 .SingleAsync(item => item.Id == parseRunId);
             var artifactCount = await dbContext.ParseArtifacts.CountAsync(
                 artifact => artifact.ParseRunId == parseRunId);
-            var hasConversionArtifact = await dbContext.ParseArtifacts.AnyAsync(
-                artifact => artifact.ParseRunId == parseRunId
-                    && artifact.Type == "normalized-pdf");
+            var conversionArtifact = await dbContext.ParseArtifacts
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    artifact => artifact.ParseRunId == parseRunId
+                        && artifact.Type == "normalized-pdf");
+            var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
+            var hasDownloadableConversionArtifact = false;
+            if (conversionArtifact is not null)
+            {
+                await using var content = await storage.OpenReadAsync(
+                    conversionArtifact.StorageRef,
+                    TestContext.Current.CancellationToken);
+                var signature = new byte[5];
+                hasDownloadableConversionArtifact = await content.ReadAsync(
+                    signature,
+                    TestContext.Current.CancellationToken) == signature.Length
+                    && signature.AsSpan().SequenceEqual("%PDF-"u8);
+            }
+            var document = await dbContext.Documents
+                .AsNoTracking()
+                .SingleAsync(item => item.Id == run.DocumentId);
+            await using var original = await storage.OpenReadAsync(
+                document.StorageRef,
+                TestContext.Current.CancellationToken);
+            var originalSha256 = Convert.ToHexString(await SHA256.HashDataAsync(
+                    original,
+                    TestContext.Current.CancellationToken))
+                .ToLowerInvariant();
             var segments = await dbContext.ParseSegments
                 .AsNoTracking()
                 .Where(segment => segment.ParseRunId == parseRunId)
@@ -386,17 +457,39 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 run.SubmittedMediaType,
                 run.ConversionJson,
                 artifactCount,
-                hasConversionArtifact,
+                conversionArtifact is not null,
+                hasDownloadableConversionArtifact,
+                document.MediaType,
+                document.Extension,
+                document.StorageRef,
+                document.Sha256,
+                string.Equals(document.Sha256, originalSha256, StringComparison.Ordinal),
                 segments,
                 mergedBundle);
         }
     }
 
+    private static string GetSourceExtension(string mediaType) => mediaType switch
+    {
+        "application/pdf" => ".pdf",
+        "application/msword" => ".doc",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
+        "application/vnd.ms-excel" => ".xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ".xlsx",
+        "application/vnd.ms-powerpoint" => ".ppt",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => ".pptx",
+        _ => throw new ArgumentOutOfRangeException(nameof(mediaType), mediaType, "Unsupported test media type."),
+    };
+
+    private static byte[] CreateSourceBytes(string mediaType) =>
+        System.Text.Encoding.UTF8.GetBytes($"executor-source:{mediaType}");
+
     private sealed class TestParseProvider(
         bool failSubmission,
         bool useCheckpoint = false,
         bool stayRunning = false,
-        int? maxPages = null) : IParseProvider
+        int? maxPages = null,
+        IReadOnlyCollection<string>? supportedMediaTypes = null) : IParseProvider
     {
         public string ProviderType => useCheckpoint
             ? ProviderTypes.MinerUCloud
@@ -417,7 +510,7 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         public Task<ProviderCapabilities> GetCapabilitiesAsync(
             ProviderExecutionConfiguration configuration,
             CancellationToken cancellationToken = default) => Task.FromResult(new ProviderCapabilities(
-                ["application/pdf"],
+                supportedMediaTypes ?? ["application/pdf"],
                 maxFileBytes: 1024 * 1024,
                 maxPages,
                 supportsCancellation: false));
@@ -510,7 +603,13 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         public bool ResultDisposed { get; private set; }
 
         public bool Supports(string sourceMediaType, string outputMediaType) =>
-            sourceMediaType.Contains("spreadsheet", StringComparison.OrdinalIgnoreCase)
+            sourceMediaType is
+                "application/msword"
+                or "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                or "application/vnd.ms-excel"
+                or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                or "application/vnd.ms-powerpoint"
+                or "application/vnd.openxmlformats-officedocument.presentationml.presentation"
             && string.Equals(
                 outputMediaType,
                 DocumentConversionMediaTypes.Pdf,
@@ -521,7 +620,7 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             CancellationToken cancellationToken = default)
         {
             ConversionCount++;
-            var bytes = "%PDF-1.7\nconverted-spreadsheet"u8.ToArray();
+            var bytes = "%PDF-1.7\nconverted-office"u8.ToArray();
             return Task.FromResult(new DocumentConversionResult(
                 "libreoffice",
                 "LibreOffice test-version",
@@ -547,6 +646,12 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         string? ConversionJson,
         int ArtifactCount,
         bool HasConversionArtifact,
+        bool HasDownloadableConversionArtifact,
+        string DocumentMediaType,
+        string DocumentExtension,
+        string DocumentStorageRef,
+        string DocumentSha256,
+        bool OriginalSourcePreserved,
         IReadOnlyList<SegmentResult> Segments,
         ParseBundle? MergedBundle);
 

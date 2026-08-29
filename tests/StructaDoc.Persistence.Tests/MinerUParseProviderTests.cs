@@ -2,13 +2,44 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using StructaDoc.Application.Providers;
 using StructaDoc.Adapters.Providers;
+using StructaDoc.Application.Providers;
 
 namespace StructaDoc.Persistence.Tests;
 
 public sealed class MinerUParseProviderTests
 {
+    [Fact]
+    public async Task Local_capabilities_match_the_native_input_contract()
+    {
+        var provider = new MinerULocalParseProvider(new HttpClient(new StubHandler(
+            _ => throw new InvalidOperationException("No HTTP request should be sent."))));
+
+        var capabilities = await provider.GetCapabilitiesAsync(
+            LocalConfiguration(),
+            TestContext.Current.CancellationToken);
+
+        var expectedMediaTypes = new[]
+        {
+            "application/pdf",
+            "image/png",
+            "image/jpeg",
+            "image/jp2",
+            "image/webp",
+            "image/gif",
+            "image/bmp",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        };
+        Assert.Equal(
+            expectedMediaTypes.Order(StringComparer.Ordinal),
+            capabilities.SupportedMediaTypes.Order(StringComparer.Ordinal));
+        Assert.Null(capabilities.MaxFileBytes);
+        Assert.Null(capabilities.MaxPages);
+        Assert.False(capabilities.SupportsCancellation);
+    }
+
     [Fact]
     public async Task Local_submit_streams_multipart_options_and_reads_task_id()
     {

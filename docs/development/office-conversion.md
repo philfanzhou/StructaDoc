@@ -8,6 +8,8 @@ This note describes the LibreOffice adapter, executor integration, and recovery 
 
 The LibreOffice adapter supports DOC, DOCX, XLS, XLSX, PPT, and PPTX to PDF. It does not ask LibreOffice to guess arbitrary formats.
 
+MinerU Local reports the OOXML formats DOCX, XLSX, and PPTX as native inputs, so those originals are submitted without conversion. Its native capability intentionally excludes the legacy binary DOC, XLS, and PPT formats. StructaDoc still accepts and retains those uploads, then converts them to PDF through this fallback before Local submission.
+
 Conversion uses the `converting` stage:
 
 1. stream the original into an isolated work directory while rechecking input size;
@@ -54,6 +56,6 @@ Environment variables use double underscores, for example `LibreOffice__Executab
 
 ## Verification and Remaining Work
 
-Automated tests cover format selection, isolated profiles, input limits, invalid PDFs, cleanup, lease-constrained snapshots, PDF submission, canonical Artifact commits, and crash recovery reuse. Real server-database contracts run in GitHub Actions, and the production image build validates the runtime composition.
+Automated tests cover the Local native-versus-legacy capability contract, legacy Office fallback, native OOXML submission, isolated profiles, input limits, invalid PDFs, cleanup, lease-constrained snapshots, PDF submission, canonical Artifact commits, and crash recovery reuse. Real server-database contracts run in GitHub Actions, and the production image build validates the runtime composition.
 
 Deployment owners should still run representative DOC/DOCX, XLS/XLSX, and PPT/PPTX samples to verify the exact LibreOffice build, locale, and font set against their documents.
