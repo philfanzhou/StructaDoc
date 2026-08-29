@@ -464,10 +464,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # `latest` is gated on the tag rather than left unconditional, and that gate is what keeps the
-      # default branch from taking it. Whoever pulls `latest` is whoever did not choose a tag, and
-      # handing them a build no release named would be handing them a development build they never
-      # asked for.
+      # `latest` is gated on a stable tag rather than left unconditional, and that gate is what keeps
+      # the default branch and prereleases from taking it. Whoever pulls `latest` is whoever did not
+      # choose a tag, and handing them a development or release-candidate build they never asked for
+      # would break that contract.
       #
       # `edge` is the opposite kind of name and is meant to move. It is overwritten by every push to
       # `main`, which is what makes it usable for trying a change and useless for a deployment. The
@@ -487,7 +487,7 @@ jobs:
           # here next to the reasoning for it.
           flavor: latest=false
           tags: |
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=edge,branch=main
@@ -567,8 +567,21 @@ jobs:
         run: |
           tag="${GITHUB_REF#refs/tags/}"
 
+          release_flags=()
+          case "$tag" in
+            *-*) release_flags+=(--prerelease --latest=false) ;;
+            *) release_flags+=(--prerelease=false --latest) ;;
+          esac
+
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --title "$tag" --notes-file release-notes.md
+            gh release edit "$tag" \
+              --title "$tag" \
+              --notes-file release-notes.md \
+              "${release_flags[@]}"
           else
-            gh release create "$tag" --title "$tag" --notes-file release-notes.md --verify-tag
+            gh release create "$tag" \
+              --title "$tag" \
+              --notes-file release-notes.md \
+              --verify-tag \
+              "${release_flags[@]}"
           fi
