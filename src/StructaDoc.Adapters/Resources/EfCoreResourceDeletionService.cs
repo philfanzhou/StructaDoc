@@ -1,11 +1,12 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Application.Authentication;
+using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Resources;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Domain.Resources;
-using StructaDoc.Adapters.Persistence;
-using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Adapters.Resources;
 
@@ -85,9 +86,9 @@ public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext)
         if (run is null) return new(ResourceDeletionStatus.NotFound);
         if (run.LifecycleState != ResourceLifecycleStates.Active) return new(ResourceDeletionStatus.AlreadyPending, await ExistingJobIdAsync(CleanupTargetTypes.ParseRun, parseRunId, cancellationToken));
         if (!FinalStatuses.Contains(run.Status)) return new(ResourceDeletionStatus.ActiveParseRuns);
+        var refs = StorageRefsForRun(run).Distinct(StringComparer.Ordinal).ToArray();
         run.LifecycleState = ResourceLifecycleStates.DeletionPending;
         run.DeletionRequestedAtUtc = nowUtc;
-        var refs = StorageRefsForRun(run).Distinct(StringComparer.Ordinal).ToArray();
         var job = NewJob(CleanupTargetTypes.ParseRun, parseRunId, refs, nowUtc);
         dbContext.CleanupJobs.Add(job);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -106,9 +107,19 @@ public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext)
         }
         if (run.ConversionJson is not null)
         {
-            StructaDoc.Application.ParseRuns.ParseRunConversion? conversion = null;
-            try { conversion = StructaDoc.Application.ParseRuns.ParseRunConversion.FromJson(run.ConversionJson); } catch (JsonException) { }
-            if (conversion is not null) yield return conversion.StorageRef;
+            ParseRunConversion conversion;
+            try
+            {
+                conversion = ParseRunConversion.FromJson(run.ConversionJson);
+            }
+            catch (JsonException)
+            {
+                throw new InvalidDataException(
+                    $"The persisted conversion snapshot for Parse Run '{run.Id:D}' is invalid. "
+                    + "Restore or repair this record before requesting deletion again.");
+            }
+
+            yield return conversion.StorageRef;
         }
     }
     private static CleanupJobEntity NewJob(string type, Guid id, IReadOnlyList<string> refs, DateTime now) => new() { Id = Guid.NewGuid(), TargetType = type, TargetId = id, StorageRefsJson = JsonSerializer.Serialize(refs), Status = CleanupJobStatuses.Pending, NextAttemptAtUtc = now, CreatedAtUtc = now, UpdatedAtUtc = now };
