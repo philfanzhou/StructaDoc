@@ -1,11 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.Resources;
-using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Adapters.Persistence.ParseRuns;
 
@@ -60,6 +60,13 @@ public sealed class EfCoreParseResultReadService(
             .Select(asset => new ParseAssetRecord(asset.Id, asset.Name, asset.MediaType, asset.SizeBytes, asset.Sha256, asset.Width, asset.Height)).ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ParseExportAssetRecord>?> ListAssetsForExportAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    {
+        if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
+        return await dbContext.ParseAssets.AsNoTracking().Where(asset => asset.ParseRunId == parseRunId).OrderBy(asset => asset.Name)
+            .Select(asset => new ParseExportAssetRecord(asset.ParseRunId, asset.Id, asset.Name, asset.MediaType, asset.SizeBytes, asset.Sha256, asset.Width, asset.Height, asset.StorageRef)).ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<ParseArtifactRecord>?> ListArtifactsAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
@@ -73,6 +80,20 @@ public sealed class EfCoreParseResultReadService(
         var item = await dbContext.ParseAssets.AsNoTracking().Where(asset => asset.ParseRunId == parseRunId && asset.Id == assetId)
             .Select(asset => new StoredResult(asset.Name, asset.MediaType, asset.SizeBytes, asset.Sha256, asset.StorageRef)).SingleOrDefaultAsync(cancellationToken);
         return await OpenAsync(item, parseRunId, cancellationToken);
+    }
+
+    public Task<ParseResultContent?> OpenExportAssetAsync(Guid parseRunId, ParseExportAssetRecord asset, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        if (asset.ParseRunId != parseRunId)
+        {
+            throw new ArgumentException("The export Asset does not belong to the requested Parse Run.", nameof(asset));
+        }
+
+        return OpenAsync(
+            new StoredResult(asset.Name, asset.MediaType, asset.SizeBytes, asset.Sha256, asset.StorageRef),
+            parseRunId,
+            cancellationToken);
     }
 
     public async Task<ParseResultContent?> OpenArtifactAsync(Guid parseRunId, Guid artifactId, ResourceAccessContext access, CancellationToken cancellationToken = default)

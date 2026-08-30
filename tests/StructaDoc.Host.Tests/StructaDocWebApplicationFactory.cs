@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using StructaDoc.Adapters.Persistence;
 using StructaDoc.Host.Workers;
+using StructaDoc.Testing.Persistence;
 
 namespace StructaDoc.Host.Tests;
 
@@ -16,6 +19,8 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
         Path.GetTempPath(),
         "structadoc-host-tests",
         Guid.NewGuid().ToString("N"));
+
+    public DbCommandCounterInterceptor DatabaseCommandCounter { get; } = new();
 
     public string StorageRootPath => Path.Combine(testDirectory, "storage");
 
@@ -65,6 +70,9 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
         // those same tests depend on. Execution is added back by the classes it is the subject of.
         builder.ConfigureServices(services =>
         {
+            services.AddDbContext<StructaDocDbContext>(
+                options => options.AddInterceptors(DatabaseCommandCounter));
+
             foreach (var descriptor in services
                 .Where(service => service.ServiceType == typeof(IHostedService)
                     && service.ImplementationType == typeof(ParseRunExecutionWorker))

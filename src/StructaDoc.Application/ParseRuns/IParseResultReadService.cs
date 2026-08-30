@@ -9,8 +9,10 @@ public interface IParseResultReadService
     Task<IReadOnlyList<ParsePageRecord>?> ListPagesAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default);
     Task<ParseBlockPage?> ListBlocksAsync(Guid parseRunId, ResourceAccessContext access, int limit, int? afterSequence = null, int? pageNumber = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ParseAssetRecord>?> ListAssetsAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ParseExportAssetRecord>?> ListAssetsForExportAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ParseArtifactRecord>?> ListArtifactsAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default);
     Task<ParseResultContent?> OpenAssetAsync(Guid parseRunId, Guid assetId, ResourceAccessContext access, CancellationToken cancellationToken = default);
+    Task<ParseResultContent?> OpenExportAssetAsync(Guid parseRunId, ParseExportAssetRecord asset, CancellationToken cancellationToken = default);
     Task<ParseResultContent?> OpenArtifactAsync(Guid parseRunId, Guid artifactId, ResourceAccessContext access, CancellationToken cancellationToken = default);
     Task<ParseResultContent?> OpenMarkdownAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default);
 }
@@ -24,6 +26,24 @@ public sealed record BoundingBoxRecord(double X0, double Y0, double X1, double Y
 public sealed record ParseBlockPage(IReadOnlyList<ParseBlockRecord> Items, int? NextSequence);
 
 public sealed record ParseAssetRecord(Guid Id, string Name, string MediaType, long SizeBytes, string Sha256, int? Width, int? Height);
+
+/// <summary>
+/// Internal export projection. <see cref="StorageRef"/> must never be mapped to a public response.
+/// </summary>
+public sealed record ParseExportAssetRecord(
+    Guid ParseRunId,
+    Guid Id,
+    string Name,
+    string MediaType,
+    long SizeBytes,
+    string Sha256,
+    int? Width,
+    int? Height,
+    string StorageRef)
+{
+    public ParseAssetRecord Metadata =>
+        new(Id, Name, MediaType, SizeBytes, Sha256, Width, Height);
+}
 
 public sealed record ParseArtifactRecord(Guid Id, string Type, string Name, string MediaType, long SizeBytes, string Sha256, DateTime CreatedAtUtc);
 

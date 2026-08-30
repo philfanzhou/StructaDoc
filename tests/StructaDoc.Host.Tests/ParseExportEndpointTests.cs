@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
@@ -16,8 +19,6 @@ using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.Documents;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.ParseRuns;
-using StructaDoc.Adapters.Persistence;
-using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Host.Tests;
 
@@ -81,6 +82,53 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
             StringComparison.Ordinal);
         Assert.DoesNotContain("src=\"images/diagram.png\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("images/missing.png", html, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("zip")]
+    [InlineData("html")]
+    public async Task Export_asset_database_commands_stay_bounded_as_asset_count_grows(string format)
+    {
+        var singleAssetRunId = await SeedSucceededRunAsync(sourceIsPdf: true, assetCount: 1);
+        var manyAssetRunId = await SeedSucceededRunAsync(sourceIsPdf: true, assetCount: 6);
+
+        var singleAssetCommandCount = await CountExportDatabaseCommandsAsync(
+            singleAssetRunId,
+            format);
+        var manyAssetCommandCount = await CountExportDatabaseCommandsAsync(
+            manyAssetRunId,
+            format);
+
+        Assert.True(singleAssetCommandCount > 0);
+        Assert.Equal(singleAssetCommandCount, manyAssetCommandCount);
+    }
+
+    [Fact]
+    public async Task Export_asset_missing_from_storage_preserves_the_content_unavailable_error()
+    {
+        var seeded = await SeedSucceededResultAsync(sourceIsPdf: true);
+
+        await using var serviceScope = factory.Services.CreateAsyncScope();
+        var dbContext = serviceScope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+        var storedAsset = await dbContext.ParseAssets.AsNoTracking().SingleAsync(
+            asset => asset.Id == seeded.AssetId,
+            TestContext.Current.CancellationToken);
+        var storage = serviceScope.ServiceProvider.GetRequiredService<IFileStorage>();
+        await storage.DeleteIfExistsAsync(
+            storedAsset.StorageRef,
+            TestContext.Current.CancellationToken);
+        var results = serviceScope.ServiceProvider.GetRequiredService<IParseResultReadService>();
+        var exportAssets = await results.ListAssetsForExportAsync(
+            seeded.ParseRunId,
+            ResourceAccessContext.System,
+            TestContext.Current.CancellationToken);
+        var exportAsset = Assert.Single(exportAssets!);
+
+        await Assert.ThrowsAsync<ParseResultContentUnavailableException>(() =>
+            results.OpenExportAssetAsync(
+                seeded.ParseRunId,
+                exportAsset,
+                TestContext.Current.CancellationToken));
     }
 
     // The preview is the HTML export served for display. What is worth testing is not the rendering,
@@ -428,14 +476,18 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         Assert.Equal("![](segment-0001-figure.png)", secondMarkdown);
     }
 
-    private async Task<Guid> SeedSucceededRunAsync(bool sourceIsPdf)
-        => (await SeedSucceededResultAsync(sourceIsPdf)).ParseRunId;
+    private async Task<Guid> SeedSucceededRunAsync(bool sourceIsPdf, int assetCount = 1)
+        => (await SeedSucceededResultAsync(sourceIsPdf, assetCount)).ParseRunId;
 
-    private async Task<SeededResult> SeedSucceededResultAsync(bool sourceIsPdf)
+    private async Task<SeededResult> SeedSucceededResultAsync(bool sourceIsPdf, int assetCount = 1)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(assetCount, 1);
         var parseRunId = Guid.NewGuid();
         var markdownArtifactId = Guid.NewGuid();
-        var assetId = Guid.NewGuid();
+        var assetIds = Enumerable.Range(0, assetCount).Select(_ => Guid.NewGuid()).ToArray();
+        var assetNames = Enumerable.Range(0, assetCount)
+            .Select(index => index == 0 ? "diagram.png" : $"diagram-{index + 1}.png")
+            .ToArray();
         var sourceMediaType = sourceIsPdf
             ? "application/pdf"
             : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -443,8 +495,9 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         var sourceBytes = sourceIsPdf
             ? "%PDF-1.7\nexport-test"u8.ToArray()
             : "export-test-document"u8.ToArray();
-        var markdownBytes = Encoding.UTF8.GetBytes(
-            "# Export\n\n![](images/diagram.png)\n\n![](images/missing.png)\n");
+        var markdownBytes = Encoding.UTF8.GetBytes(string.Join(
+            "\n\n",
+            ["# Export", .. assetNames.Select(name => $"![](images/{name})"), "![](images/missing.png)\n"]));
 
         await using var scope = factory.Services.CreateAsyncScope();
         var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
@@ -453,7 +506,14 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
 
         var storedSource = await WriteAsync(storage, $"documents/{parseRunId:N}/source{extension}", sourceBytes);
         var storedMarkdown = await WriteAsync(storage, $"parse-runs/{parseRunId:N}/markdown.md", markdownBytes);
-        var storedImage = await WriteAsync(storage, $"parse-runs/{parseRunId:N}/assets/diagram.png", ImageBytes);
+        var storedImages = new StoredFile[assetCount];
+        for (var index = 0; index < assetCount; index++)
+        {
+            storedImages[index] = await WriteAsync(
+                storage,
+                $"parse-runs/{parseRunId:N}/assets/{assetNames[index]}",
+                ImageBytes);
+        }
 
         var document = new DocumentEntity
         {
@@ -495,25 +555,47 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
             StorageRef = storedMarkdown.StorageRef,
             CreatedAtUtc = nowUtc,
         });
-        dbContext.ParseAssets.Add(new ParseAssetEntity
+        for (var index = 0; index < assetCount; index++)
         {
-            Id = assetId,
-            ParseRunId = parseRunId,
-            Name = "diagram.png",
-            MediaType = "image/png",
-            SizeBytes = storedImage.SizeBytes,
-            Sha256 = storedImage.Sha256,
-            StorageRef = storedImage.StorageRef,
-            CreatedAtUtc = nowUtc,
-        });
+            dbContext.ParseAssets.Add(new ParseAssetEntity
+            {
+                Id = assetIds[index],
+                ParseRunId = parseRunId,
+                Name = assetNames[index],
+                MediaType = "image/png",
+                SizeBytes = storedImages[index].SizeBytes,
+                Sha256 = storedImages[index].Sha256,
+                StorageRef = storedImages[index].StorageRef,
+                CreatedAtUtc = nowUtc,
+            });
+        }
         await dbContext.SaveChangesAsync();
 
         return new SeededResult(
             parseRunId,
             document.Id,
             markdownArtifactId,
-            assetId,
+            assetIds[0],
             markdownBytes);
+    }
+
+    private async Task<int> CountExportDatabaseCommandsAsync(
+        Guid parseRunId,
+        string format)
+    {
+        await using var serviceScope = factory.Services.CreateAsyncScope();
+        var exports = serviceScope.ServiceProvider.GetRequiredService<IParseExportService>();
+        using var commandScope = factory.DatabaseCommandCounter.BeginScope();
+        var export = await exports.CreateAsync(
+            parseRunId,
+            format,
+            ResourceAccessContext.System,
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(export);
+        await using var content = export.Content;
+        using var buffer = new MemoryStream();
+        await content.CopyToAsync(buffer, TestContext.Current.CancellationToken);
+        return commandScope.CommandCount;
     }
 
     private static async Task AssertBytesAsync(HttpClient client, string path, byte[] expected)
