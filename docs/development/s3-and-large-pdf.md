@@ -28,6 +28,8 @@ Recovery reuses created segments, submitted external jobs, and downloaded Provid
 3. merges Assets, Artifacts, and Markdown deterministically;
 4. commits one canonical parent Parse Bundle transaction.
 
+Large-PDF source reads, seekable copies, Segment object writes and saves, archive reads, and final merge I/O all use the Parse Run's linked execution token. Host shutdown, lease loss, or the maximum execution duration stops subsequent local work. PdfSharp opens and creates one chunk synchronously and cannot be interrupted mid-call, so the executor checks cancellation immediately before and after those calls and before starting each following Segment or the final merge.
+
 If a single page exceeds the Provider limit by itself, the run fails with a stable permanent input error instead of looping or silently truncating it.
 
 Segment objects and Provider results participate in the same durable Cleanup Job as other document resources.

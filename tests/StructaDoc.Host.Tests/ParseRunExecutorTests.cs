@@ -226,6 +226,138 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                     $"parse-runs/{result.ParseRunId:N}/artifacts/document.md");
     }
 
+    [Fact]
+    public async Task Executor_propagates_the_execution_token_to_large_pdf_storage_work()
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+        var storageOperations = new ConcurrentQueue<FileStorageOperation>();
+        var segmentWriteCount = 0;
+
+        await ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            executeLargePdfThroughExecutor: true,
+            executionCancellationSource: cancellationSource,
+            configureServices: services =>
+            {
+                services.RemoveAll<IFileStorage>();
+                services.AddSingleton<IFileStorage>(serviceProvider =>
+                    new CallbackFileStorage(
+                        new LocalFileStorage(
+                            serviceProvider.GetRequiredService<FileStorageOptions>()),
+                        storageOperations.Enqueue,
+                        operation =>
+                        {
+                            if (operation.Kind == FileStorageOperationKind.Write
+                                && operation.StorageRef.Contains("/segments/", StringComparison.Ordinal)
+                                && Interlocked.Increment(ref segmentWriteCount) == 1)
+                            {
+                                cancellationSource.Cancel();
+                            }
+                        }));
+            });
+
+        Assert.True(provider.CapabilitiesCancellationToken.CanBeCanceled);
+        var segmentWrites = storageOperations
+            .Where(operation => operation.Kind == FileStorageOperationKind.Write
+                && operation.StorageRef.Contains("/segments/", StringComparison.Ordinal))
+            .ToArray();
+        Assert.Single(segmentWrites);
+        Assert.All(
+            segmentWrites,
+            operation => Assert.Equal(
+                provider.CapabilitiesCancellationToken,
+                operation.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Large_pdf_orchestrator_stops_before_creating_the_next_segment_after_cancellation()
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+        var storageOperations = new ConcurrentQueue<FileStorageOperation>();
+        var segmentWriteCount = 0;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            executionCancellationSource: cancellationSource,
+            configureServices: services =>
+            {
+                services.RemoveAll<IFileStorage>();
+                services.AddSingleton<IFileStorage>(serviceProvider =>
+                    new CallbackFileStorage(
+                        new LocalFileStorage(
+                            serviceProvider.GetRequiredService<FileStorageOptions>()),
+                        storageOperations.Enqueue,
+                        operation =>
+                        {
+                            if (operation.Kind == FileStorageOperationKind.Write
+                                && operation.StorageRef.Contains("/segments/", StringComparison.Ordinal)
+                                && Interlocked.Increment(ref segmentWriteCount) == 1)
+                            {
+                                cancellationSource.Cancel();
+                            }
+                        }));
+            }));
+
+        Assert.Equal(
+            1,
+            storageOperations.Count(operation =>
+                operation.Kind == FileStorageOperationKind.Write
+                && operation.StorageRef.Contains("/segments/", StringComparison.Ordinal)));
+        Assert.Equal(0, provider.SubmitCount);
+    }
+
+    [Fact]
+    public async Task Large_pdf_orchestrator_does_not_write_the_final_merge_after_cancellation()
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+        var storageOperations = new ConcurrentQueue<FileStorageOperation>();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            executionCancellationSource: cancellationSource,
+            configureServices: services =>
+            {
+                services.RemoveAll<IFileStorage>();
+                services.AddSingleton<IFileStorage>(serviceProvider =>
+                    new CallbackFileStorage(
+                        new LocalFileStorage(
+                            serviceProvider.GetRequiredService<FileStorageOptions>()),
+                        storageOperations.Enqueue,
+                        operation =>
+                        {
+                            if (operation.Kind == FileStorageOperationKind.OpenRead
+                                && operation.StorageRef.EndsWith(
+                                    "/artifacts/markdown.md",
+                                    StringComparison.Ordinal))
+                            {
+                                cancellationSource.Cancel();
+                            }
+                        }));
+            }));
+
+        Assert.Equal(3, provider.ResultCount);
+        Assert.Equal(
+            1,
+            storageOperations.Count(operation =>
+                operation.Kind == FileStorageOperationKind.OpenRead
+                && operation.StorageRef.EndsWith(
+                    "/artifacts/markdown.md",
+                    StringComparison.Ordinal)));
+        Assert.Equal(
+            0,
+            storageOperations.Count(operation =>
+                operation.Kind == FileStorageOperationKind.Write
+                && operation.StorageRef.EndsWith(
+                    "/artifacts/document.md",
+                    StringComparison.Ordinal)));
+    }
+
     private async Task<ExecutionResult> ExecuteAsync(
         TestParseProvider provider,
         string sourceMediaType = "application/pdf",
@@ -233,8 +365,12 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         bool seedConversion = false,
         IReadOnlyDictionary<string, string>? workerSettings = null,
         int? largePdfPageCount = null,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        bool executeLargePdfThroughExecutor = false,
+        CancellationTokenSource? executionCancellationSource = null)
     {
+        var executionCancellationToken = executionCancellationSource?.Token
+            ?? TestContext.Current.CancellationToken;
         using var application = factory.WithWebHostBuilder(builder =>
         {
             foreach (var setting in workerSettings ?? new Dictionary<string, string>())
@@ -359,11 +495,11 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 $"executor-test-{parseRunId:N}",
                 nowUtc,
                 TimeSpan.FromMinutes(2)));
-            if (largePdfPageCount.HasValue)
+            if (largePdfPageCount.HasValue && !executeLargePdfThroughExecutor)
             {
                 await using var session = scope.ServiceProvider
                     .GetRequiredService<ParseRunLeaseHeartbeat>()
-                    .StartSession(lease, TestContext.Current.CancellationToken);
+                    .StartSession(lease, executionCancellationToken);
                 Assert.NotNull(await session.TryStartAsync(
                     ParseRunStages.Validating,
                     TestContext.Current.CancellationToken));
@@ -391,13 +527,14 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                         capabilities,
                         provider,
                         normalizer,
-                        TestContext.Current.CancellationToken);
+                        session.ExecutionCancellationToken);
             }
             else
             {
                 await scope.ServiceProvider.GetRequiredService<ParseRunExecutor>().ExecuteAsync(
                     lease,
-                    alreadyRunning: false);
+                    alreadyRunning: false,
+                    stoppingToken: executionCancellationToken);
             }
         }
 
@@ -507,13 +644,19 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
 
         public string? SubmittedMediaType { get; private set; }
 
+        public CancellationToken CapabilitiesCancellationToken { get; private set; }
+
         public Task<ProviderCapabilities> GetCapabilitiesAsync(
             ProviderExecutionConfiguration configuration,
-            CancellationToken cancellationToken = default) => Task.FromResult(new ProviderCapabilities(
+            CancellationToken cancellationToken = default)
+        {
+            CapabilitiesCancellationToken = cancellationToken;
+            return Task.FromResult(new ProviderCapabilities(
                 supportedMediaTypes ?? ["application/pdf"],
                 maxFileBytes: 1024 * 1024,
                 maxPages,
                 supportsCancellation: false));
+        }
 
         public Task<ProviderSubmissionCheckpoint?> PrepareSubmissionAsync(
             ProviderExecutionConfiguration configuration,
