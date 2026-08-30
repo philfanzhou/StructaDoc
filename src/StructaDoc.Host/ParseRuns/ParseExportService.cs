@@ -91,8 +91,9 @@ public sealed class ParseExportService(
     {
         var markdown = await ReadMarkdownAsync(parseRunId, access, cancellationToken);
         if (markdown is null) return null;
-        var assets = OrderAssets(await results.ListAssetsAsync(parseRunId, access, cancellationToken) ?? []);
-        var inlined = await InlineAssetsAsync(parseRunId, assets, access, cancellationToken);
+        var exportAssets = OrderExportAssets(await results.ListAssetsForExportAsync(parseRunId, access, cancellationToken) ?? []);
+        var assets = exportAssets.Select(asset => asset.Metadata).ToArray();
+        var inlined = await InlineAssetsAsync(parseRunId, exportAssets, cancellationToken);
         var source = ExportAssetLinkRewriter.Rewrite(
             markdown,
             ExportAssetLinkRewriter.BuildAssetsByFileName(assets),
@@ -109,7 +110,8 @@ public sealed class ParseExportService(
     {
         var markdown = await ReadMarkdownAsync(parseRunId, access, cancellationToken);
         if (markdown is null) return null;
-        var assets = await results.ListAssetsAsync(parseRunId, access, cancellationToken) ?? [];
+        var exportAssets = await results.ListAssetsForExportAsync(parseRunId, access, cancellationToken) ?? [];
+        var assets = exportAssets.Select(asset => asset.Metadata).ToArray();
         var entryNames = BuildUniqueEntryNames(assets);
         var document = ExportAssetLinkRewriter.Rewrite(
             markdown,
@@ -126,10 +128,10 @@ public sealed class ParseExportService(
             {
                 await using (var documentStream = new MemoryStream(Encoding.UTF8.GetBytes(document), writable: false))
                     await AddEntryAsync(archive, "document.md", documentStream, cancellationToken);
-                foreach (var asset in assets)
+                foreach (var asset in exportAssets)
                 {
                     if (!entryNames.TryGetValue(asset.Id, out var name)) continue;
-                    var content = await results.OpenAssetAsync(parseRunId, asset.Id, access, cancellationToken);
+                    var content = await results.OpenExportAssetAsync(parseRunId, asset, cancellationToken);
                     if (content is null) continue;
                     await using (content.Content) await AddEntryAsync(archive, $"assets/{name}", content.Content, cancellationToken);
                 }
@@ -153,8 +155,7 @@ public sealed class ParseExportService(
 
     private async Task<IReadOnlyDictionary<Guid, string>> InlineAssetsAsync(
         Guid parseRunId,
-        IReadOnlyList<ParseAssetRecord> assets,
-        ResourceAccessContext access,
+        IReadOnlyList<ParseExportAssetRecord> assets,
         CancellationToken cancellationToken)
     {
         var inlined = new Dictionary<Guid, string>();
@@ -163,7 +164,7 @@ public sealed class ParseExportService(
         foreach (var asset in assets)
         {
             if (asset.SizeBytes > MaximumInlinedAssetItemBytes || asset.SizeBytes > remainingBytes) continue;
-            var content = await results.OpenAssetAsync(parseRunId, asset.Id, access, cancellationToken);
+            var content = await results.OpenExportAssetAsync(parseRunId, asset, cancellationToken);
             if (content is null) continue;
             await using var assetContent = content.Content;
             using var buffer = new MemoryStream();
@@ -177,6 +178,9 @@ public sealed class ParseExportService(
     }
 
     private static IReadOnlyList<ParseAssetRecord> OrderAssets(IReadOnlyList<ParseAssetRecord> assets) =>
+        [.. assets.OrderBy(asset => asset.Name, StringComparer.Ordinal).ThenBy(asset => asset.Id)];
+
+    private static IReadOnlyList<ParseExportAssetRecord> OrderExportAssets(IReadOnlyList<ParseExportAssetRecord> assets) =>
         [.. assets.OrderBy(asset => asset.Name, StringComparer.Ordinal).ThenBy(asset => asset.Id)];
 
     private static IEnumerable<ParseAssetRecord> SelectInlineableAssets(IReadOnlyList<ParseAssetRecord> assets)
