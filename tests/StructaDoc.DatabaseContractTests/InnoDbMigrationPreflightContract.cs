@@ -54,17 +54,19 @@ internal static class InnoDbMigrationPreflightContract
         await MigrateAsync(options, previousMigration);
 
         // Existing affected tables use their actual row format, not the current default.
+        // The historical parse_runs row is itself too wide to convert to COMPACT on current servers,
+        // so replace it with the smallest valid restored-table shape needed to exercise preflight.
         await ExecuteInDatabaseAsync(
             connectionBuilder,
-            "ALTER TABLE `parse_runs` ROW_FORMAT=COMPACT");
+            "DROP TABLE `parse_runs`; "
+            + "CREATE TABLE `parse_runs` (`id` int NOT NULL) ENGINE=InnoDB ROW_FORMAT=COMPACT");
         var compactError = await Assert.ThrowsAsync<InvalidOperationException>(
             () => preflight.CheckAsync(options));
         Assert.Contains("ROW_FORMAT=Compact", compactError.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ALTER TABLE", compactError.Message, StringComparison.Ordinal);
 
-        await ExecuteInDatabaseAsync(
-            connectionBuilder,
-            "ALTER TABLE `parse_runs` ROW_FORMAT=DYNAMIC");
+        await DropDatabaseAsync(connectionBuilder, databaseName);
+        await MigrateAsync(options, previousMigration);
         var originalDefault = await ReadGlobalDefaultRowFormatAsync(connectionBuilder);
         try
         {
