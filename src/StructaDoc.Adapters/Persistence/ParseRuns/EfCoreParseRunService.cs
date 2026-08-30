@@ -123,7 +123,16 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
             if (documentGuard != 1)
             {
                 await transaction.RollbackAsync(cancellationToken);
-                return new ParseRunCreationResult(ParseRunCreationStatus.DocumentNotFound);
+                var replay = request.IdempotencyKey is null
+                    ? null
+                    : await FindCanonicalReplayAsync(
+                        request,
+                        actorIssuer,
+                        actorSubject,
+                        cancellationToken);
+                return replay is null
+                    ? new ParseRunCreationResult(ParseRunCreationStatus.DocumentNotFound)
+                    : new ParseRunCreationResult(ParseRunCreationStatus.Replayed, replay);
             }
 
             var providerGuard = await dbContext.ProviderConfigs
@@ -139,7 +148,16 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
             if (providerGuard != 1)
             {
                 await transaction.RollbackAsync(cancellationToken);
-                return new ParseRunCreationResult(ParseRunCreationStatus.ProviderUnavailable);
+                var replay = request.IdempotencyKey is null
+                    ? null
+                    : await FindCanonicalReplayAsync(
+                        request,
+                        actorIssuer,
+                        actorSubject,
+                        cancellationToken);
+                return replay is null
+                    ? new ParseRunCreationResult(ParseRunCreationStatus.ProviderUnavailable)
+                    : new ParseRunCreationResult(ParseRunCreationStatus.Replayed, replay);
             }
 
             var entity = new ParseRunEntity
