@@ -260,13 +260,15 @@ async function deleteRun(run: ParseRun) {
 }
 
 async function refreshRuns(keepSelectedId?: string, quiet = false, document = selectedDocument.value) {
+  // The Document list is the polling source of truth even when no Document is selected. Refresh it
+  // on every pass; the Run list below still belongs only to the selection captured by the caller.
+  await loadDocuments(quiet)
   if (!document) return
   try {
     const documentRuns = await get<ParseRun[]>(`/api/v1/documents/${document.id}/parse-runs`)
     if (!stillSelectedDocument(document.id)) return
     runs.value = documentRuns
     if (keepSelectedId) selectedRun.value = documentRuns.find(item => item.id === keepSelectedId) ?? selectedRun.value
-    await loadDocuments(quiet)
   }
   catch (e) {
     if (stillSelectedDocument(document.id) && !quiet) throw e
