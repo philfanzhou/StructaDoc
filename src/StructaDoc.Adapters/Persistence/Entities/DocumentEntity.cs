@@ -16,11 +16,15 @@ public sealed class DocumentEntity
 
     public required string StorageRef { get; set; }
 
-    public string? CreatedBy { get; set; }
+    public byte[]? CreatedByIssuer { get; set; }
 
-    public string? OwnerIssuer { get; set; }
+    public byte[]? CreatedBySubject { get; set; }
 
-    public string? OwnerSubject { get; set; }
+    public byte[]? CreatedByLegacy { get; set; }
+
+    public byte[]? OwnerIssuer { get; set; }
+
+    public byte[]? OwnerSubject { get; set; }
 
     public string LifecycleState { get; set; } = "active";
 

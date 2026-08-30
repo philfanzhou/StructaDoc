@@ -35,10 +35,15 @@ public sealed class EfCoreDocumentReadService(
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+        var owner = access.HasPrincipalIdentity
+            ? DocumentOwnerIdentity.From(access)
+            : default;
         var query = ApplyAccess(
             dbContext.Documents.AsNoTracking()
                 .Where(document => document.LifecycleState == ResourceLifecycleStates.Active),
             access,
+            owner,
+            DocumentOwnerIdentity.CanCompareTextGrant(access, dbContext.Database.ProviderName),
             DocumentPermissions.Read);
 
         if (!string.IsNullOrWhiteSpace(fileName))
@@ -86,8 +91,8 @@ public sealed class EfCoreDocumentReadService(
                     .Select(run => run.Status)
                     .FirstOrDefault(),
                 access.HasPrincipalIdentity
-                    && document.OwnerIssuer == access.Issuer
-                    && document.OwnerSubject == access.Subject))
+                    && document.OwnerIssuer == owner.Issuer
+                    && document.OwnerSubject == owner.Subject))
             .Take(checked(limit + 1))
             .ToListAsync(cancellationToken);
         var hasMore = documents.Count > limit;
@@ -115,11 +120,16 @@ public sealed class EfCoreDocumentReadService(
         ResourceAccessContext access,
         CancellationToken cancellationToken = default)
     {
+        var owner = access.HasPrincipalIdentity
+            ? DocumentOwnerIdentity.From(access)
+            : default;
         return ApplyAccess(dbContext.Documents
             .AsNoTracking()
             .Where(document => document.Id == id
                 && document.LifecycleState == ResourceLifecycleStates.Active),
             access,
+            owner,
+            DocumentOwnerIdentity.CanCompareTextGrant(access, dbContext.Database.ProviderName),
             DocumentPermissions.Read)
             .Select(document => new DocumentRecord(
                 document.Id,
@@ -135,8 +145,8 @@ public sealed class EfCoreDocumentReadService(
                     .Select(run => run.Status)
                     .FirstOrDefault(),
                 access.HasPrincipalIdentity
-                    && document.OwnerIssuer == access.Issuer
-                    && document.OwnerSubject == access.Subject))
+                    && document.OwnerIssuer == owner.Issuer
+                    && document.OwnerSubject == owner.Subject))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -152,11 +162,16 @@ public sealed class EfCoreDocumentReadService(
         ResourceAccessContext access,
         CancellationToken cancellationToken = default)
     {
+        var owner = access.HasPrincipalIdentity
+            ? DocumentOwnerIdentity.From(access)
+            : default;
         var storedDocument = await ApplyAccess(dbContext.Documents
             .AsNoTracking()
             .Where(document => document.Id == id
                 && document.LifecycleState == ResourceLifecycleStates.Active),
             access,
+            owner,
+            DocumentOwnerIdentity.CanCompareTextGrant(access, dbContext.Database.ProviderName),
             DocumentPermissions.Read)
             .Select(document => new StoredDocument(
                 new DocumentRecord(
@@ -173,8 +188,8 @@ public sealed class EfCoreDocumentReadService(
                         .Select(run => run.Status)
                         .FirstOrDefault(),
                     access.HasPrincipalIdentity
-                        && document.OwnerIssuer == access.Issuer
-                        && document.OwnerSubject == access.Subject),
+                        && document.OwnerIssuer == owner.Issuer
+                        && document.OwnerSubject == owner.Subject),
                 document.StorageRef))
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -204,6 +219,8 @@ public sealed class EfCoreDocumentReadService(
     private static IQueryable<DocumentEntity> ApplyAccess(
         IQueryable<DocumentEntity> query,
         ResourceAccessContext access,
+        DocumentOwnerIdentity owner,
+        bool canCompareTextGrant,
         DocumentPermissions permission)
     {
         if (access.IsAdministrator)
@@ -217,8 +234,15 @@ public sealed class EfCoreDocumentReadService(
         }
 
         var required = (int)permission;
+        if (!canCompareTextGrant)
+        {
+            return query.Where(document =>
+                document.OwnerIssuer == owner.Issuer
+                && document.OwnerSubject == owner.Subject);
+        }
+
         return query.Where(document =>
-            (document.OwnerIssuer == access.Issuer && document.OwnerSubject == access.Subject)
+            (document.OwnerIssuer == owner.Issuer && document.OwnerSubject == owner.Subject)
             || document.AccessGrants.Any(grant =>
                 grant.PrincipalIssuer == access.Issuer
                 && grant.PrincipalSubject == access.Subject

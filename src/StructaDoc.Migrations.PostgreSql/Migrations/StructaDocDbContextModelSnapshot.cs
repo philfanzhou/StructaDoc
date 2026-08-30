@@ -197,10 +197,20 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
-                    b.Property<string>("CreatedBy")
+                    b.Property<byte[]>("CreatedByIssuer")
+                        .HasMaxLength(512)
+                        .HasColumnType("bytea")
+                        .HasColumnName("created_by_issuer");
+
+                    b.Property<byte[]>("CreatedByLegacy")
+                        .HasMaxLength(1024)
+                        .HasColumnType("bytea")
+                        .HasColumnName("created_by_legacy");
+
+                    b.Property<byte[]>("CreatedBySubject")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("created_by");
+                        .HasColumnType("bytea")
+                        .HasColumnName("created_by_subject");
 
                     b.Property<DateTime?>("DeletionRequestedAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -231,14 +241,14 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                         .HasColumnType("character varying(512)")
                         .HasColumnName("original_file_name");
 
-                    b.Property<string>("OwnerIssuer")
+                    b.Property<byte[]>("OwnerIssuer")
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("bytea")
                         .HasColumnName("owner_issuer");
 
-                    b.Property<string>("OwnerSubject")
+                    b.Property<byte[]>("OwnerSubject")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("bytea")
                         .HasColumnName("owner_subject");
 
                     b.Property<string>("Sha256")
@@ -269,7 +279,12 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                     b.HasIndex("OwnerIssuer", "OwnerSubject", "CreatedAtUtc")
                         .HasDatabaseName("ix_documents_owner_created_at");
 
-                    b.ToTable("documents", (string)null);
+                    b.ToTable("documents", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_documents_created_by_state", "((created_by_issuer IS NOT NULL AND created_by_subject IS NOT NULL AND created_by_legacy IS NULL) OR (created_by_issuer IS NULL AND created_by_subject IS NULL))");
+
+                            t.HasCheckConstraint("ck_documents_owner_state", "((owner_issuer IS NULL AND owner_subject IS NULL) OR (owner_issuer IS NOT NULL AND owner_subject IS NOT NULL))");
+                        });
                 });
 
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseArtifactEntity", b =>

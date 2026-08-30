@@ -29,12 +29,25 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
             return Task.FromResult(false);
         }
 
+        var owner = DocumentOwnerIdentity.From(access);
         var required = (int)permission;
+        if (!DocumentOwnerIdentity.CanCompareTextGrant(
+                access,
+                dbContext.Database.ProviderName))
+        {
+            return dbContext.Documents.AnyAsync(
+                document => document.Id == documentId
+                    && document.LifecycleState == ResourceLifecycleStates.Active
+                    && document.OwnerIssuer == owner.Issuer
+                    && document.OwnerSubject == owner.Subject,
+                cancellationToken);
+        }
+
         return dbContext.Documents.AnyAsync(
             document => document.Id == documentId
                 && document.LifecycleState == ResourceLifecycleStates.Active
-                && ((document.OwnerIssuer == access.Issuer
-                        && document.OwnerSubject == access.Subject)
+                && ((document.OwnerIssuer == owner.Issuer
+                        && document.OwnerSubject == owner.Subject)
                     || document.AccessGrants.Any(grant =>
                         grant.PrincipalIssuer == access.Issuer
                         && grant.PrincipalSubject == access.Subject

@@ -28,6 +28,10 @@ public static class InnoDbIndexMigrationRegistry
             "_AddProviderConfigsAndParseCreation",
             "parse_runs",
             "ux_parse_runs_idempotency"),
+        new(
+            "_MigrateDocumentCanonicalActorIdentity",
+            "documents",
+            "ix_documents_owner_created_at"),
     ];
 
     public static IReadOnlyList<InnoDbIndexMigrationRequirement> FindPendingRequirements(

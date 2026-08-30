@@ -57,7 +57,13 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
                 entity => entity.Id == document.Id,
                 cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(document.Sha256, persisted.Sha256);
-        Assert.StartsWith("administrator:", persisted.CreatedBy, StringComparison.Ordinal);
+        Assert.NotNull(persisted.CreatedByIssuer);
+        Assert.NotNull(persisted.CreatedBySubject);
+        var actor = CanonicalActor.FromStoredBytes(
+            persisted.CreatedByIssuer,
+            persisted.CreatedBySubject);
+        Assert.Equal(CanonicalActor.AdministratorIssuer, actor.Issuer);
+        Assert.Null(persisted.CreatedByLegacy);
 
         await using var storedContent = File.OpenRead(
             Path.Combine(factory.StorageRootPath, persisted.StorageRef.Replace('/', Path.DirectorySeparatorChar)));
@@ -186,9 +192,20 @@ public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory 
         var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
         var createdBy = await dbContext.Documents
             .Where(entity => entity.Id == document.Id)
-            .Select(entity => entity.CreatedBy)
+            .Select(entity => new
+            {
+                entity.CreatedByIssuer,
+                entity.CreatedBySubject,
+                entity.CreatedByLegacy,
+            })
             .SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal($"api-client:{apiKey.ClientId:D}", createdBy);
+        Assert.Equal(
+            PrincipalIdentity.ApiClientIssuer,
+            CanonicalActorPersistence.DecodeIssuer(createdBy.CreatedByIssuer!));
+        Assert.Equal(
+            apiKey.ClientId.ToString("D"),
+            CanonicalActorPersistence.DecodeSubject(createdBy.CreatedBySubject!));
+        Assert.Null(createdBy.CreatedByLegacy);
     }
 
     [Fact]

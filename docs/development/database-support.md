@@ -64,16 +64,17 @@ unhealthy, while deployment-fixed configuration continues to stop startup.
 
 ### SQLite encoding requirement
 
-SQLite actor-identity replacement is also target behavior pending #49, #50, #51,
-#52, and #36. Those
-migrations will require `PRAGMA encoding = 'UTF-8'` and strictly validate the raw
+The Document actor-identity replacement is implemented by #49. Its SQLite migration
+requires `PRAGMA encoding = 'UTF-8'` and strictly validates the raw
 UTF-8 bytes of every affected text value before destructive DDL. A restored UTF-16
 database or malformed text will fail with an actionable error rather than copying
-bytes that the new binary identity mapping cannot compare. The shared canonical
+bytes that the new binary identity mapping cannot compare. It performs one coordinated
+`documents` rebuild, preserving legacy audit text as a BLOB and converting owner
+parts with explicit `CAST(... AS BLOB)`. The remaining access-grant and Parse Run
+replacements are tracked by #51, #52, and #36. The shared canonical
 actor value, one-byte ASCII codec, strict legacy UTF-8 codec, byte limits, and stored-
-state validation are implemented independently of those tables. Current StructaDoc-
-created SQLite databases use SQLite's UTF-8 default; the replacement migrations and
-their preflight do not exist yet. See SQLite's
+state validation are shared by those tables. Current StructaDoc-created SQLite
+databases use SQLite's UTF-8 default. See SQLite's
 [`PRAGMA encoding`](https://www.sqlite.org/pragma.html#pragma_encoding) contract.
 
 ## Provider Choice
@@ -172,16 +173,15 @@ image exits `0`. This same entry point is verified against SQLite, PostgreSQL, M
 and MariaDB; MySQL and MariaDB rejection is verified before an absent database can be
 created under an unsupported InnoDB default row format.
 
-Target procedure pending the Document work tracked by #35, the access-grant work
-tracked by #44, and the Parse Run work in #36: the actor-identity replacement migrations
-defined by
-[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) will require an
-exclusive application-version cutover. Operators will have to stop every old
+The Document replacement in #49, and the remaining access-grant and Parse Run work
+tracked by #44 and #36, use the exclusive actor-identity cutover defined by
+[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md). Operators must stop every old
 StructaDoc instance before applying those migrations and start only the new version
 after they complete. This prevents an old writer from creating a legacy actor row
 after the new pre-insert replay path has established that the migrated legacy set is
 immutable; a rolling mixed-version deployment will not be supported for this schema
-change. Those replacement migrations do not exist yet.
+change. #49 also registers the rebuilt Document owner index with the shared InnoDB
+preflight, requests `ROW_FORMAT=DYNAMIC`, and verifies the resulting table format.
 
 ## Contract Tests
 
@@ -192,7 +192,10 @@ $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
 dotnet test tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj
 ```
 
-The suite migrates an empty database and checks for pending migrations. It covers document pagination, local administrators, API-client scope changes and rotation, concurrency and revocation, competing Parse Run claims, lease renewal and expiry, stage and external-ID writes, conversion snapshots, resumable adoption, failure and retry transitions, cleanup lifecycle, and canonical commits.
+The suite migrates an empty database and checks for pending migrations. It also upgrades
+the previous Document schema and verifies legacy UTF-8 bytes, canonical runtime writes,
+raw binary owner storage, state constraints, index shape, authorization isolation,
+SQLite preflight ordering, and InnoDB row format. It covers document pagination, local administrators, API-client scope changes and rotation, concurrency and revocation, competing Parse Run claims, lease renewal and expiry, stage and external-ID writes, conversion snapshots, resumable adoption, failure and retry transitions, cleanup lifecycle, and canonical commits.
 
 ## Remaining Verification
 

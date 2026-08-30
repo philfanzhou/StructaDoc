@@ -203,10 +203,20 @@ namespace StructaDoc.Migrations.MySql.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at_utc");
 
-                    b.Property<string>("CreatedBy")
+                    b.Property<byte[]>("CreatedByIssuer")
+                        .HasMaxLength(512)
+                        .HasColumnType("varbinary(512)")
+                        .HasColumnName("created_by_issuer");
+
+                    b.Property<byte[]>("CreatedByLegacy")
+                        .HasMaxLength(1024)
+                        .HasColumnType("varbinary(1024)")
+                        .HasColumnName("created_by_legacy");
+
+                    b.Property<byte[]>("CreatedBySubject")
                         .HasMaxLength(255)
-                        .HasColumnType("varchar(255)")
-                        .HasColumnName("created_by");
+                        .HasColumnType("varbinary(255)")
+                        .HasColumnName("created_by_subject");
 
                     b.Property<DateTime?>("DeletionRequestedAtUtc")
                         .HasColumnType("datetime(6)")
@@ -237,21 +247,15 @@ namespace StructaDoc.Migrations.MySql.Migrations
                         .HasColumnType("varchar(512)")
                         .HasColumnName("original_file_name");
 
-                    b.Property<string>("OwnerIssuer")
+                    b.Property<byte[]>("OwnerIssuer")
                         .HasMaxLength(512)
-                        .HasColumnType("varchar(512)")
-                        .HasColumnName("owner_issuer")
-                        .UseCollation("ascii_bin");
+                        .HasColumnType("varbinary(512)")
+                        .HasColumnName("owner_issuer");
 
-                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<string>("OwnerIssuer"), "ascii");
-
-                    b.Property<string>("OwnerSubject")
+                    b.Property<byte[]>("OwnerSubject")
                         .HasMaxLength(255)
-                        .HasColumnType("varchar(255)")
-                        .HasColumnName("owner_subject")
-                        .UseCollation("ascii_bin");
-
-                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<string>("OwnerSubject"), "ascii");
+                        .HasColumnType("varbinary(255)")
+                        .HasColumnName("owner_subject");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
@@ -281,7 +285,12 @@ namespace StructaDoc.Migrations.MySql.Migrations
                     b.HasIndex("OwnerIssuer", "OwnerSubject", "CreatedAtUtc")
                         .HasDatabaseName("ix_documents_owner_created_at");
 
-                    b.ToTable("documents", (string)null);
+                    b.ToTable("documents", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_documents_created_by_state", "((created_by_issuer IS NOT NULL AND created_by_subject IS NOT NULL AND created_by_legacy IS NULL) OR (created_by_issuer IS NULL AND created_by_subject IS NULL))");
+
+                            t.HasCheckConstraint("ck_documents_owner_state", "((owner_issuer IS NULL AND owner_subject IS NULL) OR (owner_issuer IS NOT NULL AND owner_subject IS NOT NULL))");
+                        });
                 });
 
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseArtifactEntity", b =>

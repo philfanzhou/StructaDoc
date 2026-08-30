@@ -5,7 +5,9 @@ namespace StructaDoc.Persistence.Tests;
 public sealed class InnoDbMigrationPreflightTests
 {
     private static readonly InnoDbIndexMigrationRequirement Requirement =
-        Assert.Single(InnoDbIndexMigrationRegistry.Requirements);
+        Assert.Single(
+            InnoDbIndexMigrationRegistry.Requirements,
+            requirement => requirement.TableName == "parse_runs");
 
     [Theory]
     [InlineData("20260805115926_AddProviderConfigsAndParseCreation")]
@@ -17,6 +19,17 @@ public sealed class InnoDbMigrationPreflightTests
 
         Assert.Equal("parse_runs", match.TableName);
         Assert.Equal("ux_parse_runs_idempotency", match.IndexName);
+    }
+
+    [Theory]
+    [InlineData("20260830160429_MigrateDocumentCanonicalActorIdentity")]
+    public void Registry_matches_document_identity_migration_ids(string migrationId)
+    {
+        var match = Assert.Single(
+            InnoDbIndexMigrationRegistry.FindPendingRequirements([migrationId]));
+
+        Assert.Equal("documents", match.TableName);
+        Assert.Equal("ix_documents_owner_created_at", match.IndexName);
     }
 
     [Fact]

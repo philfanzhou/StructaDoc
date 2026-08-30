@@ -95,10 +95,12 @@ and local administrators to the exact binary structured pair defined by
 shared codec preserves accepted ASCII bytes including NUL, canonicalizes UUID-backed
 subjects, and validates canonical, legacy, and optional-empty persistence states.
 
-The business database's current `created_by` columns remain plain strings until the
-Document, access-grant, and Parse Run migrations tracked by #35, #44, and #36 switch
-their schemas and writers. Those migrations will preserve old strings as opaque
-legacy payloads; deleting an account will not remove either representation, but it
+Document ingestion now writes `created_by_issuer` and `created_by_subject` through
+that shared codec, while migrated scalar values remain opaque strict-UTF-8 bytes in
+`created_by_legacy`. Document owner fields use the same BLOB/bytea/varbinary mapping,
+including NUL, without changing owner authorization. Access-grant and Parse Run
+actor columns remain plain strings until the migrations tracked by #44 and #36.
+Deleting an account will not remove either actor representation, but it
 will remove the ability to resolve who the actor was. Resolving a canonical
 local-administrator subject requires its matching `admin_users` row in the control-plane
 database, so the two databases must be restored as a matched set when that audit
@@ -172,9 +174,10 @@ A resource outside the caller's boundary answers `404`, not `403`, so holding a 
 The implemented ownership upgrade attributed existing Documents rather than
 orphaning them. At that point the scalar `created_by` audit value recorded which
 client uploaded each Document, and the `AttributeApiClientDocumentOwnership`
-migration recovered ownership from it in all four supported databases. Target
-behavior pending #35 replaces that audit column under ADR-0009 but does not change
-the already-recovered owner pair. Documents uploaded by an administrator stay
+migration recovered ownership from it in all four supported databases. The #49
+migration now preserves that scalar as legacy UTF-8 bytes and changes the already-
+recovered owner pair only from text to the canonical binary mapping. Documents
+uploaded by an administrator stay
 unowned and remain administrator-only, which is what they already were.
 
 ## Data Protection
