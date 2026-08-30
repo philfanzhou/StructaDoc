@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Settings;
 using StructaDoc.Adapters.ControlPlane;
@@ -250,6 +251,66 @@ public sealed class InfrastructureSettingsEndpointTests
     }
 
     [Fact]
+    public async Task A_stored_database_preflight_failure_is_recoverable_and_fails_readiness()
+    {
+        using var deployment = new SettingsTestDeployment();
+        using (var writer = UnpinnedFactory(deployment))
+        using (var client = await SettingsTestDeployment.SignedInClientAsync(writer))
+        {
+            using var write = await client.PutAsJsonAsync(
+                "/api/v1/admin/settings",
+                new SettingUpdateRequest(
+                    SettingCatalog.DatabaseConnectionString,
+                    $"Data Source={deployment.BusinessDatabasePath};Pooling=False"),
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, write.StatusCode);
+        }
+
+        using var restarted = deployment.CreateFactory(
+            builder => builder.ConfigureServices(
+                services =>
+                {
+                    services.RemoveAll<IBusinessDatabaseMigrationPreflight>();
+                    services.AddSingleton<IBusinessDatabaseMigrationPreflight>(
+                        new RejectingMigrationPreflight());
+                }),
+            pinBusinessDatabase: false);
+        using var administrator = await SettingsTestDeployment.SignedInClientAsync(restarted);
+
+        var database = await administrator.GetFromJsonAsync<DatabaseStatusResponse>(
+            "/api/v1/admin/settings/database",
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(
+            RejectingMigrationPreflight.Detail,
+            database!.StartupFault,
+            StringComparison.Ordinal);
+
+        using var ready = await administrator.GetAsync(
+            "/health/ready",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ready.StatusCode);
+    }
+
+    [Fact]
+    public void A_deployment_database_preflight_failure_stops_startup()
+    {
+        using var deployment = new SettingsTestDeployment();
+        using var factory = deployment.CreateFactory(builder => builder.ConfigureServices(
+            services =>
+            {
+                services.RemoveAll<IBusinessDatabaseMigrationPreflight>();
+                services.AddSingleton<IBusinessDatabaseMigrationPreflight>(
+                    new RejectingMigrationPreflight());
+            }));
+
+        var error = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
+        Assert.Contains(
+            RejectingMigrationPreflight.Detail,
+            error.ToString(),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Infrastructure_status_and_tests_are_closed_to_anonymous_callers()
     {
         using var deployment = new SettingsTestDeployment();
@@ -282,8 +343,9 @@ public sealed class InfrastructureSettingsEndpointTests
         SettingsTestDeployment deployment)
     {
         return deployment.CreateFactory(builder => builder.ConfigureServices(
-            (context, services) => services.AddSingleton(
-                StructaDocSettingsConfiguration.Create(
+            (context, services) =>
+            {
+                services.AddSingleton(StructaDocSettingsConfiguration.Create(
                     context.Configuration,
                     new ControlPlaneOptions
                     {
@@ -291,7 +353,8 @@ public sealed class InfrastructureSettingsEndpointTests
                     },
                     [],
                     new FakeSettingSecretProtector(),
-                    new SettingsStartupFault()))));
+                    new SettingsStartupFault()));
+            }));
     }
 
     private static async Task<ConnectionTestResponse> TestStorageAsync(
@@ -320,5 +383,17 @@ public sealed class InfrastructureSettingsEndpointTests
     {
         var settings = await client.GetFromJsonAsync<SettingResponse[]>("/api/v1/admin/settings");
         return settings!.Single(setting => setting.Key == key);
+    }
+
+    private sealed class RejectingMigrationPreflight : IBusinessDatabaseMigrationPreflight
+    {
+        public const string Detail = "The test migration preflight rejected this database.";
+
+        public Task<BusinessDatabaseMigrationPreflightResult> CheckAsync(
+            DatabaseOptions databaseOptions,
+            CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException(Detail);
+        }
     }
 }

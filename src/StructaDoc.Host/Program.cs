@@ -112,7 +112,13 @@ var oidcOptions = OidcConfigurationBinder.Bind(settingsConfiguration, settingsSt
 
 builder.Services
     .AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
+    .AddCheck(
+        "business-database-startup",
+        () => settingsStartupFault.DetailFor(SettingCatalog.DatabaseSection) is { } detail
+            ? HealthCheckResult.Unhealthy(detail)
+            : HealthCheckResult.Healthy(),
+        tags: ["ready"]);
 builder.Services.AddStructaDocControlPlane(controlPlaneOptions);
 builder.Services.AddStructaDocPersistence(databaseOptions);
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions);
@@ -159,13 +165,6 @@ foreach (var (section, detail) in settingsStartupFault.Faults)
 // The control plane is migrated first and unconditionally: administration must be reachable even
 // when the configured business database is not, and it is what an administrator uses to fix that.
 await app.Services.ApplyStructaDocControlPlaneMigrationsAsync(app.Lifetime.ApplicationStopping);
-// The historical business-database administrator table is removed by a later migration. Import it
-// before that migration can run; a failed import stops startup rather than reopening anonymous setup
-// after silently discarding the only administrator credentials.
-await app.Services.MigrateLegacyAdministratorsAsync(
-    databaseOptions,
-    app.Logger,
-    app.Lifetime.ApplicationStopping);
 // A business database an administrator pointed at from the browser can be absent, refuse the
 // credentials, or be a server this build cannot migrate, and none of that is visible until the
 // service starts. Stopping here would take away the administration area, which is the only place it
@@ -174,9 +173,30 @@ await app.Services.MigrateLegacyAdministratorsAsync(
 // traffic to it, and a database the deployment pinned still stops startup as before.
 try
 {
-    await app.Services.ApplyStructaDocMigrationsAsync(
-        databaseOptions,
-        app.Lifetime.ApplicationStopping);
+    if (databaseOptions.ApplyMigrationsOnStartup)
+    {
+        var migrationPreflight = app.Services
+            .GetRequiredService<IBusinessDatabaseMigrationPreflight>();
+        var preflightResult = await migrationPreflight.CheckAsync(
+            databaseOptions,
+            app.Lifetime.ApplicationStopping);
+
+        // The historical business-database administrator table is removed by a later migration.
+        // Import it before that migration can run. A database the server preflight proved absent has
+        // no legacy table, and opening its qualified connection here would replace the actionable
+        // preflight result with an unknown-database error.
+        if (preflightResult.DatabaseExists)
+        {
+            await app.Services.MigrateLegacyAdministratorsAsync(
+                databaseOptions,
+                app.Logger,
+                app.Lifetime.ApplicationStopping);
+        }
+
+        await app.Services.ApplyStructaDocMigrationsAsync(
+            databaseOptions,
+            app.Lifetime.ApplicationStopping);
+    }
 }
 catch (Exception error) when (
     error is not OperationCanceledException

@@ -22,6 +22,7 @@ public static class PersistenceServiceCollectionExtensions
         databaseOptions.Validate();
 
         services.AddSingleton(databaseOptions);
+        services.AddSingleton<IBusinessDatabaseMigrationPreflight, InnoDbMigrationPreflight>();
         services.AddDbContext<StructaDocDbContext>(
             options => ConfigureDatabase(options, databaseOptions));
         services.AddScoped<IParseRunLeaseStore, EfCoreParseRunLeaseStore>();
