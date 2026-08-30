@@ -95,14 +95,15 @@ and local administrators to the exact binary structured pair defined by
 shared codec preserves accepted ASCII bytes including NUL, canonicalizes UUID-backed
 subjects, and validates canonical, legacy, and optional-empty persistence states.
 
-Document ingestion and access-grant writes now store `created_by_issuer` and
+Document ingestion, access-grant writes, and Parse Run creation now store `created_by_issuer` and
 `created_by_subject` through that shared codec, while migrated scalar values remain
 opaque strict-UTF-8 bytes in `created_by_legacy`. Document owner and access-grant
 principal fields use the same BLOB/bytea/varbinary mapping, including NUL, without
 changing owner-or-grant authorization. Access-grant v1 responses decode principal
 bytes and project canonical actors into the existing required string fields; legacy
-actors return their exact decoded former value. Parse Run actor columns remain plain
-strings until the migration tracked by #36.
+actors return their exact decoded former value. Parse Run replay checks the canonical
+pair first and then compares a migrated legacy actor payload byte-for-byte, while new
+runs write only the canonical pair.
 Deleting an account will not remove either actor representation, but it
 will remove the ability to resolve who the actor was. Resolving a canonical
 local-administrator subject requires its matching `admin_users` row in the control-plane

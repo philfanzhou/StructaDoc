@@ -463,7 +463,9 @@ internal static class ParseRunLeaseContract
                     configId,
                     "{}",
                     3,
-                    "contract-test",
+                    CanonicalActor.Create(
+                        CanonicalActor.AdministratorIssuer,
+                        "11111111-1111-1111-1111-111111111111"),
                     null,
                     nowUtc));
             Assert.Equal(ParseRunCreationStatus.Created, result.Status);

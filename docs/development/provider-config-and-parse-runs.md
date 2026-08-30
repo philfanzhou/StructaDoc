@@ -51,7 +51,16 @@ Creation persists the `queued` state, Document ID, Provider type, logical config
 
 `submittedMediaType` initially equals the source. Before outbound work, the executor validates the immutable Provider capabilities and size limits. If an Office source requires PDF fallback, it saves an independent conversion snapshot and `normalized-pdf` Artifact.
 
-Callers may send one visible-ASCII `Idempotency-Key` up to 256 characters. Scope includes subject, Document, and operation. The first request returns `201`; a replay returns the original record with `200` and `Idempotency-Replayed: true`, even if the default Provider changed. Without the header, each request creates a distinct Parse Run.
+Callers may send one visible-ASCII `Idempotency-Key` up to 256 characters. Scope uses
+the caller's canonical `(issuer, subject)` pair, the Document, and the operation, with
+ordinal, case-sensitive actor and key comparison on every supported database. The
+first request returns `201`; a replay returns the original record with `200` and
+`Idempotency-Replayed: true`, even if the default Provider changed. A row migrated
+from the former scalar actor replays only when both the former actor UTF-8 bytes and
+key match exactly; aliases admitted only by an old case- or accent-insensitive
+collation may create a new run. New rows store only canonical actor bytes. Concurrent
+requests are serialized by the canonical unique index and the loser rereads the
+winning row. Without the header, each request creates a distinct Parse Run.
 
 `GET /api/v1/parse-runs/{id}` requires corresponding resource access or `parses:read`. It returns stable status/stage, configuration snapshot facts, sanitized options, media types, attempt count, sanitized errors, and timestamps. It excludes leases, concurrency tokens, internal callers, credentials, checkpoints, and external task IDs.
 

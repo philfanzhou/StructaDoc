@@ -7,7 +7,7 @@ public sealed class InnoDbMigrationPreflightTests
     private static readonly InnoDbIndexMigrationRequirement Requirement =
         Assert.Single(
             InnoDbIndexMigrationRegistry.Requirements,
-            requirement => requirement.TableName == "parse_runs");
+            requirement => requirement.MigrationSuffix == "_AddProviderConfigsAndParseCreation");
 
     [Theory]
     [InlineData("20260805115926_AddProviderConfigsAndParseCreation")]
@@ -41,6 +41,17 @@ public sealed class InnoDbMigrationPreflightTests
 
         Assert.Equal("document_access_grants", match.TableName);
         Assert.Equal("ux_document_access_grants_principal", match.IndexName);
+    }
+
+    [Theory]
+    [InlineData("20260830172615_MigrateParseRunCanonicalActorIdentity")]
+    public void Registry_matches_parse_run_identity_migration_ids(string migrationId)
+    {
+        var match = Assert.Single(
+            InnoDbIndexMigrationRegistry.FindPendingRequirements([migrationId]));
+
+        Assert.Equal("parse_runs", match.TableName);
+        Assert.Equal("ux_parse_runs_idempotency", match.IndexName);
     }
 
     [Fact]

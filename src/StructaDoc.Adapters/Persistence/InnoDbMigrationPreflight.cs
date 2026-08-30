@@ -36,6 +36,10 @@ public static class InnoDbIndexMigrationRegistry
             "_MigrateAccessGrantCanonicalActorIdentity",
             "document_access_grants",
             "ux_document_access_grants_principal"),
+        new(
+            "_MigrateParseRunCanonicalActorIdentity",
+            "parse_runs",
+            "ux_parse_runs_idempotency"),
     ];
 
     public static IReadOnlyList<InnoDbIndexMigrationRequirement> FindPendingRequirements(

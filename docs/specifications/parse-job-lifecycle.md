@@ -2,7 +2,7 @@
 
 - Status: Target specification with implemented core lifecycle
 - Version: 1.0-draft
-- Last updated: 2026-08-30
+- Last updated: 2026-08-31
 
 ## 1. Purpose
 
@@ -90,8 +90,15 @@ Provider versions are immutable. Updates create new versions. A version referenc
 ## 7. Idempotency
 
 - Callers may provide `Idempotency-Key`.
-- Scope includes subject, target Document, and operation.
+- Scope includes the caller's canonical `(issuer, subject)` pair, target Document,
+  and operation. Actor fields and the visible-ASCII key compare ordinally and
+  case-sensitively on every supported database.
 - A repeated key returns the original Parse Run and never creates another external task.
+- Migrated scalar actors remain eligible for byte-exact legacy replay. A former
+  collation-only alias is intentionally not a replay, and new runs store only the
+  canonical pair.
+- Concurrent canonical creation is serialized by the unique index; after a unique
+  violation the losing request rereads and returns the winning run.
 - Without a key, callers may create another Parse Run to preserve separate parsing history.
 - Worker object writes and result commits use Parse Run identity and deterministic logical keys so crash replay is safe.
 
