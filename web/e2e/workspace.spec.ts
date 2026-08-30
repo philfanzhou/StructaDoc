@@ -202,6 +202,214 @@ test('workspace polling refreshes final document state without a selection and s
   expect(documentRequests).toBe(requestsAfterCompletion)
 })
 
+test('result tabs load and mount on first use, then preserve their state', async ({ page }) => {
+  const document = documentItem('lazy-document', 'lazy-result.pdf')
+  const run = parseRun('lazy-run', document.id, 'Lazy provider')
+  let artifactRequests = 0
+  let assetRequests = 0
+  let pageRequests = 0
+  let sequentialBlockRequests = 0
+  let layoutBlockRequests = 0
+  const assetContentRequests = new Map<string, number>()
+
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/parse-execution') {
+      return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    }
+    if (path === '/api/v1/documents') return fulfillJson(route, { items: [document] })
+    if (path === `/api/v1/documents/${document.id}/parse-runs`) return fulfillJson(route, [run])
+    if (path === `/api/v1/parse-runs/${run.id}/artifacts`) {
+      artifactRequests += 1
+      return fulfillJson(route, [{
+        id: 'markdown-artifact', type: 'markdown', name: 'result.md', mediaType: 'text/markdown',
+        sizeBytes: 120, sha256: 'artifact-sha', createdAt: '2026-08-29T00:00:01Z',
+      }])
+    }
+    if (path === `/api/v1/parse-runs/${run.id}/assets`) {
+      assetRequests += 1
+      return fulfillJson(route, [
+        { id: 'asset-a', name: 'used-by-block.svg', mediaType: 'image/svg+xml', sizeBytes: 100, sha256: 'asset-a-sha', width: 20, height: 20 },
+        { id: 'asset-b', name: 'resource-only.svg', mediaType: 'image/svg+xml', sizeBytes: 100, sha256: 'asset-b-sha', width: 20, height: 20 },
+      ])
+    }
+    if (path === `/api/v1/parse-runs/${run.id}/pages`) {
+      pageRequests += 1
+      return fulfillJson(route, [{ number: 1, width: 100, height: 140, unit: 'pt' }])
+    }
+    if (path === `/api/v1/parse-runs/${run.id}/blocks`) {
+      if (url.searchParams.has('pageNumber')) {
+        layoutBlockRequests += 1
+        return fulfillJson(route, { items: [{
+          id: 'layout-block', sequence: 0, pageNumber: 1, type: 'image', assetId: 'asset-a',
+          boundingBox: { x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.4 },
+        }] })
+      }
+      sequentialBlockRequests += 1
+      return fulfillJson(route, {
+        items: Array.from({ length: 60 }, (_, sequence) => ({
+          id: `block-${sequence}`, sequence, pageNumber: 1, type: sequence === 0 ? 'image' : 'text',
+          assetId: sequence === 0 ? 'asset-a' : undefined,
+          content: `Block ${sequence} carries enough text to make the preserved panel scrollable.`,
+        })),
+      })
+    }
+    if (path === `/api/v1/parse-runs/${run.id}/markdown/preview`) {
+      return route.fulfill({ status: 200, contentType: 'text/html', body: '<p>Rendered document</p>' })
+    }
+    const assetMatch = path.match(/\/assets\/(asset-[ab])\/content$/)
+    if (assetMatch) {
+      const assetId = assetMatch[1]
+      assetContentRequests.set(assetId, (assetContentRequests.get(assetId) ?? 0) + 1)
+      return route.fulfill({
+        status: 200,
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"></svg>',
+      })
+    }
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+
+  await page.goto('/')
+  await page.getByText(document.originalFileName, { exact: true }).click()
+  await page.getByText(run.providerType, { exact: true }).click()
+  await expect(page.locator('[data-result-panel="document"]')).toBeVisible()
+  await expect(page.locator('[data-result-panel="document"] iframe')).toHaveAttribute('src', `/api/v1/parse-runs/${run.id}/markdown/preview`)
+
+  expect(artifactRequests).toBe(1)
+  expect(assetRequests).toBe(0)
+  expect(pageRequests).toBe(0)
+  expect(sequentialBlockRequests).toBe(0)
+  expect(layoutBlockRequests).toBe(0)
+  await expect(page.locator('[data-result-panel="blocks"]')).toHaveCount(0)
+  await expect(page.locator('[data-result-panel="layout"]')).toHaveCount(0)
+  await expect(page.locator('[data-result-panel="resources"]')).toHaveCount(0)
+  expect(assetContentRequests.get('asset-b') ?? 0).toBe(0)
+
+  const tabs = page.locator('.result-tabs')
+  await tabs.getByRole('button', { name: /结构/ }).click()
+  const blockList = page.locator('[data-result-panel="blocks"] .block-list')
+  await expect(blockList.locator('article')).toHaveCount(60)
+  await expect(blockList.locator('img')).toHaveAttribute('loading', 'lazy')
+  expect(assetRequests).toBe(1)
+  expect(sequentialBlockRequests).toBe(1)
+  expect(pageRequests).toBe(0)
+  expect(assetContentRequests.get('asset-b') ?? 0).toBe(0)
+
+  await blockList.evaluate(element => { element.scrollTop = 320 })
+  const preservedScrollTop = await blockList.evaluate(element => element.scrollTop)
+  expect(preservedScrollTop).toBeGreaterThan(0)
+
+  await tabs.getByRole('button', { name: /资源/ }).click()
+  const resources = page.locator('[data-result-panel="resources"]')
+  await expect(resources).toBeVisible()
+  await expect(resources.locator('img')).toHaveCount(2)
+  await expect(resources.locator('img').first()).toHaveAttribute('loading', 'lazy')
+  expect(assetRequests).toBe(1)
+  expect(artifactRequests).toBe(1)
+
+  await tabs.getByRole('button', { name: /结构/ }).click()
+  await expect(blockList).toBeVisible()
+  expect(await blockList.evaluate(element => element.scrollTop)).toBe(preservedScrollTop)
+  expect(sequentialBlockRequests).toBe(1)
+
+  await tabs.getByRole('button', { name: /版面/ }).click()
+  await expect(page.locator('[data-result-panel="layout"] .layout-map')).toBeVisible()
+  expect(pageRequests).toBe(1)
+  expect(layoutBlockRequests).toBe(1)
+  expect(assetRequests).toBe(1)
+
+  await tabs.getByRole('button', { name: /资源/ }).click()
+  expect(assetRequests).toBe(1)
+  expect(artifactRequests).toBe(1)
+  expect(pageRequests).toBe(1)
+  expect(sequentialBlockRequests).toBe(1)
+  expect(layoutBlockRequests).toBe(1)
+})
+
+test('result reads ignore stale success, failure, and loading completion', async ({ page }) => {
+  const document = documentItem('stale-result-document', 'stale-result.pdf')
+  const runs = [
+    parseRun('run-a', document.id, 'Provider A'),
+    parseRun('run-b', document.id, 'Provider B'),
+    parseRun('run-c', document.id, 'Provider C'),
+    parseRun('run-d', document.id, 'Provider D'),
+  ]
+  const aStarted = deferred(); const releaseA = deferred(); const aFinished = deferred()
+  const bStarted = deferred(); const releaseB = deferred(); const bFinished = deferred()
+  const cStarted = deferred(); const releaseC = deferred(); const cFinished = deferred()
+  let resultMetadataRequests = 0
+  let unexpectedResultRequests = 0
+
+  const markdownArtifact = (runId: string) => [{
+    id: `artifact-${runId}`, type: 'markdown', name: `${runId}.md`, mediaType: 'text/markdown',
+    sizeBytes: 100, sha256: `${runId}-sha`, createdAt: '2026-08-29T00:00:01Z',
+  }]
+
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/parse-execution') {
+      return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    }
+    if (path === '/api/v1/documents') return fulfillJson(route, { items: [document] })
+    if (path === `/api/v1/documents/${document.id}/parse-runs`) return fulfillJson(route, runs)
+    if (path === '/api/v1/parse-runs/run-a/artifacts') {
+      resultMetadataRequests += 1; aStarted.resolve(); await releaseA.promise
+      await fulfillJson(route, markdownArtifact('run-a')); aFinished.resolve(); return
+    }
+    if (path === '/api/v1/parse-runs/run-b/artifacts') {
+      resultMetadataRequests += 1; bStarted.resolve(); await releaseB.promise
+      await fulfillJson(route, markdownArtifact('run-b')); bFinished.resolve(); return
+    }
+    if (path === '/api/v1/parse-runs/run-c/artifacts') {
+      resultMetadataRequests += 1; cStarted.resolve(); await releaseC.promise
+      await fulfillJson(route, { title: 'Delayed stale result failure' }, 503); cFinished.resolve(); return
+    }
+    if (path === '/api/v1/parse-runs/run-d/artifacts') {
+      resultMetadataRequests += 1
+      return fulfillJson(route, markdownArtifact('run-d'))
+    }
+    if (/\/api\/v1\/parse-runs\/run-[a-d]\/markdown\/preview$/.test(path)) {
+      return route.fulfill({ status: 200, contentType: 'text/html', body: '<p>Rendered document</p>' })
+    }
+    if (/\/api\/v1\/parse-runs\/run-[a-d]\/(pages|assets|blocks)$/.test(path)) {
+      unexpectedResultRequests += 1
+    }
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+
+  await page.goto('/')
+  await page.getByText(document.originalFileName, { exact: true }).click()
+
+  await page.getByText('Provider A', { exact: true }).click()
+  await aStarted.promise
+  await expect(page.locator('[data-result-loading="document"]')).toBeVisible()
+
+  await page.getByText('Provider B', { exact: true }).click()
+  await bStarted.promise
+  releaseA.resolve(); await aFinished.promise; await settleUi(page)
+  await expect(page.locator('[data-result-loading="document"]')).toBeVisible()
+  await expect(page.locator('[data-result-panel="document"] iframe')).toHaveCount(0)
+  await expect(page.locator('.toast.error')).toBeHidden()
+
+  releaseB.resolve(); await bFinished.promise
+  await expect(page.locator('[data-result-panel="document"] iframe')).toHaveAttribute('src', '/api/v1/parse-runs/run-b/markdown/preview')
+
+  await page.getByText('Provider C', { exact: true }).click()
+  await cStarted.promise
+  await page.getByText('Provider D', { exact: true }).click()
+  await expect(page.locator('[data-result-panel="document"] iframe')).toHaveAttribute('src', '/api/v1/parse-runs/run-d/markdown/preview')
+  releaseC.resolve(); await cFinished.promise; await settleUi(page)
+  await expect(page.locator('[data-result-panel="document"] iframe')).toHaveAttribute('src', '/api/v1/parse-runs/run-d/markdown/preview')
+  await expect(page.locator('.toast.error')).toBeHidden()
+
+  expect(resultMetadataRequests).toBe(4)
+  expect(unexpectedResultRequests).toBe(0)
+})
+
 test('administrator can use the document workspace and administration area', async ({ page }) => {
   // A retry runs against the deployment the previous attempt already wrote to, and nothing here is
   // cleaned up afterwards. Names carry a run stamp so an attempt never matches a leftover.
@@ -312,10 +520,9 @@ test('administrator can use the document workspace and administration area', asy
   await expect(page.locator('.inline-error')).toBeVisible()
   await expect(page.locator('.auto-refresh')).toBeHidden()
 
-  // The result panel reads Pages, Blocks, Assets, and Artifacts as four separate authorized calls,
-  // and a failed run has none of them. What it owes here is to come up and say so: a panel that
-  // throws on an empty result is a panel nobody sees a real one in either. The populated case is
-  // asserted against a parsed document by ParseExecutionEndToEndTests.
+  // The first useful panel reads Artifact metadata, then falls back to Blocks and Asset metadata
+  // because this failed run has no Markdown. Pages stay deferred until Layout is opened. What the
+  // visible panel owes is to say the result is empty rather than throwing on it.
   const resultTabs = page.locator('.result-tabs')
   await expect(resultTabs.getByRole('button', { name: /版面/ })).toBeVisible()
   // Without a Markdown Artifact there is nothing on the document tab, so the panel opens on the
