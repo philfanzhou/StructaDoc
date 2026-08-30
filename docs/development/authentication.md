@@ -1,7 +1,7 @@
 # Authentication
 
 - Status: Implementation note
-- Last updated: 2026-08-25
+- Last updated: 2026-08-30
 
 ## Current Boundary
 
@@ -88,15 +88,21 @@ Two rules protect against locking a deployment out of itself:
 Sequentially the first rule already covers the second: the only active administrator is always the caller. The second exists for the case the first cannot cover, two administrators removing each other at the same time, and is enforced by the condition travelling into the `UPDATE` or `DELETE` statement rather than being read first. Disabling takes effect on the account's next request, because cookie validation rejects an inactive account.
 
 Deleting is irreversible and drops the account's history, while disabling keeps it
-and can be undone. Today the business database's `created_by` audit values are plain
-strings, so deleting an account does not remove those values; it removes the ability
-to resolve who the actor was. Target behavior pending #35 and #36 replaces those
-strings with the binary canonical pair or an opaque legacy payload defined by
-[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md). The stored bytes still
-survive account deletion, but resolving a canonical local-administrator subject then
-requires its matching `admin_users` row in the control-plane database. The business
-and control-plane databases must therefore be restored as a matched set when that
-audit resolution matters.
+and can be undone. `CanonicalActor` now maps authenticated OIDC users, API clients,
+and local administrators to the exact binary structured pair defined by
+[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md), classifying them by
+`StructaDocClaimTypes.SubjectType` rather than administrator authorization. The
+shared codec preserves accepted ASCII bytes including NUL, canonicalizes UUID-backed
+subjects, and validates canonical, legacy, and optional-empty persistence states.
+
+The business database's current `created_by` columns remain plain strings until the
+Document, access-grant, and Parse Run migrations tracked by #35, #44, and #36 switch
+their schemas and writers. Those migrations will preserve old strings as opaque
+legacy payloads; deleting an account will not remove either representation, but it
+will remove the ability to resolve who the actor was. Resolving a canonical
+local-administrator subject requires its matching `admin_users` row in the control-plane
+database, so the two databases must be restored as a matched set when that audit
+resolution matters.
 
 ## Local Administrator Session Flow
 

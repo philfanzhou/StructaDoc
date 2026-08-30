@@ -1,7 +1,7 @@
 # Database Support
 
 - Status: Implementation note
-- Last updated: 2026-08-25
+- Last updated: 2026-08-30
 
 ## Purpose
 
@@ -54,9 +54,11 @@ SQLite actor-identity replacement is also target behavior pending #49, #50, #51,
 migrations will require `PRAGMA encoding = 'UTF-8'` and strictly validate the raw
 UTF-8 bytes of every affected text value before destructive DDL. A restored UTF-16
 database or malformed text will fail with an actionable error rather than copying
-bytes that the new binary identity mapping cannot compare. Current StructaDoc-created
-SQLite databases use SQLite's UTF-8 default; the replacement migrations and their
-preflight do not exist yet. See SQLite's
+bytes that the new binary identity mapping cannot compare. The shared canonical
+actor value, one-byte ASCII codec, strict legacy UTF-8 codec, byte limits, and stored-
+state validation are implemented independently of those tables. Current StructaDoc-
+created SQLite databases use SQLite's UTF-8 default; the replacement migrations and
+their preflight do not exist yet. See SQLite's
 [`PRAGMA encoding`](https://www.sqlite.org/pragma.html#pragma_encoding) contract.
 
 ## Provider Choice
