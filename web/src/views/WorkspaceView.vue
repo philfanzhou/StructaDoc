@@ -67,9 +67,13 @@ async function onFiles(files: FileList | null) {
 }
 
 async function openDocument(document: DocumentItem) {
-  selectedDocument.value = document; clearRunResult(); selectedRun.value = undefined
-  try { runs.value = await get(`/api/v1/documents/${document.id}/parse-runs`) }
-  catch (e) { message((e as Error).message, true) }
+  selectedDocument.value = document; runs.value = []; clearRunResult(); selectedRun.value = undefined
+  try {
+    const documentRuns = await get<ParseRun[]>(`/api/v1/documents/${document.id}/parse-runs`)
+    if (!stillSelectedDocument(document.id)) return
+    runs.value = documentRuns
+  }
+  catch (e) { if (stillSelectedDocument(document.id)) message((e as Error).message, true) }
 }
 
 async function createParse() {
@@ -134,6 +138,11 @@ function clearRunResult() {
   nextBlockSequence.value = undefined; layoutBlocks.value = []; layoutPageNumber.value = undefined
   layoutIncomplete.value = false; selectedBlockId.value = undefined; resultTab.value = 'document'
 }
+
+// Run-list reads follow the same selection rule as result reads below. The request owns the
+// Document it started for; a later selection owns the screen, whether the old request succeeds or
+// fails.
+function stillSelectedDocument(documentId: string) { return selectedDocument.value?.id === documentId }
 
 // Every result read below is checked against the current selection once it returns. Selecting a
 // second Parse Run while the first one's reads are still in flight is one click, and without the
@@ -250,21 +259,30 @@ async function deleteRun(run: ParseRun) {
   catch (e) { message((e as Error).message, true) } finally { busy.value = false }
 }
 
-async function refreshRuns(keepSelectedId?: string, quiet = false) {
-  if (!selectedDocument.value) return
-  runs.value = await get(`/api/v1/documents/${selectedDocument.value.id}/parse-runs`)
-  if (keepSelectedId) selectedRun.value = runs.value.find(item => item.id === keepSelectedId) ?? selectedRun.value
-  await loadDocuments(quiet)
+async function refreshRuns(keepSelectedId?: string, quiet = false, document = selectedDocument.value) {
+  if (!document) return
+  try {
+    const documentRuns = await get<ParseRun[]>(`/api/v1/documents/${document.id}/parse-runs`)
+    if (!stillSelectedDocument(document.id)) return
+    runs.value = documentRuns
+    if (keepSelectedId) selectedRun.value = documentRuns.find(item => item.id === keepSelectedId) ?? selectedRun.value
+    await loadDocuments(quiet)
+  }
+  catch (e) {
+    if (stillSelectedDocument(document.id) && !quiet) throw e
+  }
 }
 
 // A background pass keeps the selection where the user left it and stays silent on failure, so a
 // service that is briefly unreachable does not clear the screen or interrupt reading.
 async function pollProgress() {
+  const document = selectedDocument.value
+  const previous = selectedRun.value
   // Only while the notice is up. Whoever opens the switch is on another page or another machine, and
   // this is what takes the notice down without asking the user to reload.
   if (parsingHalted.value || providerCredentialMissing.value) await loadParseExecution()
-  const previous = selectedRun.value
-  await refreshRuns(previous?.id, true)
+  await refreshRuns(previous?.id, true, document)
+  if (!document || !stillSelectedDocument(document.id)) return
   const current = selectedRun.value
   // Pages, blocks, assets, and the rendered document only exist once a run reaches a final status,
   // so they are read at that transition rather than on every tick.
@@ -274,16 +292,31 @@ async function pollProgress() {
 }
 
 let pollHandle: number | undefined
+let pollInFlight = false
+let pollingUnmounted = false
 function stopPolling() {
-  if (pollHandle !== undefined) { window.clearInterval(pollHandle); pollHandle = undefined }
+  if (pollHandle !== undefined) { window.clearTimeout(pollHandle); pollHandle = undefined }
+}
+
+function schedulePolling() {
+  if (pollingUnmounted || pollHandle !== undefined || pollInFlight || !hasUnfinishedWork.value) return
+  // A one-shot timer is scheduled from `finally`, after the pass relinquishes its in-flight slot.
+  // That keeps failures retryable without letting a slow pass overlap the next interval.
+  pollHandle = window.setTimeout(async () => {
+    pollHandle = undefined
+    pollInFlight = true
+    try { await pollProgress() }
+    catch { /* a background failure stays quiet and the next pass still runs */ }
+    finally { pollInFlight = false; schedulePolling() }
+  }, pollIntervalMs)
 }
 
 watch(hasUnfinishedWork, unfinished => {
-  stopPolling()
-  if (unfinished) pollHandle = window.setInterval(() => { pollProgress().catch(() => undefined) }, pollIntervalMs)
+  if (unfinished) schedulePolling()
+  else stopPolling()
 })
 
-onUnmounted(stopPolling)
+onUnmounted(() => { pollingUnmounted = true; stopPolling() })
 
 async function deleteCurrent() {
   if (!selectedDocument.value || !confirm(`确认删除“${selectedDocument.value.originalFileName}”？对象与关系数据将由可恢复清理任务处理。`)) return
