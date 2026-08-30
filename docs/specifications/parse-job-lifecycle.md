@@ -40,6 +40,7 @@ Public status values cannot be renamed or change meaning within one API major ve
 - `validating`
 - `preparing-source`
 - `converting`
+- `segmenting`
 - `submitting`
 - `waiting-provider`
 - `downloading`
