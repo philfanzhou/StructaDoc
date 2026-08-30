@@ -222,9 +222,10 @@ actors remain the all-absent state.
 Provider-specific conversion and validation details are implemented by
 [issue #49](https://github.com/philfanzhou/StructaDoc/issues/49) for Documents
 (the former #50 owner conversion was consolidated into the same coordinated migration),
-[issues #51](https://github.com/philfanzhou/StructaDoc/issues/51) and
-[#52](https://github.com/philfanzhou/StructaDoc/issues/52) for access grants, and
-[issue #36](https://github.com/philfanzhou/StructaDoc/issues/36) for Parse Runs.
+[issue #51](https://github.com/philfanzhou/StructaDoc/issues/51) for access grants
+(the former #52 principal-only split was consolidated into the same coordinated
+migration), and [issue #36](https://github.com/philfanzhou/StructaDoc/issues/36) for
+Parse Runs.
 
 The compatibility field covers the actual old writer domains rather than trusting
 unenforced EF Core length metadata:
@@ -278,9 +279,9 @@ fields are compared separately.
 [Issue #48](https://github.com/philfanzhou/StructaDoc/issues/48) owns the shared
 canonical actor mapping. [Issue #49](https://github.com/philfanzhou/StructaDoc/issues/49)
 implements the coordinated Document audit and owner schema change in one migration
-per provider; [issues #51](https://github.com/philfanzhou/StructaDoc/issues/51)
-and [#52](https://github.com/philfanzhou/StructaDoc/issues/52) own the coordinated
-access-grant schema changes. [Issue #36](https://github.com/philfanzhou/StructaDoc/issues/36)
+per provider; [issue #51](https://github.com/philfanzhou/StructaDoc/issues/51)
+implements the coordinated access-grant audit and principal schema change in one
+migration per provider. [Issue #36](https://github.com/philfanzhou/StructaDoc/issues/36)
 owns the Parse Run schema change, and
 [issue #26](https://github.com/philfanzhou/StructaDoc/issues/26) is implemented by
 #36's one index/collation migration rather than by a second index rebuild. The reusable

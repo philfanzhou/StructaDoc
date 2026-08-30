@@ -92,6 +92,13 @@ public sealed record CanonicalActor
 
     public byte[] EncodeSubject() => CanonicalActorPersistence.EncodeSubject(Subject);
 
+    public string ToLegacyDisplayString() => Issuer switch
+    {
+        PrincipalIdentity.ApiClientIssuer => $"api-client:{Subject}",
+        AdministratorIssuer => $"administrator:{Subject}",
+        _ => $"oidc:{Issuer}|{Subject}",
+    };
+
     private static CanonicalActor FromOidcPrincipal(ClaimsPrincipal principal)
     {
         var issuer = principal.FindFirst(StructaDocClaimTypes.ExternalIssuer)?.Value

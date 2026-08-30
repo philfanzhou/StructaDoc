@@ -147,11 +147,20 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("character varying(1024)")
-                        .HasColumnName("created_by");
+                    b.Property<byte[]>("CreatedByIssuer")
+                        .HasMaxLength(512)
+                        .HasColumnType("bytea")
+                        .HasColumnName("created_by_issuer");
+
+                    b.Property<byte[]>("CreatedByLegacy")
+                        .HasMaxLength(4096)
+                        .HasColumnType("bytea")
+                        .HasColumnName("created_by_legacy");
+
+                    b.Property<byte[]>("CreatedBySubject")
+                        .HasMaxLength(255)
+                        .HasColumnType("bytea")
+                        .HasColumnName("created_by_subject");
 
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uuid")
@@ -161,16 +170,16 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("permissions");
 
-                    b.Property<string>("PrincipalIssuer")
+                    b.Property<byte[]>("PrincipalIssuer")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("bytea")
                         .HasColumnName("principal_issuer");
 
-                    b.Property<string>("PrincipalSubject")
+                    b.Property<byte[]>("PrincipalSubject")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("bytea")
                         .HasColumnName("principal_subject");
 
                     b.HasKey("Id");
@@ -179,7 +188,10 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_document_access_grants_principal");
 
-                    b.ToTable("document_access_grants", (string)null);
+                    b.ToTable("document_access_grants", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_document_access_grants_created_by_state", "((created_by_issuer IS NOT NULL AND created_by_subject IS NOT NULL AND created_by_legacy IS NULL) OR (created_by_issuer IS NULL AND created_by_subject IS NULL AND created_by_legacy IS NOT NULL))");
+                        });
                 });
 
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.DocumentEntity", b =>

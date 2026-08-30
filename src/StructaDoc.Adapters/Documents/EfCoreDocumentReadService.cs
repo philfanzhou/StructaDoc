@@ -43,7 +43,6 @@ public sealed class EfCoreDocumentReadService(
                 .Where(document => document.LifecycleState == ResourceLifecycleStates.Active),
             access,
             owner,
-            DocumentOwnerIdentity.CanCompareTextGrant(access, dbContext.Database.ProviderName),
             DocumentPermissions.Read);
 
         if (!string.IsNullOrWhiteSpace(fileName))
@@ -129,7 +128,6 @@ public sealed class EfCoreDocumentReadService(
                 && document.LifecycleState == ResourceLifecycleStates.Active),
             access,
             owner,
-            DocumentOwnerIdentity.CanCompareTextGrant(access, dbContext.Database.ProviderName),
             DocumentPermissions.Read)
             .Select(document => new DocumentRecord(
                 document.Id,
@@ -171,7 +169,6 @@ public sealed class EfCoreDocumentReadService(
                 && document.LifecycleState == ResourceLifecycleStates.Active),
             access,
             owner,
-            DocumentOwnerIdentity.CanCompareTextGrant(access, dbContext.Database.ProviderName),
             DocumentPermissions.Read)
             .Select(document => new StoredDocument(
                 new DocumentRecord(
@@ -220,7 +217,6 @@ public sealed class EfCoreDocumentReadService(
         IQueryable<DocumentEntity> query,
         ResourceAccessContext access,
         DocumentOwnerIdentity owner,
-        bool canCompareTextGrant,
         DocumentPermissions permission)
     {
         if (access.IsAdministrator)
@@ -234,18 +230,11 @@ public sealed class EfCoreDocumentReadService(
         }
 
         var required = (int)permission;
-        if (!canCompareTextGrant)
-        {
-            return query.Where(document =>
-                document.OwnerIssuer == owner.Issuer
-                && document.OwnerSubject == owner.Subject);
-        }
-
         return query.Where(document =>
             (document.OwnerIssuer == owner.Issuer && document.OwnerSubject == owner.Subject)
             || document.AccessGrants.Any(grant =>
-                grant.PrincipalIssuer == access.Issuer
-                && grant.PrincipalSubject == access.Subject
+                grant.PrincipalIssuer == owner.Issuer
+                && grant.PrincipalSubject == owner.Subject
                 && (grant.Permissions & required) == required));
     }
 

@@ -48,18 +48,23 @@ internal static class InnoDbMigrationPreflightContract
         Assert.True(missingHistory.DatabaseExists);
         Assert.True(missingHistory.RequiresInnoDbValidation);
 
-        var previousMigration = provider == DatabaseProvider.MySql
+        var compactFixtureMigration = provider == DatabaseProvider.MySql
             ? "20260805091104_AddAuthentication"
             : "20260805091111_AddAuthentication";
-        await MigrateAsync(options, previousMigration);
+        var latestPreflightPrerequisite = provider == DatabaseProvider.MySql
+            ? "20260807135116_UseBinaryOidcIdentityKeys"
+            : "20260807135131_UseBinaryOidcIdentityKeys";
+        await MigrateAsync(options, compactFixtureMigration);
 
         // Existing affected tables use their actual row format, not the current default.
         // The historical parse_runs row is itself too wide to convert to COMPACT on current servers,
         // so replace it with the smallest valid restored-table shape needed to exercise preflight.
         await ExecuteInDatabaseAsync(
             connectionBuilder,
-            "DROP TABLE `parse_runs`; "
-            + "CREATE TABLE `parse_runs` (`id` int NOT NULL) ENGINE=InnoDB ROW_FORMAT=COMPACT");
+            "SET FOREIGN_KEY_CHECKS = 0; "
+            + "DROP TABLE `parse_runs`; "
+            + "CREATE TABLE `parse_runs` (`id` int NOT NULL) ENGINE=InnoDB ROW_FORMAT=COMPACT; "
+            + "SET FOREIGN_KEY_CHECKS = 1");
         var compactError = await Assert.ThrowsAsync<InvalidOperationException>(
             () => preflight.CheckAsync(options));
         Assert.Contains("ROW_FORMAT=Compact", compactError.Message, StringComparison.OrdinalIgnoreCase);
@@ -72,7 +77,9 @@ internal static class InnoDbMigrationPreflightContract
                 serverVersion));
 
         await DropDatabaseAsync(connectionBuilder, databaseName);
-        await MigrateAsync(options, previousMigration);
+        // By this point all tables protected by pending actor migrations exist, so changing the
+        // server default cannot obscure the fact that their actual row format is already DYNAMIC.
+        await MigrateAsync(options, latestPreflightPrerequisite);
         var originalDefault = await ReadGlobalDefaultRowFormatAsync(connectionBuilder);
         try
         {

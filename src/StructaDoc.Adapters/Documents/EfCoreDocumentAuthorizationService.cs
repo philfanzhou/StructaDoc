@@ -31,26 +31,14 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
 
         var owner = DocumentOwnerIdentity.From(access);
         var required = (int)permission;
-        if (!DocumentOwnerIdentity.CanCompareTextGrant(
-                access,
-                dbContext.Database.ProviderName))
-        {
-            return dbContext.Documents.AnyAsync(
-                document => document.Id == documentId
-                    && document.LifecycleState == ResourceLifecycleStates.Active
-                    && document.OwnerIssuer == owner.Issuer
-                    && document.OwnerSubject == owner.Subject,
-                cancellationToken);
-        }
-
         return dbContext.Documents.AnyAsync(
             document => document.Id == documentId
                 && document.LifecycleState == ResourceLifecycleStates.Active
                 && ((document.OwnerIssuer == owner.Issuer
                         && document.OwnerSubject == owner.Subject)
                     || document.AccessGrants.Any(grant =>
-                        grant.PrincipalIssuer == access.Issuer
-                        && grant.PrincipalSubject == access.Subject
+                        grant.PrincipalIssuer == owner.Issuer
+                        && grant.PrincipalSubject == owner.Subject
                         && (grant.Permissions & required) == required)),
             cancellationToken);
     }
@@ -79,15 +67,15 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
         string issuer,
         string subject,
         DocumentPermissions permissions,
-        string actorId,
+        CanonicalActor actor,
         DateTime nowUtc,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(issuer);
-        ArgumentException.ThrowIfNullOrWhiteSpace(subject);
-        var normalizedIssuer = issuer.Trim();
-        var normalizedSubject = subject.Trim();
-        ValidateIdentity(normalizedIssuer, normalizedSubject);
+        ArgumentNullException.ThrowIfNull(actor);
+        ValidateIdentity(issuer, subject);
+        var principal = CanonicalActor.Create(issuer, subject);
+        var principalIssuer = principal.EncodeIssuer();
+        var principalSubject = principal.EncodeSubject();
         if (permissions is DocumentPermissions.None || (permissions & ~DocumentPermissions.All) != 0)
         {
             throw new ArgumentOutOfRangeException(nameof(permissions));
@@ -100,8 +88,8 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
 
         var entity = await dbContext.DocumentAccessGrants.SingleOrDefaultAsync(
             grant => grant.DocumentId == documentId
-                && grant.PrincipalIssuer == normalizedIssuer
-                && grant.PrincipalSubject == normalizedSubject,
+                && grant.PrincipalIssuer == principalIssuer
+                && grant.PrincipalSubject == principalSubject,
             cancellationToken);
         if (entity is null)
         {
@@ -109,10 +97,11 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
             {
                 Id = Guid.NewGuid(),
                 DocumentId = documentId,
-                PrincipalIssuer = normalizedIssuer,
-                PrincipalSubject = normalizedSubject,
+                PrincipalIssuer = principalIssuer,
+                PrincipalSubject = principalSubject,
                 Permissions = (int)permissions,
-                CreatedBy = actorId,
+                CreatedByIssuer = actor.EncodeIssuer(),
+                CreatedBySubject = actor.EncodeSubject(),
                 CreatedAtUtc = nowUtc,
             };
             dbContext.DocumentAccessGrants.Add(entity);
@@ -143,20 +132,37 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
         return deleted == 1;
     }
 
-    private static DocumentAccessGrant ToRecord(DocumentAccessGrantEntity entity) => new(
-        entity.Id,
-        entity.DocumentId,
-        entity.PrincipalIssuer,
-        entity.PrincipalSubject,
-        (DocumentPermissions)entity.Permissions,
-        entity.CreatedBy,
-        entity.CreatedAtUtc);
+    private static DocumentAccessGrant ToRecord(DocumentAccessGrantEntity entity)
+    {
+        var principal = CanonicalActor.FromStoredBytes(
+            entity.PrincipalIssuer,
+            entity.PrincipalSubject);
+        var actorState = CanonicalActorPersistence.ValidateState(
+            entity.CreatedByIssuer,
+            entity.CreatedBySubject,
+            entity.CreatedByLegacy,
+            CanonicalActorPersistence.MaximumAccessGrantLegacyByteCount,
+            allowEmpty: false);
+        var createdBy = actorState == PersistedActorState.Canonical
+            ? CanonicalActor.FromStoredBytes(
+                entity.CreatedByIssuer!,
+                entity.CreatedBySubject!).ToLegacyDisplayString()
+            : CanonicalActorPersistence.DecodeLegacy(
+                entity.CreatedByLegacy!,
+                CanonicalActorPersistence.MaximumAccessGrantLegacyByteCount);
+        return new DocumentAccessGrant(
+            entity.Id,
+            entity.DocumentId,
+            principal.Issuer,
+            principal.Subject,
+            (DocumentPermissions)entity.Permissions,
+            createdBy,
+            entity.CreatedAtUtc);
+    }
 
     private static void ValidateIdentity(string issuer, string subject)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(issuer);
-        ArgumentException.ThrowIfNullOrWhiteSpace(subject);
-        if (!PrincipalIdentity.IsValid(issuer.Trim(), subject.Trim()))
+        if (!PrincipalIdentity.IsValid(issuer, subject))
         {
             throw new ArgumentException("Grant principal is neither an OIDC issuer and subject pair nor an API client.");
         }
