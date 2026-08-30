@@ -243,8 +243,8 @@ Target upgrade procedure pending #35 and #36: the ADR-0009 actor-replacement
 migrations require an exclusive application-version cutover. Stop every old
 StructaDoc instance before applying that migration set and start only the new version
 after it completes; a rolling mixed-version deployment is not supported for this
-schema change. These replacement migrations do not exist yet, so this note does not
-describe a command available in the current image.
+schema change. These replacement migrations do not exist yet; the one-shot command
+below is already available and is the entry point that will apply them once they do.
 
 That cuts the other way too, and the service says so at every start: `No XML encryptor configured. Key … may be persisted to storage in unencrypted form.` The key ring under `/data/keys` is written in the clear, because a single container on Linux has nothing to encrypt it with that would not itself have to be stored somewhere — and it is the key that makes stored Provider tokens readable. Anyone holding a copy of `/data` holds those tokens. Treat the directory, and every backup and snapshot of it, as a secret: restrict it to the `APP_UID`, keep backups encrypted, and rotate a Provider credential that was in a copy which left the host. A deployment that needs the key ring itself encrypted at rest needs a master key held outside `/data`, which this image does not yet support.
 
@@ -255,3 +255,51 @@ Application code bounds conversion concurrency, execution time, file size, archi
 The image logs database commands at `Warning`. At `Information` the two Workers alone write a few hundred lines a minute on a service doing nothing, which rotates away whatever an operator went looking for; the failures are what is worth keeping. Set `Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command=Information` to get the statements back while diagnosing something, and unset it afterwards.
 
 The container has a one-minute graceful shutdown window after `SIGTERM`. Remote Provider work remains governed by Parse Run leases and recovery semantics.
+
+## One-Shot Database Migration
+
+The image can migrate the control plane and selected business database without
+starting ASP.NET Core or any Worker:
+
+```bash
+docker run --rm \
+  --read-only \
+  --security-opt no-new-privileges:true \
+  --cap-drop ALL \
+  --network none \
+  --tmpfs /tmp:size=256m,mode=1777 \
+  --volume /srv/structadoc/data:/data \
+  --env Database__ApplyMigrationsOnStartup=false \
+  structadoc:local \
+  --migrate-business-database
+```
+
+`--network none` is appropriate for the bundled SQLite database. Omit it when the
+selected business database is PostgreSQL, MySQL, or MariaDB, and pass the same
+deployment-managed `Database__Provider`, `Database__ConnectionString`, and, for MySQL
+or MariaDB, `Database__ServerVersion` values that the service will use. Do not put a
+credential directly in shell history; inject it through the deployment's secret
+mechanism. No port needs to be published.
+
+The operation uses deployment configuration for `ControlPlane` and `Database` only.
+It deliberately ignores database settings saved through `/admin`, so an external
+database configured only in the browser must be supplied explicitly for this run.
+Unrelated Storage, OIDC, Provider, Worker, bootstrap, and HTTP configuration is not
+validated or initialized. `Database__ApplyMigrationsOnStartup=false` does not disable
+an explicitly requested migration.
+
+For an upgrade that requires exclusive schema access:
+
+1. stop every old StructaDoc container or Worker that can write the database;
+2. take a consistent backup of the business database, `/data/control.db`, storage,
+   and `/data/keys`;
+3. run the command from the target image with the target deployment's volume and
+   database secrets;
+4. start the target application version only after the command exits `0`.
+
+The command migrates the control plane first, then runs the shared database preflight,
+imports legacy administrators from an existing business database when necessary, and
+finally applies business migrations. Success exits `0`, including a second run with
+nothing pending. Failure prints a sanitized actionable diagnostic and exits nonzero;
+do not start the new version until the cause is corrected or the recovery set is
+restored. Rolling mixed-version deployment is not a substitute for this cutover.

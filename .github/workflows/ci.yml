@@ -314,6 +314,33 @@ jobs:
           --build-arg SOURCE_REVISION="$GITHUB_SHA"
           .
 
+      - name: Run one-shot migration from production image
+        run: |
+          migration_log="$RUNNER_TEMP/structadoc-migration-command.log"
+
+          if ! docker run --rm --name structadoc-migrate-ci \
+            --read-only \
+            --security-opt no-new-privileges:true \
+            --cap-drop ALL \
+            --network none \
+            --tmpfs /tmp:size=256m,mode=1777 \
+            --tmpfs /data:size=256m,mode=1777 \
+            --env Database__ApplyMigrationsOnStartup=false \
+            structadoc:ci \
+            --migrate-business-database \
+            >"$migration_log" 2>&1; then
+            cat "$migration_log"
+            exit 1
+          fi
+
+          if grep --quiet 'Now listening' "$migration_log"; then
+            echo 'The one-shot migration command started an HTTP listener.'
+            cat "$migration_log"
+            exit 1
+          fi
+
+          cat "$migration_log"
+
       - name: Start production container
         run: |
           docker run --detach --name structadoc-ci \

@@ -19,12 +19,7 @@ public static class PersistenceServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(databaseOptions);
 
-        databaseOptions.Validate();
-
-        services.AddSingleton(databaseOptions);
-        services.AddSingleton<IBusinessDatabaseMigrationPreflight, InnoDbMigrationPreflight>();
-        services.AddDbContext<StructaDocDbContext>(
-            options => ConfigureDatabase(options, databaseOptions));
+        services.AddStructaDocPersistenceMigrationServices(databaseOptions);
         services.AddScoped<IParseRunLeaseStore, EfCoreParseRunLeaseStore>();
         services.AddScoped<IParseRunStateStore, EfCoreParseRunStateStore>();
         services.AddScoped<IParseRunConversionStore, EfCoreParseRunConversionStore>();
@@ -42,6 +37,28 @@ public static class PersistenceServiceCollectionExtensions
             .AddDbContextCheck<StructaDocDbContext>(
                 "database",
                 tags: ["ready"]);
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers only the business database services needed to inspect and migrate its schema. The
+    /// one-shot migration command deliberately does not construct runtime stores, health checks, or
+    /// any Worker dependency graph.
+    /// </summary>
+    public static IServiceCollection AddStructaDocPersistenceMigrationServices(
+        this IServiceCollection services,
+        DatabaseOptions databaseOptions)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(databaseOptions);
+
+        databaseOptions.Validate();
+
+        services.AddSingleton(databaseOptions);
+        services.AddSingleton<IBusinessDatabaseMigrationPreflight, InnoDbMigrationPreflight>();
+        services.AddDbContext<StructaDocDbContext>(
+            options => ConfigureDatabase(options, databaseOptions));
 
         return services;
     }

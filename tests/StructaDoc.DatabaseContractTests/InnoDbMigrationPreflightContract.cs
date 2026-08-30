@@ -64,6 +64,12 @@ internal static class InnoDbMigrationPreflightContract
             () => preflight.CheckAsync(options));
         Assert.Contains("ROW_FORMAT=Compact", compactError.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ALTER TABLE", compactError.Message, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            await BusinessDatabaseMigrationCommandContract.ExecuteAsync(
+                provider,
+                connectionString,
+                serverVersion));
 
         await DropDatabaseAsync(connectionBuilder, databaseName);
         await MigrateAsync(options, previousMigration);
@@ -99,6 +105,17 @@ internal static class InnoDbMigrationPreflightContract
                 "innodb_default_row_format=COMPACT",
                 defaultError.Message,
                 StringComparison.OrdinalIgnoreCase);
+
+            // The published operation uses this same preflight and must stop before EF Core creates
+            // an absent database. ApplyMigrationsOnStartup=false is supplied by the shared command
+            // contract, proving that only the preflight rejection—not the startup switch—stops it.
+            Assert.Equal(
+                1,
+                await BusinessDatabaseMigrationCommandContract.ExecuteAsync(
+                    provider,
+                    connectionString,
+                    serverVersion));
+            Assert.False(await DatabaseExistsAsync(connectionBuilder, databaseName));
         }
         finally
         {
@@ -107,7 +124,10 @@ internal static class InnoDbMigrationPreflightContract
 
         // Leave the container's configured database current for the ordinary database contract that
         // runs after this preflight contract in the same container.
-        await MigrateAsync(options);
+        await BusinessDatabaseMigrationCommandContract.AssertAsync(
+            provider,
+            connectionString,
+            serverVersion);
     }
 
     private static async Task MigrateAsync(
@@ -144,6 +164,21 @@ internal static class InnoDbMigrationPreflightContract
         await using var command = connection.CreateCommand();
         command.CommandText = $"CREATE DATABASE `{databaseName}` CHARACTER SET utf8mb4";
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<bool> DatabaseExistsAsync(
+        MySqlConnectionStringBuilder builder,
+        string databaseName)
+    {
+        await using var connection = await OpenServerConnectionAsync(builder);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*)
+            FROM information_schema.schemata
+            WHERE schema_name = @databaseName
+            """;
+        command.Parameters.AddWithValue("@databaseName", databaseName);
+        return Convert.ToInt32(await command.ExecuteScalarAsync()) > 0;
     }
 
     private static async Task ExecuteInDatabaseAsync(
