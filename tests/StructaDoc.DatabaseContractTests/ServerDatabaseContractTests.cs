@@ -17,6 +17,9 @@ public sealed class ServerDatabaseContractTests
             .Build();
         await container.StartAsync();
 
+        await BusinessDatabaseMigrationCommandContract.AssertAsync(
+            DatabaseProvider.PostgreSql,
+            container.GetConnectionString());
         await ParseRunLeaseContract.AssertAsync(
             DatabaseProvider.PostgreSql,
             container.GetConnectionString());

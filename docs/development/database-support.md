@@ -34,10 +34,9 @@ The application-managed path performs this preflight only when a pending migrati
 creates or rebuilds an index registered as depending on the larger InnoDB key limit.
 The reusable service, database-existence result, pending-migration decision, and
 affected migration/table/index registry are implemented by
-[#43](https://github.com/philfanzhou/StructaDoc/issues/43). The one-shot external
-migration entry point tracked by
-[#45](https://github.com/philfanzhou/StructaDoc/issues/45) will call that same service;
-it must not duplicate the SQL or registry. For an absent database the service uses a
+[#43](https://github.com/philfanzhou/StructaDoc/issues/43). Both normal startup and
+the one-shot external migration command call that same service; neither duplicates
+the SQL or registry. For an absent database the service uses a
 server connection with no default database selected to validate
 `innodb_page_size >= 16384` and
 `innodb_default_row_format = DYNAMIC` before EF Core creates the database. For an
@@ -136,6 +135,42 @@ dotnet tool restore
 ```
 
 Every shared model change requires a generated and reviewed migration in all four migration projects. Design-time factories exist only for generation; their placeholder connection strings are not runtime credentials.
+
+### One-shot migration command
+
+The published Host can migrate without starting the web application:
+
+```bash
+dotnet StructaDoc.Host.dll --migrate-business-database
+```
+
+The value-less operation flag is removed before command-line configuration is parsed.
+The command reads only deployment configuration for `ControlPlane` and `Database`,
+including the container's built-in SQLite defaults. It does not load settings stored
+through `/admin`, and invalid `Storage`, `Oidc`, Provider, Worker, or other application
+configuration does not affect it. If the active business-database choice exists only
+as a browser-stored setting, supply its `Database:*` values explicitly when running
+the command.
+
+The operation always performs these steps in order:
+
+1. migrate the SQLite control plane;
+2. run the shared business-database preflight;
+3. for an existing business database, import legacy administrators if required;
+4. apply the selected business migration assembly.
+
+`Database:ApplyMigrationsOnStartup=false` disables automatic startup migration but
+does not disable this explicit command. A successful, repeatable run exits `0`; any
+validation, preflight, import, or migration failure emits a sanitized diagnostic and
+exits nonzero. The command does not open an HTTP listener, start Workers, initialize
+storage, bootstrap an administrator, or seed a Provider.
+
+Before an exclusive schema upgrade, stop every StructaDoc instance that can write the
+database and back up the business database, control plane, storage, and key ring as one
+recovery set. Start the new application version only after this command from the new
+image exits `0`. This same entry point is verified against SQLite, PostgreSQL, MySQL,
+and MariaDB; MySQL and MariaDB rejection is verified before an absent database can be
+created under an unsupported InnoDB default row format.
 
 Target procedure pending the Document work tracked by #35, the access-grant work
 tracked by #44, and the Parse Run work in #36: the actor-identity replacement migrations

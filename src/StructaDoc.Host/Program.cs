@@ -8,6 +8,7 @@ using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.System;
 using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
+using StructaDoc.Host.Migrations;
 using StructaDoc.Host.OpenApi;
 using StructaDoc.Host.ParseRuns;
 using StructaDoc.Host.Providers;
@@ -25,6 +26,12 @@ using StructaDoc.Adapters.ProviderResults;
 using StructaDoc.Adapters.Providers;
 using StructaDoc.Adapters.Settings;
 using StructaDoc.Adapters.Storage;
+
+if (BusinessDatabaseMigrationCommand.TryExtractArguments(args, out var migrationArguments))
+{
+    Environment.ExitCode = await BusinessDatabaseMigrationCommand.ExecuteAsync(migrationArguments);
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
