@@ -1,11 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Settings;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Workers;
-using StructaDoc.Adapters.Persistence;
-using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Host.Tests;
 
@@ -55,6 +55,67 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
                 cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStages.PreparingSource, persistedRun.Stage);
         Assert.Equal(finalLease.ConcurrencyVersion, persistedRun.ConcurrencyVersion);
+    }
+
+    [Fact]
+    public async Task Segment_mutations_advance_the_session_lease_used_by_heartbeat()
+    {
+        using var client = factory.CreateClient();
+        var initialLease = await AddRunningParseRunAsync();
+        var heartbeat = factory.Services.GetRequiredService<ParseRunLeaseHeartbeat>();
+        var segmentId = Guid.NewGuid();
+
+        await using var session = heartbeat.StartSession(
+            initialLease,
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(await session.TryUpdateStageAsync(
+            ParseRunStages.Segmenting,
+            TestContext.Current.CancellationToken));
+
+        var creationLease = Assert.IsType<ParseRunLease>(
+            await session.TryCreateSegmentsAsync(
+                [new ParseSegmentCreation(
+                    segmentId,
+                    0,
+                    1,
+                    2,
+                    $"parse-runs/{initialLease.ParseRunId:N}/segments/0000.pdf",
+                    128,
+                    new string('d', 64),
+                    "created")],
+                TestContext.Current.CancellationToken));
+        var checkpointLease = Assert.IsType<ParseRunLease>(
+            await session.TryUpdateSegmentCheckpointAsync(
+                new ParseSegmentCheckpoint(
+                    segmentId,
+                    "submitted",
+                    "segment-task-1",
+                    null),
+                TestContext.Current.CancellationToken));
+
+        Assert.True(checkpointLease.ConcurrencyVersion > creationLease.ConcurrencyVersion);
+        Assert.True(
+            session.CurrentLease.ConcurrencyVersion >= checkpointLease.ConcurrencyVersion);
+
+        var deadlineUtc = DateTime.UtcNow.AddSeconds(3);
+        while (DateTime.UtcNow < deadlineUtc
+            && session.CurrentLease.ConcurrencyVersion == checkpointLease.ConcurrencyVersion)
+        {
+            await Task.Delay(25, TestContext.Current.CancellationToken);
+        }
+
+        Assert.False(session.IsLeaseLost);
+        Assert.True(session.CurrentLease.ConcurrencyVersion > checkpointLease.ConcurrencyVersion);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+        var persistedSegment = await dbContext.ParseSegments
+            .AsNoTracking()
+            .SingleAsync(
+                segment => segment.Id == segmentId,
+                TestContext.Current.CancellationToken);
+        Assert.Equal("submitted", persistedSegment.Status);
+        Assert.Equal("segment-task-1", persistedSegment.ExternalTaskId);
     }
 
     [Fact]
