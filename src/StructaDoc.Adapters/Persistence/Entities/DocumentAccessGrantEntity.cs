@@ -5,9 +5,11 @@ public sealed class DocumentAccessGrantEntity
     public Guid Id { get; set; }
     public Guid DocumentId { get; set; }
     public DocumentEntity Document { get; set; } = null!;
-    public required string PrincipalIssuer { get; set; }
-    public required string PrincipalSubject { get; set; }
+    public required byte[] PrincipalIssuer { get; set; }
+    public required byte[] PrincipalSubject { get; set; }
     public int Permissions { get; set; }
-    public required string CreatedBy { get; set; }
+    public byte[]? CreatedByIssuer { get; set; }
+    public byte[]? CreatedBySubject { get; set; }
+    public byte[]? CreatedByLegacy { get; set; }
     public DateTime CreatedAtUtc { get; set; }
 }

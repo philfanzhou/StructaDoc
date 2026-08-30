@@ -54,27 +54,7 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
             type => type.Namespace?.StartsWith(
                 "StructaDoc.Adapters.ControlPlane",
                 StringComparison.Ordinal) is not true);
-        ConfigureMySqlOidcIdentityColumns(modelBuilder);
         UtcDateTimeConventions.Apply(modelBuilder);
-    }
-
-    private void ConfigureMySqlOidcIdentityColumns(ModelBuilder modelBuilder)
-    {
-        if (Database.ProviderName?.EndsWith(
-                ".MySql",
-                StringComparison.Ordinal) is not true)
-        {
-            return;
-        }
-
-        modelBuilder.Entity<DocumentAccessGrantEntity>()
-            .Property(grant => grant.PrincipalIssuer)
-            .HasCharSet("ascii")
-            .UseCollation("ascii_bin");
-        modelBuilder.Entity<DocumentAccessGrantEntity>()
-            .Property(grant => grant.PrincipalSubject)
-            .HasCharSet("ascii")
-            .UseCollation("ascii_bin");
     }
 
     private void IncrementConcurrencyVersions()

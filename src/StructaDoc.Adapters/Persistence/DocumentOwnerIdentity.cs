@@ -4,13 +4,6 @@ namespace StructaDoc.Adapters.Persistence;
 
 internal readonly record struct DocumentOwnerIdentity(byte[] Issuer, byte[] Subject)
 {
-    public static bool CanCompareTextGrant(
-        ResourceAccessContext access,
-        string? providerName) =>
-        providerName?.StartsWith("Npgsql.", StringComparison.Ordinal) is not true
-        || (access.Issuer?.Contains('\0', StringComparison.Ordinal) is not true
-            && access.Subject?.Contains('\0', StringComparison.Ordinal) is not true);
-
     public static DocumentOwnerIdentity From(ResourceAccessContext access)
     {
         ArgumentNullException.ThrowIfNull(access);

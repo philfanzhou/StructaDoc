@@ -14,10 +14,12 @@ internal sealed class DocumentAccessGrantEntityConfiguration
         builder.HasKey(grant => grant.Id);
         builder.Property(grant => grant.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(grant => grant.DocumentId).HasColumnName("document_id");
-        builder.Property(grant => grant.PrincipalIssuer).HasColumnName("principal_issuer").HasMaxLength(ExternalIdentityConstraints.MaximumIssuerLength);
-        builder.Property(grant => grant.PrincipalSubject).HasColumnName("principal_subject").HasMaxLength(ExternalIdentityConstraints.MaximumSubjectLength);
+        builder.Property(grant => grant.PrincipalIssuer).HasColumnName("principal_issuer").HasMaxLength(CanonicalActorPersistence.MaximumIssuerByteCount);
+        builder.Property(grant => grant.PrincipalSubject).HasColumnName("principal_subject").HasMaxLength(CanonicalActorPersistence.MaximumSubjectByteCount);
         builder.Property(grant => grant.Permissions).HasColumnName("permissions");
-        builder.Property(grant => grant.CreatedBy).HasColumnName("created_by").HasMaxLength(1024);
+        builder.Property(grant => grant.CreatedByIssuer).HasColumnName("created_by_issuer").HasMaxLength(CanonicalActorPersistence.MaximumIssuerByteCount);
+        builder.Property(grant => grant.CreatedBySubject).HasColumnName("created_by_subject").HasMaxLength(CanonicalActorPersistence.MaximumSubjectByteCount);
+        builder.Property(grant => grant.CreatedByLegacy).HasColumnName("created_by_legacy").HasMaxLength(CanonicalActorPersistence.MaximumAccessGrantLegacyByteCount);
         builder.Property(grant => grant.CreatedAtUtc).HasColumnName("created_at_utc");
         builder.HasOne(grant => grant.Document)
             .WithMany(document => document.AccessGrants)
@@ -31,5 +33,8 @@ internal sealed class DocumentAccessGrantEntityConfiguration
         })
             .IsUnique()
             .HasDatabaseName("ux_document_access_grants_principal");
+        builder.ToTable(table => table.HasCheckConstraint(
+            "ck_document_access_grants_created_by_state",
+            "((created_by_issuer IS NOT NULL AND created_by_subject IS NOT NULL AND created_by_legacy IS NULL) OR (created_by_issuer IS NULL AND created_by_subject IS NULL AND created_by_legacy IS NOT NULL))"));
     }
 }

@@ -46,6 +46,8 @@ public sealed class SqliteDatabaseContractTests
         {
             await DocumentIdentityMigrationContract.AssertSqlitePreflightAsync(
                 $"Data Source={Path.Combine(directoryPath, "invalid.db")};Pooling=False");
+            await DocumentIdentityMigrationContract.AssertSqliteAccessGrantPreflightAsync(
+                $"Data Source={Path.Combine(directoryPath, "invalid-grant.db")};Pooling=False");
         }
         finally
         {

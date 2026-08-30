@@ -21,7 +21,7 @@ public interface IDocumentAuthorizationService
         string issuer,
         string subject,
         DocumentPermissions permissions,
-        string actorId,
+        CanonicalActor actor,
         DateTime nowUtc,
         CancellationToken cancellationToken = default);
 

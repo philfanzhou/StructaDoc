@@ -125,7 +125,11 @@ public sealed class ApiClientIsolationTests
         using var administrator = factory.CreateClient();
         await administrator.LoginAsAdministratorAsync();
 
-        using var owner = await CreateApiClientAsync(factory, administrator, "Owner");
+        var (ownerId, ownerClient) = await CreateIdentifiedApiClientAsync(
+            factory,
+            administrator,
+            "Owner");
+        using var owner = ownerClient;
         var (granteeId, granteeClient) = await CreateIdentifiedApiClientAsync(
             factory,
             administrator,
@@ -146,6 +150,12 @@ public sealed class ApiClientIsolationTests
                 ["read"]),
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, grant.StatusCode);
+        var grantResponse = await grant.Content.ReadFromJsonAsync<DocumentAccessGrantResponse>(
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(grantResponse);
+        Assert.Equal(PrincipalIdentity.ApiClientIssuer, grantResponse.Issuer);
+        Assert.Equal(PrincipalIdentity.ApiClientSubject(granteeId), grantResponse.Subject);
+        Assert.Equal($"api-client:{ownerId:D}", grantResponse.CreatedBy);
 
         using var afterGrant = await grantee.GetAsync(
             $"/api/v1/documents/{document.Id:D}",
@@ -163,6 +173,36 @@ public sealed class ApiClientIsolationTests
             $"/api/v1/documents/{document.Id:D}",
             TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, deletion.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_grant_round_trips_a_nul_bearing_boundary_principal()
+    {
+        using var factory = new StructaDocWebApplicationFactory();
+        using var administrator = factory.CreateClient();
+        await administrator.LoginAsAdministratorAsync();
+        using var owner = await CreateApiClientAsync(factory, administrator, "Owner");
+        var document = await UploadAsync(owner, "boundary-grant.pdf");
+        const string issuerPrefix = "https://identity.example/";
+        var issuer = issuerPrefix + new string(
+            'i',
+            CanonicalActorPersistence.MaximumIssuerByteCount - issuerPrefix.Length);
+        var subject = "subject\0" + new string(
+            's',
+            CanonicalActorPersistence.MaximumSubjectByteCount - 8);
+
+        using var response = await owner.PostAsJsonAsync(
+            $"/api/v1/documents/{document.Id:D}/access-grants",
+            new DocumentAccessGrantRequest(issuer, subject, ["read"]),
+            cancellationToken: TestContext.Current.CancellationToken);
+        var grant = await response.Content.ReadFromJsonAsync<DocumentAccessGrantResponse>(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(grant);
+        Assert.Equal(issuer, grant.Issuer);
+        Assert.Equal(subject, grant.Subject);
+        Assert.NotNull(grant.CreatedBy);
     }
 
     [Fact]

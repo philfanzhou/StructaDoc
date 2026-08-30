@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 using StructaDoc.Adapters.Documents;
 using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.Storage;
@@ -47,10 +48,189 @@ internal static class DocumentIdentityMigrationContract
         await AssertRuntimeCutoverAndAuthorizationAsync(options, cancellationToken);
         await AssertStateConstraintsAsync(options, cancellationToken);
         await AssertPhysicalContractAsync(provider, options, cancellationToken);
+        await AssertAccessGrantUpgradeAsync(provider, options, cancellationToken);
 
         // The following Parse Run contract shares this database and expects to seed an empty,
         // current schema. Leave that deterministic handoff regardless of the provider.
         await ResetAndMigrateAsync(options, targetMigration: null, cancellationToken);
+    }
+
+    private static async Task AssertAccessGrantUpgradeAsync(
+        DatabaseProvider provider,
+        DbContextOptions<StructaDocDbContext> options,
+        CancellationToken cancellationToken)
+    {
+        var previousMigration = provider switch
+        {
+            DatabaseProvider.Sqlite => "20260830160438_MigrateDocumentCanonicalActorIdentity",
+            DatabaseProvider.PostgreSql => "20260830160429_MigrateDocumentCanonicalActorIdentity",
+            DatabaseProvider.MySql => "20260830160429_MigrateDocumentCanonicalActorIdentity",
+            DatabaseProvider.MariaDb => "20260830160429_MigrateDocumentCanonicalActorIdentity",
+            _ => throw new ArgumentOutOfRangeException(nameof(provider)),
+        };
+        await ResetAndMigrateAsync(options, previousMigration, cancellationToken);
+        var documentId = Guid.NewGuid();
+        await using (var context = new StructaDocDbContext(options))
+        {
+            context.Documents.Add(new DocumentEntity
+            {
+                Id = documentId,
+                OriginalFileName = "access-grant-upgrade.pdf",
+                MediaType = "application/pdf",
+                Extension = ".pdf",
+                SizeBytes = 1,
+                Sha256 = new string('3', 64),
+                StorageRef = "documents/access-grant-upgrade/original",
+                CreatedAtUtc = DateTime.UtcNow,
+            });
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        var legacyActor = string.Concat(Enumerable.Repeat("😀", 1024));
+        var legacyGrantId = Guid.NewGuid();
+        await ExecuteAsync(
+            options,
+            """
+            INSERT INTO document_access_grants (
+                id, document_id, principal_issuer, principal_subject, permissions,
+                created_by, created_at_utc)
+            VALUES (@id, @documentId, @issuer, @subject, @permissions, @createdBy, @createdAt)
+            """,
+            cancellationToken,
+            ("@id", legacyGrantId),
+            ("@documentId", documentId),
+            ("@issuer", "https://identity-a.example"),
+            ("@subject", "same-subject"),
+            ("@permissions", (int)DocumentPermissions.Read),
+            ("@createdBy", legacyActor),
+            ("@createdAt", DateTime.UtcNow));
+
+        await using (var context = new StructaDocDbContext(options))
+        {
+            await context.Database.MigrateAsync(cancellationToken);
+        }
+
+        var runtimeActor = CanonicalActor.Create(
+            CanonicalActor.AdministratorIssuer,
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        const string boundaryIssuerPrefix = "https://identity-b.example/";
+        var boundaryIssuer = boundaryIssuerPrefix + new string(
+            'i',
+            CanonicalActorPersistence.MaximumIssuerByteCount - boundaryIssuerPrefix.Length);
+        var boundarySubject = "subject\0" + new string(
+            's',
+            CanonicalActorPersistence.MaximumSubjectByteCount - 8);
+
+        await using (var context = new StructaDocDbContext(options))
+        {
+            var service = new EfCoreDocumentAuthorizationService(context);
+            Assert.NotNull(await service.SetGrantAsync(
+                documentId,
+                ResourceAccessContext.System,
+                "https://identity-b.example",
+                "same-subject",
+                DocumentPermissions.Read,
+                runtimeActor,
+                DateTime.UtcNow,
+                cancellationToken));
+            var boundary = Assert.IsType<DocumentAccessGrant>(await service.SetGrantAsync(
+                documentId,
+                ResourceAccessContext.System,
+                boundaryIssuer,
+                boundarySubject,
+                DocumentPermissions.Read,
+                runtimeActor,
+                DateTime.UtcNow,
+                cancellationToken));
+            Assert.Equal(boundaryIssuer, boundary.Issuer);
+            Assert.Equal(boundarySubject, boundary.Subject);
+            Assert.Equal("administrator:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", boundary.CreatedBy);
+
+            var grants = await service.ListGrantsAsync(
+                documentId,
+                ResourceAccessContext.System,
+                cancellationToken);
+            Assert.Contains(grants, grant =>
+                grant.Id == legacyGrantId
+                && grant.CreatedBy == legacyActor
+                && grant.Issuer == "https://identity-a.example"
+                && grant.Subject == "same-subject");
+            Assert.True(await service.HasPermissionAsync(
+                documentId,
+                new ResourceAccessContext(false, "https://identity-a.example", "same-subject"),
+                DocumentPermissions.Read,
+                cancellationToken));
+            Assert.True(await service.HasPermissionAsync(
+                documentId,
+                new ResourceAccessContext(false, "https://identity-b.example", "same-subject"),
+                DocumentPermissions.Read,
+                cancellationToken));
+            Assert.True(await service.HasPermissionAsync(
+                documentId,
+                new ResourceAccessContext(false, boundaryIssuer, boundarySubject),
+                DocumentPermissions.Read,
+                cancellationToken));
+            Assert.False(await service.HasPermissionAsync(
+                documentId,
+                new ResourceAccessContext(false, "https://identity-c.example", "same-subject"),
+                DocumentPermissions.Read,
+                cancellationToken));
+
+            var legacy = await context.DocumentAccessGrants.AsNoTracking()
+                .SingleAsync(grant => grant.Id == legacyGrantId, cancellationToken);
+            Assert.Equal(Encoding.UTF8.GetBytes(legacyActor), legacy.CreatedByLegacy);
+            Assert.Null(legacy.CreatedByIssuer);
+            Assert.Null(legacy.CreatedBySubject);
+            Assert.Equal(
+                CanonicalActorPersistence.EncodeIssuer("https://identity-a.example"),
+                legacy.PrincipalIssuer);
+        }
+
+        await Assert.ThrowsAnyAsync<Exception>(() => ExecuteAsync(
+            options,
+            "UPDATE document_access_grants SET created_by_legacy = @legacy WHERE created_by_issuer IS NOT NULL",
+            cancellationToken,
+            ("@legacy", new byte[] { 1 })));
+
+        var typeCountSql = provider switch
+        {
+            DatabaseProvider.Sqlite => "SELECT COUNT(*) FROM pragma_table_info('document_access_grants') WHERE name IN ('created_by_issuer','created_by_subject','created_by_legacy','principal_issuer','principal_subject') AND upper(type) = 'BLOB'",
+            DatabaseProvider.PostgreSql => "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'document_access_grants' AND column_name IN ('created_by_issuer','created_by_subject','created_by_legacy','principal_issuer','principal_subject') AND data_type = 'bytea'",
+            _ => "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'document_access_grants' AND column_name IN ('created_by_issuer','created_by_subject','created_by_legacy','principal_issuer','principal_subject') AND data_type = 'varbinary'",
+        };
+        Assert.Equal(5L, await ScalarInt64Async(options, typeCountSql, cancellationToken));
+
+        var indexSql = provider switch
+        {
+            DatabaseProvider.Sqlite => "SELECT group_concat(name, ',') FROM pragma_index_info('ux_document_access_grants_principal') ORDER BY seqno",
+            DatabaseProvider.PostgreSql => "SELECT indexdef FROM pg_indexes WHERE tablename = 'document_access_grants' AND indexname = 'ux_document_access_grants_principal'",
+            _ => "SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'document_access_grants' AND index_name = 'ux_document_access_grants_principal' AND non_unique = 0",
+        };
+        var index = await ScalarStringAsync(options, indexSql, cancellationToken);
+        if (provider == DatabaseProvider.PostgreSql)
+        {
+            Assert.Contains(
+                "(document_id, principal_issuer, principal_subject)",
+                index,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            Assert.Equal(
+                "document_id,principal_issuer,principal_subject",
+                index,
+                ignoreCase: true);
+        }
+        if (provider is DatabaseProvider.MySql or DatabaseProvider.MariaDb)
+        {
+            Assert.Equal(
+                "Dynamic",
+                await ScalarStringAsync(
+                    options,
+                    "SELECT row_format FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'document_access_grants'",
+                    cancellationToken),
+                ignoreCase: true);
+        }
     }
 
     public static async Task AssertSqlitePreflightAsync(string connectionString)
@@ -142,6 +322,73 @@ internal static class DocumentIdentityMigrationContract
             await ScalarInt64Async(
                 options,
                 "SELECT COUNT(*) FROM pragma_table_info('documents') WHERE name = 'created_by'",
+                cancellationToken));
+    }
+
+    public static async Task AssertSqliteAccessGrantPreflightAsync(string connectionString)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var options = CreateOptions(DatabaseProvider.Sqlite, connectionString, serverVersion: null);
+        const string previousMigration = "20260830160438_MigrateDocumentCanonicalActorIdentity";
+        const string targetMigration = "20260830165343_MigrateAccessGrantCanonicalActorIdentity";
+        await ResetAndMigrateAsync(options, previousMigration, cancellationToken);
+
+        await using (var context = new StructaDocDbContext(options))
+        {
+            var script = context.Database.GetService<IMigrator>().GenerateScript(
+                previousMigration,
+                targetMigration);
+            Assert.Equal(
+                1,
+                CountOccurrences(
+                    script,
+                    "CREATE TABLE _document_access_grants_canonical_new"));
+            var documentId = Guid.NewGuid();
+            context.Documents.Add(new DocumentEntity
+            {
+                Id = documentId,
+                OriginalFileName = "invalid-grant.pdf",
+                MediaType = "application/pdf",
+                Extension = ".pdf",
+                SizeBytes = 1,
+                Sha256 = new string('4', 64),
+                StorageRef = "documents/invalid-grant/original",
+                CreatedAtUtc = DateTime.UtcNow,
+            });
+            await context.SaveChangesAsync(cancellationToken);
+            const string issuer = "https://identity.example";
+            const string subject = "subject";
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO document_access_grants (
+                    id, document_id, principal_issuer, principal_subject, permissions,
+                    created_by, created_at_utc)
+                VALUES (
+                    {Guid.NewGuid()}, {documentId}, {issuer}, {subject},
+                    {(int)DocumentPermissions.Read}, CAST(x'61C32862' AS TEXT), {DateTime.UtcNow})
+                """, cancellationToken);
+        }
+
+        await using (var context = new StructaDocDbContext(options))
+        {
+            var error = await Assert.ThrowsAnyAsync<Exception>(() =>
+                context.Database.MigrateAsync(cancellationToken));
+            Assert.Contains(
+                "ck_structadoc_access_grants_require_utf8",
+                error.ToString(),
+                StringComparison.Ordinal);
+        }
+
+        Assert.Equal(
+            1L,
+            await ScalarInt64Async(
+                options,
+                "SELECT COUNT(*) FROM pragma_table_info('document_access_grants') WHERE name = 'created_by'",
+                cancellationToken));
+        Assert.Equal(
+            0L,
+            await ScalarInt64Async(
+                options,
+                "SELECT COUNT(*) FROM pragma_table_info('document_access_grants') WHERE name = 'created_by_legacy'",
                 cancellationToken));
     }
 

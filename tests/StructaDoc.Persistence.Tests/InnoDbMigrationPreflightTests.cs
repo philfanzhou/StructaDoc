@@ -32,6 +32,17 @@ public sealed class InnoDbMigrationPreflightTests
         Assert.Equal("ix_documents_owner_created_at", match.IndexName);
     }
 
+    [Theory]
+    [InlineData("20260830165343_MigrateAccessGrantCanonicalActorIdentity")]
+    public void Registry_matches_access_grant_identity_migration_ids(string migrationId)
+    {
+        var match = Assert.Single(
+            InnoDbIndexMigrationRegistry.FindPendingRequirements([migrationId]));
+
+        Assert.Equal("document_access_grants", match.TableName);
+        Assert.Equal("ux_document_access_grants_principal", match.IndexName);
+    }
+
     [Fact]
     public void Registry_does_not_gate_unrelated_pending_migrations()
     {

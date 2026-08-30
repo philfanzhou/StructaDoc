@@ -64,6 +64,18 @@ public sealed class CanonicalActorTests
         Assert.Equal("MixedCaseSubject", actor.Subject);
     }
 
+    [Theory]
+    [InlineData("https://identity.example", "subject\0value", "oidc:https://identity.example|subject\0value")]
+    [InlineData(PrincipalIdentity.ApiClientIssuer, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "api-client:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")]
+    [InlineData(CanonicalActor.AdministratorIssuer, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "administrator:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")]
+    public void Canonical_actor_projects_to_the_existing_legacy_display_form(
+        string issuer,
+        string subject,
+        string expected)
+    {
+        Assert.Equal(expected, CanonicalActor.Create(issuer, subject).ToLegacyDisplayString());
+    }
+
     [Fact]
     public void Invalid_subject_type_has_an_explicit_error()
     {

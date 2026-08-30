@@ -63,7 +63,7 @@ public static class DocumentAccessGrantEndpoints
             permissions |= permission;
         }
         if (permissions == DocumentPermissions.None) return Validation("permissions", "At least one permission is required.");
-        var grant = await service.SetGrantAsync(documentId, ResourceAccessContextFactory.Create(context.User), request.Issuer, request.Subject, permissions, ResourceAccessContextFactory.GetActorId(context.User), clock.GetUtcNow().UtcDateTime, cancellationToken);
+        var grant = await service.SetGrantAsync(documentId, ResourceAccessContextFactory.Create(context.User), request.Issuer, request.Subject, permissions, CanonicalActor.FromPrincipal(context.User), clock.GetUtcNow().UtcDateTime, cancellationToken);
         return grant is null ? NotFound(documentId) : Results.Ok(ToResponse(grant));
     }
 

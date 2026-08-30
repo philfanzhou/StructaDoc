@@ -147,11 +147,20 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at_utc");
 
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("varchar(1024)")
-                        .HasColumnName("created_by");
+                    b.Property<byte[]>("CreatedByIssuer")
+                        .HasMaxLength(512)
+                        .HasColumnType("varbinary(512)")
+                        .HasColumnName("created_by_issuer");
+
+                    b.Property<byte[]>("CreatedByLegacy")
+                        .HasMaxLength(4096)
+                        .HasColumnType("varbinary(4096)")
+                        .HasColumnName("created_by_legacy");
+
+                    b.Property<byte[]>("CreatedBySubject")
+                        .HasMaxLength(255)
+                        .HasColumnType("varbinary(255)")
+                        .HasColumnName("created_by_subject");
 
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("char(36)")
@@ -161,23 +170,17 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
                         .HasColumnType("int")
                         .HasColumnName("permissions");
 
-                    b.Property<string>("PrincipalIssuer")
+                    b.Property<byte[]>("PrincipalIssuer")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("varchar(512)")
-                        .HasColumnName("principal_issuer")
-                        .UseCollation("ascii_bin");
+                        .HasColumnType("varbinary(512)")
+                        .HasColumnName("principal_issuer");
 
-                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<string>("PrincipalIssuer"), "ascii");
-
-                    b.Property<string>("PrincipalSubject")
+                    b.Property<byte[]>("PrincipalSubject")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("varchar(255)")
-                        .HasColumnName("principal_subject")
-                        .UseCollation("ascii_bin");
-
-                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<string>("PrincipalSubject"), "ascii");
+                        .HasColumnType("varbinary(255)")
+                        .HasColumnName("principal_subject");
 
                     b.HasKey("Id");
 
@@ -185,7 +188,10 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_document_access_grants_principal");
 
-                    b.ToTable("document_access_grants", (string)null);
+                    b.ToTable("document_access_grants", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_document_access_grants_created_by_state", "((created_by_issuer IS NOT NULL AND created_by_subject IS NOT NULL AND created_by_legacy IS NULL) OR (created_by_issuer IS NULL AND created_by_subject IS NULL AND created_by_legacy IS NOT NULL))");
+                        });
                 });
 
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.DocumentEntity", b =>

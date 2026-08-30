@@ -135,50 +135,34 @@ public sealed class EfCoreParseResultReadService(
         access.IsAdministrator ? query : access.HasPrincipalIdentity
             ? ApplyPrincipalAccess(
                 query,
-                access,
-                DocumentOwnerIdentity.From(access),
-                DocumentOwnerIdentity.CanCompareTextGrant(access, dbContext.Database.ProviderName))
+                DocumentOwnerIdentity.From(access))
             : query.Where(_ => false);
 
     private IQueryable<DocumentEntity> ApplyDocumentAccess(IQueryable<DocumentEntity> query, ResourceAccessContext access) =>
         access.IsAdministrator ? query : access.HasPrincipalIdentity
             ? ApplyPrincipalDocumentAccess(
                 query,
-                access,
-                DocumentOwnerIdentity.From(access),
-                DocumentOwnerIdentity.CanCompareTextGrant(access, dbContext.Database.ProviderName))
+                DocumentOwnerIdentity.From(access))
             : query.Where(_ => false);
 
     private static IQueryable<ParseRunEntity> ApplyPrincipalAccess(
         IQueryable<ParseRunEntity> query,
-        ResourceAccessContext access,
-        DocumentOwnerIdentity owner,
-        bool canCompareTextGrant) => !canCompareTextGrant
-        ? query.Where(run =>
-            run.Document.OwnerIssuer == owner.Issuer
-            && run.Document.OwnerSubject == owner.Subject)
-        : query.Where(run =>
+        DocumentOwnerIdentity owner) => query.Where(run =>
             run.Document.OwnerIssuer == owner.Issuer
             && run.Document.OwnerSubject == owner.Subject
             || run.Document.AccessGrants.Any(grant =>
-                grant.PrincipalIssuer == access.Issuer
-                && grant.PrincipalSubject == access.Subject
+                grant.PrincipalIssuer == owner.Issuer
+                && grant.PrincipalSubject == owner.Subject
                 && (grant.Permissions & (int)DocumentPermissions.Read) != 0));
 
     private static IQueryable<DocumentEntity> ApplyPrincipalDocumentAccess(
         IQueryable<DocumentEntity> query,
-        ResourceAccessContext access,
-        DocumentOwnerIdentity owner,
-        bool canCompareTextGrant) => !canCompareTextGrant
-        ? query.Where(document =>
-            document.OwnerIssuer == owner.Issuer
-            && document.OwnerSubject == owner.Subject)
-        : query.Where(document =>
+        DocumentOwnerIdentity owner) => query.Where(document =>
             document.OwnerIssuer == owner.Issuer
             && document.OwnerSubject == owner.Subject
             || document.AccessGrants.Any(grant =>
-                grant.PrincipalIssuer == access.Issuer
-                && grant.PrincipalSubject == access.Subject
+                grant.PrincipalIssuer == owner.Issuer
+                && grant.PrincipalSubject == owner.Subject
                 && (grant.Permissions & (int)DocumentPermissions.Read) != 0));
 
     private IQueryable<ParseRunRecord> QueryRuns(Guid? id = null, Guid? forDocumentId = null)
