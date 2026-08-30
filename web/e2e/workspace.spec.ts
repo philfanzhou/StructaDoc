@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page, type Route } from '@playwright/test'
 
 const administratorUsername = process.env.STRUCTADOC_E2E_ADMIN_USERNAME ?? 'structadoc-admin'
 const administratorPassword = process.env.STRUCTADOC_E2E_ADMIN_PASSWORD ?? 'StructaDoc-E2E-Password'
@@ -10,6 +10,149 @@ const administratorPassword = process.env.STRUCTADOC_E2E_ADMIN_PASSWORD ?? 'Stru
 // published image claims a queued run, leases it, calls the Provider over HTTP, and records a final
 // status. The success branch is covered against a real socket by ParseExecutionEndToEndTests.
 const refusingProviderBaseUrl = 'http://127.0.0.1:8080/api/v1/system'
+
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>(done => { resolve = done })
+  return { promise, resolve }
+}
+
+async function fulfillJson(route: Route, body: unknown, status = 200) {
+  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+}
+
+async function settleUi(page: Page) {
+  await page.evaluate(() => new Promise<void>(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
+}
+
+function documentItem(id: string, originalFileName: string, latestParseStatus = 'succeeded') {
+  return {
+    id, originalFileName, latestParseStatus,
+    mediaType: 'application/pdf', extension: '.pdf', sizeBytes: 1024,
+    sha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    createdAt: '2026-08-29T00:00:00Z', ownedByCurrentUser: true,
+  }
+}
+
+function parseRun(id: string, documentId: string, providerType: string) {
+  return {
+    id, documentId, providerType, status: 'succeeded', attemptCount: 1, maxAttempts: 3,
+    createdAt: '2026-08-29T00:00:00Z', completedAt: '2026-08-29T00:00:01Z',
+  }
+}
+
+const userSession = {
+  authenticated: true, subjectType: 'user', subjectId: 'browser-test',
+  issuer: 'https://identity.example.test', displayName: 'Browser test user',
+  isAdministrator: false, oidcEnabled: true, setupRequired: false,
+}
+
+test('document selection ignores delayed success and failure from stale requests', async ({ page }) => {
+  const documents = [
+    documentItem('document-a', 'selection-a.pdf'),
+    documentItem('document-b', 'selection-b.pdf'),
+    documentItem('document-c', 'selection-c.pdf'),
+  ]
+  const aStarted = deferred(); const releaseA = deferred(); const aFinished = deferred()
+  const cStarted = deferred(); const releaseC = deferred(); const cFinished = deferred()
+
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/parse-execution') {
+      return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    }
+    if (path === '/api/v1/documents') return fulfillJson(route, { items: documents })
+    if (path === '/api/v1/documents/document-a/parse-runs') {
+      aStarted.resolve(); await releaseA.promise
+      await fulfillJson(route, [parseRun('run-a', 'document-a', 'Delayed provider A')])
+      aFinished.resolve(); return
+    }
+    if (path === '/api/v1/documents/document-b/parse-runs') {
+      return fulfillJson(route, [parseRun('run-b', 'document-b', 'Current provider B')])
+    }
+    if (path === '/api/v1/documents/document-c/parse-runs') {
+      cStarted.resolve(); await releaseC.promise
+      await fulfillJson(route, { title: 'Delayed stale failure' }, 503)
+      cFinished.resolve(); return
+    }
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('selection-a.pdf', { exact: true })).toBeVisible()
+
+  await page.getByText('selection-a.pdf', { exact: true }).click()
+  await aStarted.promise
+  await page.getByText('selection-b.pdf', { exact: true }).click()
+  await expect(page.getByText('Current provider B', { exact: true })).toBeVisible()
+  releaseA.resolve(); await aFinished.promise; await settleUi(page)
+  await expect(page.getByText('Current provider B', { exact: true })).toBeVisible()
+  await expect(page.getByText('Delayed provider A', { exact: true })).toHaveCount(0)
+
+  await page.getByText('selection-c.pdf', { exact: true }).click()
+  await cStarted.promise
+  await expect(page.locator('.run-list .run-row')).toHaveCount(0)
+  await page.getByText('selection-b.pdf', { exact: true }).click()
+  await expect(page.getByText('Current provider B', { exact: true })).toBeVisible()
+  releaseC.resolve(); await cFinished.promise; await settleUi(page)
+  await expect(page.getByText('Current provider B', { exact: true })).toBeVisible()
+  await expect(page.getByText('Delayed stale failure', { exact: true })).toHaveCount(0)
+  await expect(page.locator('.toast.error')).toBeHidden()
+})
+
+test('workspace polling is single-flight, retries, and stops after unmount', async ({ page }) => {
+  const document = documentItem('poll-document', 'polling.pdf', 'running')
+  const pollStarted = deferred(); const releasePoll = deferred(); const pollFinished = deferred()
+  const retryStarted = deferred()
+  let runRequests = 0
+  let activeRunRequests = 0
+  let maximumActiveRunRequests = 0
+
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/parse-execution') {
+      return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    }
+    if (path === '/api/v1/documents') return fulfillJson(route, { items: [document] })
+    if (path === '/api/v1/documents/poll-document/parse-runs') {
+      runRequests += 1; activeRunRequests += 1
+      maximumActiveRunRequests = Math.max(maximumActiveRunRequests, activeRunRequests)
+      if (runRequests === 2) {
+        pollStarted.resolve(); await releasePoll.promise
+        await fulfillJson(route, { title: 'Transient polling failure' }, 503)
+        activeRunRequests -= 1; pollFinished.resolve(); return
+      }
+      await fulfillJson(route, [{ ...parseRun('poll-run', 'poll-document', 'Polling provider'), status: 'running', completedAt: undefined }])
+      activeRunRequests -= 1
+      if (runRequests === 3) retryStarted.resolve()
+      return
+    }
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+
+  await page.goto('/')
+  await page.getByText('polling.pdf', { exact: true }).click()
+  await expect(page.getByText('Polling provider', { exact: true })).toBeVisible()
+
+  await pollStarted.promise
+  await page.waitForTimeout(3500)
+  expect(runRequests).toBe(2)
+  expect(maximumActiveRunRequests).toBe(1)
+
+  releasePoll.resolve(); await pollFinished.promise; await retryStarted.promise
+  expect(runRequests).toBe(3)
+  expect(maximumActiveRunRequests).toBe(1)
+
+  await page.goto('/admin')
+  await expect(page).toHaveURL(/\/admin\/signin/)
+  const requestsAfterUnmount = runRequests
+  await page.waitForTimeout(3500)
+  expect(runRequests).toBe(requestsAfterUnmount)
+})
 
 test('administrator can use the document workspace and administration area', async ({ page }) => {
   // A retry runs against the deployment the previous attempt already wrote to, and nothing here is
