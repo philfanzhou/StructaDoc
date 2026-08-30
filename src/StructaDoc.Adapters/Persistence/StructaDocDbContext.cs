@@ -54,7 +54,30 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
             type => type.Namespace?.StartsWith(
                 "StructaDoc.Adapters.ControlPlane",
                 StringComparison.Ordinal) is not true);
+        ConfigureParseRunIdempotencyCollation(modelBuilder);
         UtcDateTimeConventions.Apply(modelBuilder);
+    }
+
+    private void ConfigureParseRunIdempotencyCollation(ModelBuilder modelBuilder)
+    {
+        var idempotencyKey = modelBuilder.Entity<ParseRunEntity>()
+            .Property(parseRun => parseRun.IdempotencyKey);
+        var providerName = Database.ProviderName;
+
+        if (string.Equals(providerName, "Microsoft.EntityFrameworkCore.Sqlite", StringComparison.Ordinal))
+        {
+            idempotencyKey.UseCollation("BINARY");
+        }
+        else if (string.Equals(providerName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal))
+        {
+            idempotencyKey.UseCollation("C");
+        }
+        else if (providerName?.EndsWith(
+            ".EntityFrameworkCore.MySql",
+            StringComparison.Ordinal) is true)
+        {
+            idempotencyKey.UseCollation("ascii_bin").HasCharSet("ascii");
+        }
     }
 
     private void IncrementConcurrencyVersions()

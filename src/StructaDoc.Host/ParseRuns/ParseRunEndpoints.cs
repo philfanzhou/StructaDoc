@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Antiforgery;
@@ -228,7 +227,7 @@ public static class ParseRunEndpoints
                 request.ProviderConfigId,
                 optionsJson,
                 maxAttempts,
-                ResourceAccessContextFactory.GetActorId(context.User),
+                CanonicalActor.FromPrincipal(context.User),
                 idempotencyKey,
                 timeProvider.GetUtcNow().UtcDateTime),
             cancellationToken);
@@ -371,15 +370,6 @@ public static class ParseRunEndpoints
 
         key = value;
         return true;
-    }
-
-    private static string GetActorId(ClaimsPrincipal user)
-    {
-        var subjectType = user.FindFirstValue(StructaDocClaimTypes.SubjectType)
-            ?? throw new InvalidOperationException("Authenticated subject type is missing.");
-        var subjectId = user.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? throw new InvalidOperationException("Authenticated subject ID is missing.");
-        return $"{subjectType}:{subjectId}";
     }
 
     private static ParseRunResponse ToResponse(ParseRunRecord parseRun)

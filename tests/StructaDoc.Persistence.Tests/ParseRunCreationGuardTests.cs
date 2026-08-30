@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Adapters.Persistence.ParseRuns;
+using StructaDoc.Application.Authentication;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.Resources;
 using StructaDoc.Migrations.Sqlite;
@@ -163,7 +164,9 @@ public sealed class ParseRunCreationGuardTests
             ProviderConfigId,
             "{}",
             3,
-            "test-actor",
+            CanonicalActor.Create(
+                CanonicalActor.AdministratorIssuer,
+                "11111111-1111-1111-1111-111111111111"),
             null,
             DateTime.UtcNow);
 

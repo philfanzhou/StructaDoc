@@ -9,8 +9,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using StructaDoc.Adapters.Documents;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Documents;
+using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Storage;
 
 namespace StructaDoc.DatabaseContractTests;
@@ -49,6 +51,7 @@ internal static class DocumentIdentityMigrationContract
         await AssertStateConstraintsAsync(options, cancellationToken);
         await AssertPhysicalContractAsync(provider, options, cancellationToken);
         await AssertAccessGrantUpgradeAsync(provider, options, cancellationToken);
+        await AssertParseRunUpgradeAsync(provider, options, cancellationToken);
 
         // The following Parse Run contract shares this database and expects to seed an empty,
         // current schema. Leave that deterministic handoff regardless of the provider.
@@ -233,6 +236,283 @@ internal static class DocumentIdentityMigrationContract
         }
     }
 
+    private static async Task AssertParseRunUpgradeAsync(
+        DatabaseProvider provider,
+        DbContextOptions<StructaDocDbContext> options,
+        CancellationToken cancellationToken)
+    {
+        var previousMigration = provider switch
+        {
+            DatabaseProvider.Sqlite => "20260830165343_MigrateAccessGrantCanonicalActorIdentity",
+            DatabaseProvider.PostgreSql => "20260830165343_MigrateAccessGrantCanonicalActorIdentity",
+            DatabaseProvider.MySql => "20260830165343_MigrateAccessGrantCanonicalActorIdentity",
+            DatabaseProvider.MariaDb => "20260830165343_MigrateAccessGrantCanonicalActorIdentity",
+            _ => throw new ArgumentOutOfRangeException(nameof(provider)),
+        };
+        await ResetAndMigrateAsync(options, previousMigration, cancellationToken);
+
+        await using (var context = new StructaDocDbContext(options))
+        {
+            var script = context.Database.GetService<IMigrator>().GenerateScript(
+                previousMigration,
+                "20260830172615_MigrateParseRunCanonicalActorIdentity");
+            var dropIndexSql = provider is DatabaseProvider.MySql or DatabaseProvider.MariaDb
+                ? "DROP INDEX `ux_parse_runs_idempotency`"
+                : "DROP INDEX ux_parse_runs_idempotency";
+            var createIndexSql = provider is DatabaseProvider.MySql or DatabaseProvider.MariaDb
+                ? "CREATE UNIQUE INDEX `ux_parse_runs_idempotency`"
+                : "CREATE UNIQUE INDEX ux_parse_runs_idempotency";
+            Assert.Equal(1, CountOccurrences(script, dropIndexSql));
+            Assert.Equal(1, CountOccurrences(script, createIndexSql));
+        }
+
+        var documentId = Guid.NewGuid();
+        var providerConfigId = Guid.NewGuid();
+        var providerVersionId = Guid.NewGuid();
+        var legacyRunId = Guid.NewGuid();
+        var nowUtc = DateTime.UtcNow;
+        await using (var context = new StructaDocDbContext(options))
+        {
+            context.Documents.Add(new DocumentEntity
+            {
+                Id = documentId,
+                OriginalFileName = "parse-run-upgrade.pdf",
+                MediaType = "application/pdf",
+                Extension = ".pdf",
+                SizeBytes = 1,
+                Sha256 = new string('5', 64),
+                StorageRef = "documents/parse-run-upgrade/original",
+                CreatedAtUtc = nowUtc,
+            });
+            var config = new ProviderConfigEntity
+            {
+                Id = providerConfigId,
+                Name = "Parse Run identity contract",
+                ProviderType = "mineru-local",
+                IsEnabled = true,
+                CurrentVersionId = providerVersionId,
+                CreatedAtUtc = nowUtc,
+                UpdatedAtUtc = nowUtc,
+            };
+            context.ProviderConfigs.Add(config);
+            context.ProviderConfigVersions.Add(new ProviderConfigVersionEntity
+            {
+                Id = providerVersionId,
+                ProviderConfigId = providerConfigId,
+                ProviderConfig = config,
+                VersionNumber = 1,
+                BaseUrl = "http://provider.test/",
+                CreatedAtUtc = nowUtc,
+            });
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        const string legacyActor = "oidc:https://identity.example|CaseSubject";
+        const string legacyKey = "ReplayKey";
+        await ExecuteAsync(
+            options,
+            """
+            INSERT INTO parse_runs (
+                id, document_id, status, provider_type, provider_config_id,
+                provider_config_version, options_json, source_media_type,
+                submitted_media_type, attempt_count, max_attempts, next_attempt_at_utc,
+                created_by, idempotency_key, created_at_utc, concurrency_version,
+                lifecycle_state)
+            VALUES (
+                @id, @documentId, 'queued', 'mineru-local', @providerConfigId,
+                @providerVersionId, '{}', 'application/pdf', 'application/pdf',
+                0, 3, @createdAt, @createdBy, @idempotencyKey, @createdAt, 0, 'active')
+            """,
+            cancellationToken,
+            ("@id", legacyRunId),
+            ("@documentId", documentId),
+            ("@providerConfigId", providerConfigId),
+            ("@providerVersionId", providerVersionId),
+            ("@createdAt", nowUtc),
+            ("@createdBy", legacyActor),
+            ("@idempotencyKey", legacyKey));
+
+        await using (var context = new StructaDocDbContext(options))
+        {
+            await context.Database.MigrateAsync(cancellationToken);
+        }
+
+        await using (var context = new StructaDocDbContext(options))
+        {
+            var legacy = await context.ParseRuns.AsNoTracking()
+                .SingleAsync(run => run.Id == legacyRunId, cancellationToken);
+            Assert.Null(legacy.CreatedByIssuer);
+            Assert.Null(legacy.CreatedBySubject);
+            Assert.Equal(Encoding.UTF8.GetBytes(legacyActor), legacy.CreatedByLegacy);
+
+            var service = new EfCoreParseRunService(context);
+            var exactActor = CanonicalActor.Create("https://identity.example", "CaseSubject");
+            var exact = await service.CreateAsync(
+                Request(exactActor, legacyKey),
+                cancellationToken);
+            Assert.Equal(ParseRunCreationStatus.Replayed, exact.Status);
+            Assert.Equal(legacyRunId, exact.ParseRun!.Id);
+
+            var actorAlias = await service.CreateAsync(
+                Request(CanonicalActor.Create("https://identity.example", "casesubject"), legacyKey),
+                cancellationToken);
+            Assert.Equal(ParseRunCreationStatus.Created, actorAlias.Status);
+            Assert.NotEqual(legacyRunId, actorAlias.ParseRun!.Id);
+
+            var keyAlias = await service.CreateAsync(
+                Request(exactActor, "replaykey"),
+                cancellationToken);
+            Assert.Equal(ParseRunCreationStatus.Created, keyAlias.Status);
+            Assert.NotEqual(legacyRunId, keyAlias.ParseRun!.Id);
+
+            var otherIssuer = await service.CreateAsync(
+                Request(CanonicalActor.Create("https://identity-alt.example", "CaseSubject"), legacyKey),
+                cancellationToken);
+            Assert.Equal(ParseRunCreationStatus.Created, otherIssuer.Status);
+        }
+
+        const string boundaryIssuerPrefix = "https://identity-boundary.example/";
+        var boundaryActor = CanonicalActor.Create(
+            boundaryIssuerPrefix + new string(
+                'i',
+                CanonicalActorPersistence.MaximumIssuerByteCount - boundaryIssuerPrefix.Length),
+            "subject\0" + new string(
+                's',
+                CanonicalActorPersistence.MaximumSubjectByteCount - 8));
+        var boundaryKey = new string('K', 256);
+        Guid boundaryRunId;
+        await using (var context = new StructaDocDbContext(options))
+        {
+            var service = new EfCoreParseRunService(context);
+            var created = await service.CreateAsync(Request(boundaryActor, boundaryKey), cancellationToken);
+            Assert.Equal(ParseRunCreationStatus.Created, created.Status);
+            boundaryRunId = created.ParseRun!.Id;
+            var replay = await service.CreateAsync(Request(boundaryActor, boundaryKey), cancellationToken);
+            Assert.Equal(ParseRunCreationStatus.Replayed, replay.Status);
+            Assert.Equal(boundaryRunId, replay.ParseRun!.Id);
+        }
+
+        await using (var context = new StructaDocDbContext(options))
+        {
+            var boundary = await context.ParseRuns.AsNoTracking()
+                .SingleAsync(run => run.Id == boundaryRunId, cancellationToken);
+            Assert.Equal(boundaryActor.EncodeIssuer(), boundary.CreatedByIssuer);
+            Assert.Equal(boundaryActor.EncodeSubject(), boundary.CreatedBySubject);
+            Assert.Null(boundary.CreatedByLegacy);
+        }
+
+        var concurrentActor = CanonicalActor.Create(
+            CanonicalActor.AdministratorIssuer,
+            "bbbbbbbb-cccc-dddd-eeee-ffffffffffff");
+        var concurrentResults = await Task.WhenAll(
+            CreateInOwnContextAsync("ConcurrentKey"),
+            CreateInOwnContextAsync("ConcurrentKey"));
+        Assert.Single(concurrentResults, result => result.Status == ParseRunCreationStatus.Created);
+        Assert.Single(concurrentResults, result => result.Status == ParseRunCreationStatus.Replayed);
+        Assert.Single(concurrentResults.Select(result => result.ParseRun!.Id).Distinct());
+
+        await Assert.ThrowsAnyAsync<Exception>(() => ExecuteAsync(
+            options,
+            "UPDATE parse_runs SET created_by_legacy = @legacy WHERE created_by_issuer IS NOT NULL",
+            cancellationToken,
+            ("@legacy", new byte[] { 1 })));
+
+        var binaryTypeSql = provider switch
+        {
+            DatabaseProvider.Sqlite => "SELECT COUNT(*) FROM pragma_table_info('parse_runs') WHERE name IN ('created_by_issuer','created_by_subject','created_by_legacy') AND upper(type) = 'BLOB'",
+            DatabaseProvider.PostgreSql => "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'parse_runs' AND column_name IN ('created_by_issuer','created_by_subject','created_by_legacy') AND data_type = 'bytea'",
+            _ => "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'parse_runs' AND column_name IN ('created_by_issuer','created_by_subject','created_by_legacy') AND data_type = 'varbinary'",
+        };
+        Assert.Equal(3L, await ScalarInt64Async(options, binaryTypeSql, cancellationToken));
+
+        var uniqueIndexSql = provider switch
+        {
+            DatabaseProvider.Sqlite => "SELECT group_concat(name, ',') FROM pragma_index_info('ux_parse_runs_idempotency') ORDER BY seqno",
+            DatabaseProvider.PostgreSql => "SELECT indexdef FROM pg_indexes WHERE tablename = 'parse_runs' AND indexname = 'ux_parse_runs_idempotency'",
+            _ => "SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'parse_runs' AND index_name = 'ux_parse_runs_idempotency' AND non_unique = 0",
+        };
+        var uniqueIndex = await ScalarStringAsync(options, uniqueIndexSql, cancellationToken);
+        if (provider == DatabaseProvider.PostgreSql)
+        {
+            Assert.Contains(
+                "(created_by_issuer, created_by_subject, document_id, idempotency_key)",
+                uniqueIndex,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            Assert.Equal(
+                "created_by_issuer,created_by_subject,document_id,idempotency_key",
+                uniqueIndex,
+                ignoreCase: true);
+        }
+
+        var helperIndexSql = provider switch
+        {
+            DatabaseProvider.Sqlite => "SELECT group_concat(name, ',') FROM pragma_index_info('ix_parse_runs_legacy_idempotency') ORDER BY seqno",
+            DatabaseProvider.PostgreSql => "SELECT indexdef FROM pg_indexes WHERE tablename = 'parse_runs' AND indexname = 'ix_parse_runs_legacy_idempotency'",
+            _ => "SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',') FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'parse_runs' AND index_name = 'ix_parse_runs_legacy_idempotency' AND non_unique = 1",
+        };
+        var helperIndex = await ScalarStringAsync(options, helperIndexSql, cancellationToken);
+        Assert.Contains("document_id", helperIndex, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("idempotency_key", helperIndex, StringComparison.OrdinalIgnoreCase);
+
+        switch (provider)
+        {
+            case DatabaseProvider.Sqlite:
+                Assert.Contains(
+                    "idempotency_key TEXT COLLATE BINARY",
+                    await ScalarStringAsync(
+                        options,
+                        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'parse_runs'",
+                        cancellationToken),
+                    StringComparison.OrdinalIgnoreCase);
+                break;
+            case DatabaseProvider.PostgreSql:
+                Assert.Equal(
+                    "C",
+                    await ScalarStringAsync(
+                        options,
+                        "SELECT collation_name FROM information_schema.columns WHERE table_name = 'parse_runs' AND column_name = 'idempotency_key'",
+                        cancellationToken));
+                break;
+            case DatabaseProvider.MySql:
+            case DatabaseProvider.MariaDb:
+                Assert.Equal(
+                    "ascii:ascii_bin",
+                    await ScalarStringAsync(
+                        options,
+                        "SELECT CONCAT(character_set_name, ':', collation_name) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'parse_runs' AND column_name = 'idempotency_key'",
+                        cancellationToken),
+                    ignoreCase: true);
+                Assert.Equal(
+                    "Dynamic",
+                    await ScalarStringAsync(
+                        options,
+                        "SELECT row_format FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'parse_runs'",
+                        cancellationToken),
+                    ignoreCase: true);
+                break;
+        }
+
+        ParseRunCreateRequest Request(CanonicalActor actor, string key) => new(
+            documentId,
+            providerConfigId,
+            "{}",
+            3,
+            actor,
+            key,
+            DateTime.UtcNow);
+
+        async Task<ParseRunCreationResult> CreateInOwnContextAsync(string key)
+        {
+            await using var context = new StructaDocDbContext(options);
+            return await new EfCoreParseRunService(context).CreateAsync(
+                Request(concurrentActor, key),
+                cancellationToken);
+        }
+    }
+
     public static async Task AssertSqlitePreflightAsync(string connectionString)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -390,6 +670,97 @@ internal static class DocumentIdentityMigrationContract
                 options,
                 "SELECT COUNT(*) FROM pragma_table_info('document_access_grants') WHERE name = 'created_by_legacy'",
                 cancellationToken));
+    }
+
+    public static async Task AssertSqliteParseRunPreflightAsync(string connectionString)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var options = CreateOptions(DatabaseProvider.Sqlite, connectionString, serverVersion: null);
+        const string previousMigration = "20260830165343_MigrateAccessGrantCanonicalActorIdentity";
+        const string targetMigration = "20260830172615_MigrateParseRunCanonicalActorIdentity";
+        await ResetAndMigrateAsync(options, previousMigration, cancellationToken);
+
+        Guid documentId;
+        await using (var context = new StructaDocDbContext(options))
+        {
+            var script = context.Database.GetService<IMigrator>().GenerateScript(
+                previousMigration,
+                targetMigration);
+            Assert.Equal(
+                1,
+                CountOccurrences(script, "CREATE TABLE _parse_runs_canonical_identity_new"));
+            Assert.Equal(1, CountOccurrences(script, "DROP INDEX ux_parse_runs_idempotency"));
+            Assert.Equal(
+                1,
+                CountOccurrences(script, "CREATE UNIQUE INDEX ux_parse_runs_idempotency"));
+            Assert.DoesNotContain("ef_temp_parse_runs", script, StringComparison.OrdinalIgnoreCase);
+
+            documentId = Guid.NewGuid();
+            context.Documents.Add(new DocumentEntity
+            {
+                Id = documentId,
+                OriginalFileName = "invalid-parse-run.pdf",
+                MediaType = "application/pdf",
+                Extension = ".pdf",
+                SizeBytes = 1,
+                Sha256 = new string('6', 64),
+                StorageRef = "documents/invalid-parse-run/original",
+                CreatedAtUtc = DateTime.UtcNow,
+            });
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        await InsertLegacyParseRunAsync("CAST(x'61C32862' AS TEXT)", "'ValidKey'");
+        await AssertPreflightFailureAsync();
+        await ExecuteAsync(options, "DELETE FROM parse_runs", cancellationToken);
+        await InsertLegacyParseRunAsync("'valid-actor'", "'invalid key'");
+        await AssertPreflightFailureAsync();
+
+        Assert.Equal(
+            1L,
+            await ScalarInt64Async(
+                options,
+                "SELECT COUNT(*) FROM pragma_table_info('parse_runs') WHERE name = 'created_by'",
+                cancellationToken));
+        Assert.Equal(
+            0L,
+            await ScalarInt64Async(
+                options,
+                "SELECT COUNT(*) FROM pragma_table_info('parse_runs') WHERE name = 'created_by_legacy'",
+                cancellationToken));
+
+        async Task InsertLegacyParseRunAsync(string actorSql, string keySql) =>
+            await ExecuteAsync(
+                options,
+                $$"""
+                INSERT INTO parse_runs (
+                    id, document_id, status, provider_type, provider_config_id,
+                    provider_config_version, options_json, source_media_type,
+                    submitted_media_type, attempt_count, max_attempts, next_attempt_at_utc,
+                    created_by, idempotency_key, created_at_utc, concurrency_version,
+                    lifecycle_state)
+                VALUES (
+                    @id, @documentId, 'queued', 'test-provider', @providerConfigId,
+                    @providerVersionId, '{}', 'application/pdf', 'application/pdf',
+                    0, 3, @createdAt, {{actorSql}}, {{keySql}}, @createdAt, 0, 'active')
+                """,
+                cancellationToken,
+                ("@id", Guid.NewGuid()),
+                ("@documentId", documentId),
+                ("@providerConfigId", Guid.NewGuid()),
+                ("@providerVersionId", Guid.NewGuid()),
+                ("@createdAt", DateTime.UtcNow));
+
+        async Task AssertPreflightFailureAsync()
+        {
+            await using var context = new StructaDocDbContext(options);
+            var error = await Assert.ThrowsAnyAsync<Exception>(() =>
+                context.Database.MigrateAsync(cancellationToken));
+            Assert.Contains(
+                "ck_structadoc_parse_runs_require_valid_source",
+                error.ToString(),
+                StringComparison.Ordinal);
+        }
     }
 
     private static async Task SeedLegacyDocumentAsync(

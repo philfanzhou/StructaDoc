@@ -1,3 +1,5 @@
+using StructaDoc.Application.Authentication;
+
 namespace StructaDoc.Application.ParseRuns;
 
 public interface IParseRunService
@@ -21,7 +23,7 @@ public sealed record ParseRunCreateRequest(
     Guid? ProviderConfigId,
     string OptionsJson,
     int MaxAttempts,
-    string CreatedBy,
+    CanonicalActor Actor,
     string? IdempotencyKey,
     DateTime CreatedAtUtc);
 

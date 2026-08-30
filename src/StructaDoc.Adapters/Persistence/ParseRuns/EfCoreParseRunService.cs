@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Application.Authentication;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Providers;
 using StructaDoc.Domain.ParseRuns;
@@ -17,10 +18,18 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Actor);
+
+        var actorIssuer = request.Actor.EncodeIssuer();
+        var actorSubject = request.Actor.EncodeSubject();
 
         if (request.IdempotencyKey is not null)
         {
-            var replay = await FindReplayAsync(request, cancellationToken);
+            var replay = await FindReplayAsync(
+                request,
+                actorIssuer,
+                actorSubject,
+                cancellationToken);
             if (replay is not null)
             {
                 return new(ParseRunCreationStatus.Replayed, replay);
@@ -114,7 +123,16 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
             if (documentGuard != 1)
             {
                 await transaction.RollbackAsync(cancellationToken);
-                return new ParseRunCreationResult(ParseRunCreationStatus.DocumentNotFound);
+                var replay = request.IdempotencyKey is null
+                    ? null
+                    : await FindCanonicalReplayAsync(
+                        request,
+                        actorIssuer,
+                        actorSubject,
+                        cancellationToken);
+                return replay is null
+                    ? new ParseRunCreationResult(ParseRunCreationStatus.DocumentNotFound)
+                    : new ParseRunCreationResult(ParseRunCreationStatus.Replayed, replay);
             }
 
             var providerGuard = await dbContext.ProviderConfigs
@@ -130,7 +148,16 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
             if (providerGuard != 1)
             {
                 await transaction.RollbackAsync(cancellationToken);
-                return new ParseRunCreationResult(ParseRunCreationStatus.ProviderUnavailable);
+                var replay = request.IdempotencyKey is null
+                    ? null
+                    : await FindCanonicalReplayAsync(
+                        request,
+                        actorIssuer,
+                        actorSubject,
+                        cancellationToken);
+                return replay is null
+                    ? new ParseRunCreationResult(ParseRunCreationStatus.ProviderUnavailable)
+                    : new ParseRunCreationResult(ParseRunCreationStatus.Replayed, replay);
             }
 
             var entity = new ParseRunEntity
@@ -147,7 +174,8 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
                 AttemptCount = 0,
                 MaxAttempts = request.MaxAttempts,
                 NextAttemptAtUtc = request.CreatedAtUtc,
-                CreatedBy = request.CreatedBy,
+                CreatedByIssuer = actorIssuer,
+                CreatedBySubject = actorSubject,
                 IdempotencyKey = request.IdempotencyKey,
                 CreatedAtUtc = request.CreatedAtUtc,
             };
@@ -165,7 +193,11 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
             {
                 await transaction.RollbackAsync(cancellationToken);
                 dbContext.ChangeTracker.Clear();
-                var replay = await FindReplayAsync(request, cancellationToken);
+                var replay = await FindCanonicalReplayAsync(
+                    request,
+                    actorIssuer,
+                    actorSubject,
+                    cancellationToken);
                 return replay is null
                     ? new ParseRunCreationResult(ParseRunCreationStatus.Conflict)
                     : new ParseRunCreationResult(ParseRunCreationStatus.Replayed, replay);
@@ -229,11 +261,47 @@ public sealed class EfCoreParseRunService(StructaDocDbContext dbContext) : IPars
 
     private async Task<ParseRunRecord?> FindReplayAsync(
         ParseRunCreateRequest request,
+        byte[] actorIssuer,
+        byte[] actorSubject,
+        CancellationToken cancellationToken)
+    {
+        var canonicalReplay = await FindCanonicalReplayAsync(
+            request,
+            actorIssuer,
+            actorSubject,
+            cancellationToken);
+        if (canonicalReplay is not null)
+        {
+            return canonicalReplay;
+        }
+
+        var legacyActor = CanonicalActorPersistence.EncodeLegacy(
+            request.Actor.ToLegacyDisplayString(),
+            CanonicalActorPersistence.MaximumDocumentOrParseRunLegacyByteCount);
+        var legacyCandidates = await dbContext.ParseRuns.AsNoTracking()
+            .Where(entity => entity.DocumentId == request.DocumentId
+                && entity.IdempotencyKey == request.IdempotencyKey
+                && entity.CreatedByIssuer == null
+                && entity.CreatedBySubject == null
+                && entity.CreatedByLegacy != null)
+            .Select(entity => new { entity.Id, entity.CreatedByLegacy })
+            .ToListAsync(cancellationToken);
+        var legacyId = legacyCandidates
+            .SingleOrDefault(candidate => candidate.CreatedByLegacy!.AsSpan().SequenceEqual(legacyActor))
+            ?.Id;
+        return legacyId.HasValue ? await GetAsync(legacyId.Value, cancellationToken) : null;
+    }
+
+    private async Task<ParseRunRecord?> FindCanonicalReplayAsync(
+        ParseRunCreateRequest request,
+        byte[] actorIssuer,
+        byte[] actorSubject,
         CancellationToken cancellationToken)
     {
         var id = await dbContext.ParseRuns.AsNoTracking()
             .Where(entity => entity.DocumentId == request.DocumentId
-                && entity.CreatedBy == request.CreatedBy
+                && entity.CreatedByIssuer == actorIssuer
+                && entity.CreatedBySubject == actorSubject
                 && entity.IdempotencyKey == request.IdempotencyKey)
             .Select(entity => (Guid?)entity.Id)
             .SingleOrDefaultAsync(cancellationToken);

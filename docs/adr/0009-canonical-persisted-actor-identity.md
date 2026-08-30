@@ -142,7 +142,7 @@ preserved.
 
 ### InnoDB index budget
 
-`ux_parse_runs_idempotency` will contain the two canonical actor columns,
+`ux_parse_runs_idempotency` contains the two canonical actor columns,
 `document_id`, and `idempotency_key`. The conservative maximum indexed data length
 on the MySQL and MariaDB mapping is:
 
@@ -276,13 +276,13 @@ fields are compared separately.
 
 ### Migration ownership
 
-[Issue #48](https://github.com/philfanzhou/StructaDoc/issues/48) owns the shared
+[Issue #48](https://github.com/philfanzhou/StructaDoc/issues/48) implements the shared
 canonical actor mapping. [Issue #49](https://github.com/philfanzhou/StructaDoc/issues/49)
 implements the coordinated Document audit and owner schema change in one migration
 per provider; [issue #51](https://github.com/philfanzhou/StructaDoc/issues/51)
 implements the coordinated access-grant audit and principal schema change in one
 migration per provider. [Issue #36](https://github.com/philfanzhou/StructaDoc/issues/36)
-owns the Parse Run schema change, and
+implements the Parse Run schema, exact legacy replay, and ordinal key change, and
 [issue #26](https://github.com/philfanzhou/StructaDoc/issues/26) is implemented by
 #36's one index/collation migration rather than by a second index rebuild. The reusable
 InnoDB preflight and its application-managed integration are implemented by

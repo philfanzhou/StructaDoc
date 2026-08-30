@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Application.Authentication;
 
 namespace StructaDoc.Adapters.Persistence.Configurations;
 
@@ -71,9 +72,15 @@ internal sealed class ParseRunEntityConfiguration : IEntityTypeConfiguration<Par
         builder.Property(parseRun => parseRun.ErrorMessage)
             .HasColumnName("error_message")
             .HasMaxLength(2048);
-        builder.Property(parseRun => parseRun.CreatedBy)
-            .HasColumnName("created_by")
-            .HasMaxLength(255);
+        builder.Property(parseRun => parseRun.CreatedByIssuer)
+            .HasColumnName("created_by_issuer")
+            .HasMaxLength(CanonicalActorPersistence.MaximumIssuerByteCount);
+        builder.Property(parseRun => parseRun.CreatedBySubject)
+            .HasColumnName("created_by_subject")
+            .HasMaxLength(CanonicalActorPersistence.MaximumSubjectByteCount);
+        builder.Property(parseRun => parseRun.CreatedByLegacy)
+            .HasColumnName("created_by_legacy")
+            .HasMaxLength(CanonicalActorPersistence.MaximumDocumentOrParseRunLegacyByteCount);
         builder.Property(parseRun => parseRun.IdempotencyKey)
             .HasColumnName("idempotency_key")
             .HasMaxLength(256)
@@ -112,11 +119,17 @@ internal sealed class ParseRunEntityConfiguration : IEntityTypeConfiguration<Par
             .HasDatabaseName("ix_parse_runs_lease_expiry");
         builder.HasIndex(parseRun => new
         {
-            parseRun.CreatedBy,
+            parseRun.CreatedByIssuer,
+            parseRun.CreatedBySubject,
             parseRun.DocumentId,
             parseRun.IdempotencyKey,
         })
             .IsUnique()
             .HasDatabaseName("ux_parse_runs_idempotency");
+        builder.HasIndex(parseRun => new { parseRun.DocumentId, parseRun.IdempotencyKey })
+            .HasDatabaseName("ix_parse_runs_legacy_idempotency");
+        builder.ToTable(table => table.HasCheckConstraint(
+            "ck_parse_runs_created_by_state",
+            "((created_by_issuer IS NOT NULL AND created_by_subject IS NOT NULL AND created_by_legacy IS NULL) OR (created_by_issuer IS NULL AND created_by_subject IS NULL))"));
     }
 }

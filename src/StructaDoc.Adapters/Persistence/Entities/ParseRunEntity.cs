@@ -46,7 +46,11 @@ public sealed class ParseRunEntity
 
     public string? ErrorMessage { get; set; }
 
-    public string? CreatedBy { get; set; }
+    public byte[]? CreatedByIssuer { get; set; }
+
+    public byte[]? CreatedBySubject { get; set; }
+
+    public byte[]? CreatedByLegacy { get; set; }
 
     public string? IdempotencyKey { get; set; }
 

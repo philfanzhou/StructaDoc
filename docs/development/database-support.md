@@ -49,8 +49,8 @@ the resulting table formats before rebuilding their indexes. This preflight and
 row-format validation are required by
 [ADR-0009](../adr/0009-canonical-persisted-actor-identity.md). The registry already
 covers the existing migration that creates the 2080-byte
-`ux_parse_runs_idempotency` index and the implemented Document and access-grant
-replacement migrations. #36 will add the final Parse Run replacement requirement.
+`ux_parse_runs_idempotency` index and all three implemented actor-identity
+replacement migrations, including the final Parse Run index rebuild from #36.
 
 Application startup migrates the control plane before touching the business database.
 It then performs preflight through the unqualified server connection. An absent
@@ -64,14 +64,15 @@ unhealthy, while deployment-fixed configuration continues to stop startup.
 
 ### SQLite encoding requirement
 
-The Document and access-grant actor-identity replacements are implemented by #49 and
-#51. Their SQLite migrations require `PRAGMA encoding = 'UTF-8'` and strictly validate
+The Document, access-grant, and Parse Run actor-identity replacements are implemented
+by #49, #51, and #36. Their SQLite migrations require `PRAGMA encoding = 'UTF-8'` and strictly validate
 the raw UTF-8 bytes of every affected text value before destructive DDL. A restored
 UTF-16 database or malformed text fails with an actionable error rather than copying
 bytes that the new binary identity mapping cannot compare. Each migration performs
 one coordinated table rebuild, preserves legacy audit text as a BLOB, and converts
 the applicable owner or grantee identity parts with explicit `CAST(... AS BLOB)`.
-The remaining Parse Run replacement is tracked by #36. The shared canonical
+The Parse Run migration also validates the visible-ASCII Idempotency-Key domain and
+declares `COLLATE BINARY` in its one coordinated rebuild. The shared canonical
 actor value, one-byte ASCII codec, strict legacy UTF-8 codec, byte limits, and stored-
 state validation are shared by those tables. Current StructaDoc-created SQLite
 databases use SQLite's UTF-8 default. See SQLite's
@@ -173,15 +174,16 @@ image exits `0`. This same entry point is verified against SQLite, PostgreSQL, M
 and MariaDB; MySQL and MariaDB rejection is verified before an absent database can be
 created under an unsupported InnoDB default row format.
 
-The Document and access-grant replacements in #49 and #51, and the remaining Parse
-Run work tracked by #36, use the exclusive actor-identity cutover defined by
+The Document, access-grant, and Parse Run replacements in #49, #51, and #36 use the
+exclusive actor-identity cutover defined by
 [ADR-0009](../adr/0009-canonical-persisted-actor-identity.md). Operators must stop every old
 StructaDoc instance before applying those migrations and start only the new version
 after they complete. This prevents an old writer from creating a legacy actor row
 after the new pre-insert replay path has established that the migrated legacy set is
 immutable; a rolling mixed-version deployment will not be supported for this schema
-change. #49 and #51 register their rebuilt indexes with the shared InnoDB preflight,
-request `ROW_FORMAT=DYNAMIC`, and verify the resulting table format.
+change. All three migrations register their rebuilt indexes with the shared InnoDB
+preflight; the MySQL and MariaDB variants request `ROW_FORMAT=DYNAMIC` and verify the
+resulting table format.
 
 ## Contract Tests
 
@@ -193,10 +195,14 @@ dotnet test tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTe
 ```
 
 The suite migrates an empty database and checks for pending migrations. It also upgrades
-the previous Document and access-grant schemas and verifies legacy UTF-8 bytes,
-canonical runtime writes and projections, raw binary owner and grantee storage, state
-constraints, index shape, authorization isolation, SQLite preflight ordering, and
-InnoDB row format. It covers document pagination, local administrators, API-client scope changes and rotation, concurrency and revocation, competing Parse Run claims, lease renewal and expiry, stage and external-ID writes, conversion snapshots, resumable adoption, failure and retry transitions, cleanup lifecycle, and canonical commits.
+the previous Document, access-grant, and Parse Run schemas and verifies legacy UTF-8
+bytes, exact replay, collation narrowing, canonical runtime writes, raw binary identity
+storage, state constraints, index shape, authorization isolation, SQLite preflight
+ordering, concurrent idempotent creation, and InnoDB row format. It covers document
+pagination, local administrators, API-client scope changes and rotation, concurrency
+and revocation, competing Parse Run claims, lease renewal and expiry, stage and
+external-ID writes, conversion snapshots, resumable adoption, failure and retry
+transitions, cleanup lifecycle, and canonical commits.
 
 ## Remaining Verification
 

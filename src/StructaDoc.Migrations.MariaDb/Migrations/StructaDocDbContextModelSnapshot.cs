@@ -580,10 +580,20 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at_utc");
 
-                    b.Property<string>("CreatedBy")
+                    b.Property<byte[]>("CreatedByIssuer")
+                        .HasMaxLength(512)
+                        .HasColumnType("varbinary(512)")
+                        .HasColumnName("created_by_issuer");
+
+                    b.Property<byte[]>("CreatedByLegacy")
+                        .HasMaxLength(1024)
+                        .HasColumnType("varbinary(1024)")
+                        .HasColumnName("created_by_legacy");
+
+                    b.Property<byte[]>("CreatedBySubject")
                         .HasMaxLength(255)
-                        .HasColumnType("varchar(255)")
-                        .HasColumnName("created_by");
+                        .HasColumnType("varbinary(255)")
+                        .HasColumnName("created_by_subject");
 
                     b.Property<DateTime?>("DeletionRequestedAtUtc")
                         .HasColumnType("datetime(6)")
@@ -613,7 +623,10 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
                         .HasMaxLength(256)
                         .IsUnicode(false)
                         .HasColumnType("varchar(256)")
-                        .HasColumnName("idempotency_key");
+                        .HasColumnName("idempotency_key")
+                        .UseCollation("ascii_bin");
+
+                    MySqlPropertyBuilderExtensions.HasCharSet(b.Property<string>("IdempotencyKey"), "ascii");
 
                     b.Property<DateTime?>("LeaseExpiresAtUtc")
                         .HasColumnType("datetime(6)")
@@ -711,14 +724,20 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
                     b.HasIndex("LeaseExpiresAtUtc")
                         .HasDatabaseName("ix_parse_runs_lease_expiry");
 
+                    b.HasIndex("DocumentId", "IdempotencyKey")
+                        .HasDatabaseName("ix_parse_runs_legacy_idempotency");
+
                     b.HasIndex("Status", "NextAttemptAtUtc")
                         .HasDatabaseName("ix_parse_runs_due");
 
-                    b.HasIndex("CreatedBy", "DocumentId", "IdempotencyKey")
+                    b.HasIndex("CreatedByIssuer", "CreatedBySubject", "DocumentId", "IdempotencyKey")
                         .IsUnique()
                         .HasDatabaseName("ux_parse_runs_idempotency");
 
-                    b.ToTable("parse_runs", (string)null);
+                    b.ToTable("parse_runs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_parse_runs_created_by_state", "((created_by_issuer IS NOT NULL AND created_by_subject IS NOT NULL AND created_by_legacy IS NULL) OR (created_by_issuer IS NULL AND created_by_subject IS NULL))");
+                        });
                 });
 
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseSegmentEntity", b =>

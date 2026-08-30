@@ -239,12 +239,12 @@ unreadable. After the actor transition in
 control-plane database also prevents canonical local-administrator audit subjects
 from resolving to accounts even though the stored audit bytes remain intact.
 
-Target upgrade procedure pending #35 and #36: the ADR-0009 actor-replacement
-migrations require an exclusive application-version cutover. Stop every old
-StructaDoc instance before applying that migration set and start only the new version
-after it completes; a rolling mixed-version deployment is not supported for this
-schema change. These replacement migrations do not exist yet; the one-shot command
-below is already available and is the entry point that will apply them once they do.
+The ADR-0009 actor-replacement migrations implemented by #49, #51, and #36 require
+an exclusive application-version cutover. Stop every old StructaDoc instance before
+applying that migration set and start only the new version after it completes; a
+rolling mixed-version deployment is not supported for this schema change. The
+one-shot command below applies the coordinated Document, access-grant, and Parse Run
+replacements after the shared database preflight succeeds.
 
 That cuts the other way too, and the service says so at every start: `No XML encryptor configured. Key … may be persisted to storage in unencrypted form.` The key ring under `/data/keys` is written in the clear, because a single container on Linux has nothing to encrypt it with that would not itself have to be stored somewhere — and it is the key that makes stored Provider tokens readable. Anyone holding a copy of `/data` holds those tokens. Treat the directory, and every backup and snapshot of it, as a secret: restrict it to the `APP_UID`, keep backups encrypted, and rotate a Provider credential that was in a copy which left the host. A deployment that needs the key ring itself encrypted at rest needs a master key held outside `/data`, which this image does not yet support.
 

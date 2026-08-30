@@ -2,66 +2,64 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using StructaDoc.Adapters.Persistence;
 
 #nullable disable
 
-namespace StructaDoc.Migrations.PostgreSql.Migrations
+namespace StructaDoc.Migrations.Sqlite.Migrations
 {
     [DbContext(typeof(StructaDocDbContext))]
-    partial class StructaDocDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260830172615_MigrateParseRunCanonicalActorIdentity")]
+    partial class MigrateParseRunCanonicalActorIdentity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
-                .HasAnnotation("Relational:MaxIdentifierLength", 63);
-
-            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
 
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ApiClientEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<long>("ConcurrencyVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("concurrency_version");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at_utc");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_active");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("name");
 
                     b.Property<DateTime?>("RevokedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("revoked_at_utc");
 
                     b.Property<string>("Scopes")
                         .IsRequired()
                         .HasMaxLength(512)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("scopes");
 
                     b.Property<byte[]>("SecretHash")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("secret_hash")
                         .IsFixedLength();
 
@@ -73,56 +71,56 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.CleanupJobEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<int>("AttemptCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("attempt_count");
 
                     b.Property<long>("ConcurrencyVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("concurrency_version");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at_utc");
 
                     b.Property<string>("ErrorMessage")
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("error_message");
 
                     b.Property<DateTime>("NextAttemptAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("next_attempt_at_utc");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("status");
 
                     b.Property<string>("StorageRefsJson")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("storage_refs_json");
 
                     b.Property<Guid>("TargetId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("target_id");
 
                     b.Property<string>("TargetType")
                         .IsRequired()
                         .HasMaxLength(32)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("target_type");
 
                     b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at_utc");
 
                     b.HasKey("Id");
@@ -140,46 +138,46 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.DocumentAccessGrantEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at_utc");
 
                     b.Property<byte[]>("CreatedByIssuer")
                         .HasMaxLength(512)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("created_by_issuer");
 
                     b.Property<byte[]>("CreatedByLegacy")
                         .HasMaxLength(4096)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("created_by_legacy");
 
                     b.Property<byte[]>("CreatedBySubject")
                         .HasMaxLength(255)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("created_by_subject");
 
                     b.Property<Guid>("DocumentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("document_id");
 
                     b.Property<int>("Permissions")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("permissions");
 
                     b.Property<byte[]>("PrincipalIssuer")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("principal_issuer");
 
                     b.Property<byte[]>("PrincipalSubject")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("principal_subject");
 
                     b.HasKey("Id");
@@ -197,87 +195,87 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.DocumentEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<long>("ConcurrencyVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("concurrency_version");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at_utc");
 
                     b.Property<byte[]>("CreatedByIssuer")
                         .HasMaxLength(512)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("created_by_issuer");
 
                     b.Property<byte[]>("CreatedByLegacy")
                         .HasMaxLength(1024)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("created_by_legacy");
 
                     b.Property<byte[]>("CreatedBySubject")
                         .HasMaxLength(255)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("created_by_subject");
 
                     b.Property<DateTime?>("DeletionRequestedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("deletion_requested_at_utc");
 
                     b.Property<string>("Extension")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("extension");
 
                     b.Property<string>("LifecycleState")
                         .IsRequired()
                         .HasMaxLength(32)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("lifecycle_state");
 
                     b.Property<string>("MediaType")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("media_type");
 
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("original_file_name");
 
                     b.Property<byte[]>("OwnerIssuer")
                         .HasMaxLength(512)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("owner_issuer");
 
                     b.Property<byte[]>("OwnerSubject")
                         .HasMaxLength(255)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("owner_subject");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(64)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("sha256");
 
                     b.Property<long>("SizeBytes")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("size_bytes");
 
                     b.Property<string>("StorageRef")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("storage_ref");
 
                     b.HasKey("Id");
@@ -302,55 +300,55 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseArtifactEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at_utc");
 
                     b.Property<string>("MediaType")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("media_type");
 
                     b.Property<string>("MetadataJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("metadata_json");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("name");
 
                     b.Property<Guid>("ParseRunId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("parse_run_id");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(64)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("sha256");
 
                     b.Property<long>("SizeBytes")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("size_bytes");
 
                     b.Property<string>("StorageRef")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("storage_ref");
 
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(64)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("type");
 
                     b.HasKey("Id");
@@ -368,52 +366,52 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseAssetEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at_utc");
 
                     b.Property<int?>("Height")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("height");
 
                     b.Property<string>("MediaType")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("media_type");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("name");
 
                     b.Property<Guid>("ParseRunId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("parse_run_id");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(64)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("sha256");
 
                     b.Property<long>("SizeBytes")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("size_bytes");
 
                     b.Property<string>("StorageRef")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("storage_ref");
 
                     b.Property<int?>("Width")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("width");
 
                     b.HasKey("Id");
@@ -430,74 +428,74 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseBlockEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<Guid?>("AssetId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("asset_id");
 
                     b.Property<double?>("BoundingBoxX0")
-                        .HasColumnType("double precision")
+                        .HasColumnType("REAL")
                         .HasColumnName("bbox_x0");
 
                     b.Property<double?>("BoundingBoxX1")
-                        .HasColumnType("double precision")
+                        .HasColumnType("REAL")
                         .HasColumnName("bbox_x1");
 
                     b.Property<double?>("BoundingBoxY0")
-                        .HasColumnType("double precision")
+                        .HasColumnType("REAL")
                         .HasColumnName("bbox_y0");
 
                     b.Property<double?>("BoundingBoxY1")
-                        .HasColumnType("double precision")
+                        .HasColumnType("REAL")
                         .HasColumnName("bbox_y1");
 
                     b.Property<double?>("Confidence")
-                        .HasColumnType("double precision")
+                        .HasColumnType("REAL")
                         .HasColumnName("confidence");
 
                     b.Property<string>("Content")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("content");
 
                     b.Property<string>("ContentFormat")
                         .HasMaxLength(32)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("content_format");
 
                     b.Property<int?>("PageNumber")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("page_number");
 
                     b.Property<Guid>("ParseRunId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("parse_run_id");
 
                     b.Property<string>("ProviderDataJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("provider_data_json");
 
                     b.Property<int>("Sequence")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("sequence");
 
                     b.Property<string>("SourceLocatorJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_locator_json");
 
                     b.Property<string>("Subtype")
                         .HasMaxLength(100)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("subtype");
 
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(64)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("type");
 
                     b.HasKey("Id");
@@ -518,29 +516,29 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParsePageEntity", b =>
                 {
                     b.Property<Guid>("ParseRunId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("parse_run_id");
 
                     b.Property<int>("Number")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("number");
 
                     b.Property<double?>("Height")
-                        .HasColumnType("double precision")
+                        .HasColumnType("REAL")
                         .HasColumnName("height");
 
                     b.Property<string>("SourceLocatorJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_locator_json");
 
                     b.Property<string>("Unit")
                         .HasMaxLength(32)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("unit");
 
                     b.Property<double?>("Width")
-                        .HasColumnType("double precision")
+                        .HasColumnType("REAL")
                         .HasColumnName("width");
 
                     b.HasKey("ParseRunId", "Number");
@@ -551,167 +549,167 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseRunEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<int>("AttemptCount")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("attempt_count");
 
                     b.Property<string>("ClaimedBy")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("claimed_by");
 
                     b.Property<DateTime?>("CompletedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("completed_at_utc");
 
                     b.Property<long>("ConcurrencyVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("concurrency_version");
 
                     b.Property<string>("ConversionJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("conversion_json");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at_utc");
 
                     b.Property<byte[]>("CreatedByIssuer")
                         .HasMaxLength(512)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("created_by_issuer");
 
                     b.Property<byte[]>("CreatedByLegacy")
                         .HasMaxLength(1024)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("created_by_legacy");
 
                     b.Property<byte[]>("CreatedBySubject")
                         .HasMaxLength(255)
-                        .HasColumnType("bytea")
+                        .HasColumnType("BLOB")
                         .HasColumnName("created_by_subject");
 
                     b.Property<DateTime?>("DeletionRequestedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("deletion_requested_at_utc");
 
                     b.Property<Guid>("DocumentId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("document_id");
 
                     b.Property<string>("ErrorCode")
                         .HasMaxLength(128)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(128)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("error_code");
 
                     b.Property<string>("ErrorMessage")
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("error_message");
 
                     b.Property<string>("ExternalTaskId")
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("external_task_id");
 
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(256)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(256)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("idempotency_key")
-                        .UseCollation("C");
+                        .UseCollation("BINARY");
 
                     b.Property<DateTime?>("LeaseExpiresAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("lease_expires_at_utc");
 
                     b.Property<string>("LifecycleState")
                         .IsRequired()
                         .HasMaxLength(32)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("lifecycle_state");
 
                     b.Property<int>("MaxAttempts")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("max_attempts");
 
                     b.Property<DateTime>("NextAttemptAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("next_attempt_at_utc");
 
                     b.Property<string>("OptionsJson")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("options_json");
 
                     b.Property<string>("ProtectedSubmissionContinuation")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("protected_submission_continuation");
 
                     b.Property<Guid>("ProviderConfigId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("provider_config_id");
 
                     b.Property<Guid>("ProviderConfigVersion")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("provider_config_version");
 
                     b.Property<string>("ProviderMetadataJson")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("provider_metadata_json");
 
                     b.Property<string>("ProviderType")
                         .IsRequired()
                         .HasMaxLength(100)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("provider_type");
 
                     b.Property<string>("ResultSchemaVersion")
                         .HasMaxLength(16)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(16)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("result_schema_version");
 
                     b.Property<string>("ResultSha256")
                         .HasMaxLength(64)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("result_sha256");
 
                     b.Property<string>("SourceMediaType")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("source_media_type");
 
                     b.Property<string>("Stage")
                         .HasMaxLength(64)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("stage");
 
                     b.Property<DateTime?>("StartedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("started_at_utc");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("status");
 
                     b.Property<string>("SubmittedMediaType")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("submitted_media_type");
 
                     b.HasKey("Id");
@@ -741,60 +739,60 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ParseSegmentEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<int>("EndPage")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("end_page");
 
                     b.Property<string>("ExternalTaskId")
                         .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("external_task_id");
 
                     b.Property<int>("Index")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("segment_index");
 
                     b.Property<Guid>("ParseRunId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("parse_run_id");
 
                     b.Property<string>("ProtectedSubmissionContinuation")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasColumnName("protected_submission_continuation");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(64)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(64)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("sha256");
 
                     b.Property<long>("SizeBytes")
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("size_bytes");
 
                     b.Property<int>("StartPage")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("start_page");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(32)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("status");
 
                     b.Property<string>("StorageRef")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("storage_ref");
 
                     b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at_utc");
 
                     b.HasKey("Id");
@@ -809,47 +807,47 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ProviderConfigEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<long>("ConcurrencyVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("bigint")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("concurrency_version");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at_utc");
 
                     b.Property<Guid>("CurrentVersionId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("current_version_id");
 
                     b.Property<string>("DefaultMarker")
                         .HasMaxLength(16)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(16)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("default_marker");
 
                     b.Property<bool>("IsEnabled")
-                        .HasColumnType("boolean")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("is_enabled");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("name");
 
                     b.Property<string>("ProviderType")
                         .IsRequired()
                         .HasMaxLength(100)
                         .IsUnicode(false)
-                        .HasColumnType("character varying(100)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("provider_type");
 
                     b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("updated_at_utc");
 
                     b.HasKey("Id");
@@ -867,40 +865,40 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ProviderConfigVersionEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("id");
 
                     b.Property<string>("Backend")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("backend");
 
                     b.Property<string>("BaseUrl")
                         .IsRequired()
                         .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("base_url");
 
                     b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
+                        .HasColumnType("TEXT")
                         .HasColumnName("created_at_utc");
 
                     b.Property<string>("Model")
                         .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("model");
 
                     b.Property<string>("ProtectedCredential")
                         .HasMaxLength(8192)
-                        .HasColumnType("character varying(8192)")
+                        .HasColumnType("TEXT")
                         .HasColumnName("protected_credential");
 
                     b.Property<Guid>("ProviderConfigId")
-                        .HasColumnType("uuid")
+                        .HasColumnType("TEXT")
                         .HasColumnName("provider_config_id");
 
                     b.Property<int>("VersionNumber")
-                        .HasColumnType("integer")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("version_number");
 
                     b.HasKey("Id");
