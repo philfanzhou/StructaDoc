@@ -2,7 +2,7 @@
 name: 任务
 about: 一个可独立合并的改动。范围、边界和验收标准必须明确，否则不能标记 ready。
 title: ''
-labels: 'type: task'
+labels: ''
 assignees: ''
 ---
 
