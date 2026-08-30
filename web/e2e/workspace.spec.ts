@@ -154,6 +154,54 @@ test('workspace polling is single-flight, retries, and stops after unmount', asy
   expect(runRequests).toBe(requestsAfterUnmount)
 })
 
+test('workspace polling refreshes final document state without a selection and stops', async ({ page }) => {
+  const retryFinished = deferred(); const finalRefreshFinished = deferred()
+  let documentRequests = 0
+  let runRequests = 0
+
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/parse-execution') {
+      return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    }
+    if (path === '/api/v1/documents') {
+      documentRequests += 1
+      if (documentRequests === 2) {
+        await fulfillJson(route, { title: 'Transient document polling failure' }, 503)
+        retryFinished.resolve(); return
+      }
+
+      const status = documentRequests >= 3 ? 'succeeded' : 'running'
+      await fulfillJson(route, { items: [documentItem('unselected-document', 'unselected.pdf', status)] })
+      if (documentRequests === 3) finalRefreshFinished.resolve()
+      return
+    }
+    if (path.endsWith('/parse-runs')) {
+      runRequests += 1
+      return fulfillJson(route, { title: 'Run list must not be requested without a selection' }, 500)
+    }
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+
+  await page.goto('/')
+  const documentStatus = page.locator('.document-row .status')
+  await expect(page.getByText('unselected.pdf', { exact: true })).toBeVisible()
+  await expect(documentStatus).toHaveText('解析中')
+  await expect(page.locator('.auto-refresh')).toBeVisible()
+  await retryFinished.promise
+  await expect(page.locator('.toast.error')).toBeHidden()
+
+  await finalRefreshFinished.promise
+  await expect(documentStatus).toHaveText('已完成')
+  await expect(page.locator('.auto-refresh')).toBeHidden()
+  expect(runRequests).toBe(0)
+
+  const requestsAfterCompletion = documentRequests
+  await page.waitForTimeout(3500)
+  expect(documentRequests).toBe(requestsAfterCompletion)
+})
+
 test('administrator can use the document workspace and administration area', async ({ page }) => {
   // A retry runs against the deployment the previous attempt already wrote to, and nothing here is
   // cleaned up afterwards. Names carry a run stamp so an attempt never matches a leftover.
