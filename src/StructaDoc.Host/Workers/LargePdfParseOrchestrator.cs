@@ -29,7 +29,9 @@ public sealed class LargePdfParseOrchestrator(
         if (capabilities.MaxFileBytes.HasValue && source.SizeBytes > capabilities.MaxFileBytes.Value) return true;
         if (!capabilities.MaxPages.HasValue) return false;
         await using var input = await SeekableCopyAsync(await source.OpenReadAsync(cancellationToken), cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         using var pdf = PdfReader.Open(input, PdfDocumentOpenMode.Import);
+        cancellationToken.ThrowIfCancellationRequested();
         return pdf.PageCount > capabilities.MaxPages.Value;
     }
 
@@ -47,6 +49,7 @@ public sealed class LargePdfParseOrchestrator(
         var bundles = new List<(ParseSegmentEntity Segment, ParseBundle Bundle)>(segments.Count);
         foreach (var segment in segments)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var archive = await resultIntake.TryLoadArchiveAsync(segment.Id, session.ExecutionCancellationToken);
             if (archive is null)
             {
@@ -87,24 +90,37 @@ public sealed class LargePdfParseOrchestrator(
             await SaveSegmentAsync(segment, cancellationToken);
             bundles.Add((segment, bundle));
         }
+        cancellationToken.ThrowIfCancellationRequested();
         return await MergeAsync(context.ParseRunId, bundles, cancellationToken);
     }
 
     private async Task<IReadOnlyList<ParseSegmentEntity>> EnsureSegmentsAsync(Guid parseRunId, ProviderDocumentSource source, ProviderCapabilities capabilities, CancellationToken cancellationToken)
     {
         var existing = await dbContext.ParseSegments.Where(item => item.ParseRunId == parseRunId).OrderBy(item => item.Index).ToListAsync(cancellationToken);
-        if (existing.Count > 0) return existing;
+        if (existing.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return existing;
+        }
         await using var input = await SeekableCopyAsync(await source.OpenReadAsync(cancellationToken), cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         using var pdf = PdfReader.Open(input, PdfDocumentOpenMode.Import);
+        cancellationToken.ThrowIfCancellationRequested();
         if (pdf.PageCount == 0) throw InputFailure("large-pdf-empty", "The PDF contains no pages.");
         var maxPages = capabilities.MaxPages ?? 25;
         var ranges = new Queue<(int Start, int Count)>();
-        for (var start = 0; start < pdf.PageCount; start += maxPages) ranges.Enqueue((start, Math.Min(maxPages, pdf.PageCount - start)));
+        for (var start = 0; start < pdf.PageCount; start += maxPages)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ranges.Enqueue((start, Math.Min(maxPages, pdf.PageCount - start)));
+        }
         var created = new List<ParseSegmentEntity>();
         while (ranges.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var range = ranges.Dequeue();
             await using var chunk = CreateChunk(pdf, range.Start, range.Count);
+            cancellationToken.ThrowIfCancellationRequested();
             if (capabilities.MaxFileBytes.HasValue && chunk.Length > capabilities.MaxFileBytes.Value)
             {
                 if (range.Count == 1) throw InputFailure("provider-pdf-page-too-large", "A single PDF page exceeds the Provider file size limit.");
@@ -116,8 +132,13 @@ public sealed class LargePdfParseOrchestrator(
             var stored = await storage.WriteAsync(storageRef, chunk, capabilities.MaxFileBytes ?? Math.Max(source.SizeBytes * 2, 1024 * 1024), cancellationToken);
             created.Add(new ParseSegmentEntity { Id = id, ParseRunId = parseRunId, Index = index, StartPage = range.Start + 1, EndPage = range.Start + range.Count, StorageRef = stored.StorageRef, SizeBytes = stored.SizeBytes, Sha256 = stored.Sha256, Status = "created", UpdatedAtUtc = clock.GetUtcNow().UtcDateTime });
         }
+        cancellationToken.ThrowIfCancellationRequested();
         created.Sort((a, b) => a.StartPage.CompareTo(b.StartPage));
-        for (var index = 0; index < created.Count; index++) created[index].Index = index;
+        for (var index = 0; index < created.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            created[index].Index = index;
+        }
         dbContext.ParseSegments.AddRange(created);
         await dbContext.SaveChangesAsync(cancellationToken);
         return created;
@@ -125,9 +146,11 @@ public sealed class LargePdfParseOrchestrator(
 
     private async Task<ParseBundle> MergeAsync(Guid parseRunId, IReadOnlyList<(ParseSegmentEntity Segment, ParseBundle Bundle)> items, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var pages = new List<ParsePage>(); var blocks = new List<ParseBlock>(); var assets = new List<ParseAsset>(); var artifacts = new List<ParseArtifact>(); var markdownArtifacts = new List<(ParseArtifact Artifact, IReadOnlyDictionary<string, ParseAssetRecord> Assets, int SegmentIndex)>();
         foreach (var (segment, bundle) in items.OrderBy(item => item.Segment.StartPage))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var offset = segment.StartPage - 1;
             pages.AddRange(bundle.Pages.Select(page => page with { Number = page.Number + offset }));
             blocks.AddRange(bundle.Blocks.Select(block => block with { Sequence = blocks.Count, PageNumber = block.PageNumber + offset }));
@@ -146,9 +169,11 @@ public sealed class LargePdfParseOrchestrator(
                 .Select(artifact => (artifact, segmentAssets, segment.Index)));
             artifacts.AddRange(bundle.Artifacts.Where(artifact => artifact.Type != ArtifactTypes.Markdown).Select(artifact => artifact with { Name = $"segment-{segment.Index:D4}-{artifact.Name}" }));
             artifacts.Add(new ParseArtifact(DeterministicId(parseRunId, $"source-segment:{segment.Index}"), ArtifactTypes.SourceSegment, $"segment-{segment.Index:D4}.pdf", "application/pdf", segment.SizeBytes, segment.Sha256, segment.StorageRef, JsonSerializer.Serialize(new { segment.StartPage, segment.EndPage })));
+            cancellationToken.ThrowIfCancellationRequested();
         }
         if (markdownArtifacts.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var path = Path.Combine(Path.GetTempPath(), $"structadoc-merge-{Guid.NewGuid():N}.md");
             try
             {
@@ -157,7 +182,8 @@ public sealed class LargePdfParseOrchestrator(
                 {
                     for (var index = 0; index < markdownArtifacts.Count; index++)
                     {
-                        if (index > 0) await writer.WriteAsync("\n\n---\n\n");
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (index > 0) await writer.WriteAsync("\n\n---\n\n".AsMemory(), cancellationToken);
                         var markdownArtifact = markdownArtifacts[index];
                         await using var input = await storage.OpenReadAsync(
                             markdownArtifact.Artifact.StorageRef,
@@ -168,17 +194,22 @@ public sealed class LargePdfParseOrchestrator(
                             markdown,
                             markdownArtifact.Assets,
                             markdownArtifact.SegmentIndex);
-                        await writer.WriteAsync(rewritten);
+                        await writer.WriteAsync(rewritten.AsMemory(), cancellationToken);
                     }
                 }
+                cancellationToken.ThrowIfCancellationRequested();
                 await using var merged = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
                 var stored = await storage.WriteAsync($"parse-runs/{parseRunId:N}/artifacts/document.md", merged, Math.Max(merged.Length, 1), cancellationToken);
                 artifacts.Add(new ParseArtifact(DeterministicId(parseRunId, "artifact:markdown:document.md"), ArtifactTypes.Markdown, "document.md", "text/markdown", stored.SizeBytes, stored.Sha256, stored.StorageRef));
             }
             finally { if (File.Exists(path)) File.Delete(path); }
         }
+        cancellationToken.ThrowIfCancellationRequested();
         var metadata = JsonSerializer.Serialize(new { segmented = true, segments = items.Select(item => new { item.Segment.Index, item.Segment.StartPage, item.Segment.EndPage, providerMetadata = item.Bundle.ProviderMetadataJson }) });
-        return new ParseBundle(ParseBundleValidator.CurrentSchemaVersion, parseRunId, pages.OrderBy(page => page.Number).ToArray(), blocks, assets, artifacts, metadata);
+        cancellationToken.ThrowIfCancellationRequested();
+        var mergedBundle = new ParseBundle(ParseBundleValidator.CurrentSchemaVersion, parseRunId, pages.OrderBy(page => page.Number).ToArray(), blocks, assets, artifacts, metadata);
+        cancellationToken.ThrowIfCancellationRequested();
+        return mergedBundle;
     }
 
     private async Task SaveSegmentAsync(ParseSegmentEntity segment, CancellationToken cancellationToken) { segment.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime; await dbContext.SaveChangesAsync(cancellationToken); }

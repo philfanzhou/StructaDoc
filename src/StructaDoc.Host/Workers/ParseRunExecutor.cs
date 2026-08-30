@@ -82,7 +82,7 @@ public sealed class ParseRunExecutor(
                         preparedSource.Capabilities,
                         provider,
                         normalizer,
-                        stoppingToken);
+                        session.ExecutionCancellationToken);
                     if (conversion is not null)
                     {
                         segmentedBundle = AddConversionArtifact(segmentedBundle, conversion);
