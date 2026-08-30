@@ -52,6 +52,18 @@ public sealed class DbCommandCounterInterceptor : DbCommandInterceptor
         return ValueTask.FromResult(result);
     }
 
+    public override DbDataReader ReaderExecuted(
+        DbCommand command,
+        CommandExecutedEventData eventData,
+        DbDataReader result) => WrapReader(result);
+
+    public override ValueTask<DbDataReader> ReaderExecutedAsync(
+        DbCommand command,
+        CommandExecutedEventData eventData,
+        DbDataReader result,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(WrapReader(result));
+
     public override InterceptionResult<object> ScalarExecuting(
         DbCommand command,
         CommandEventData eventData,
@@ -80,6 +92,14 @@ public sealed class DbCommandCounterInterceptor : DbCommandInterceptor
         }
     }
 
+    private DbDataReader WrapReader(DbDataReader reader)
+    {
+        var state = currentScope.Value;
+        return state is null || state.IsDisposed
+            ? reader
+            : new RowCountingDbDataReader(reader, state);
+    }
+
     private void EndScope(ScopeState state)
     {
         if (state.IsDisposed)
@@ -101,6 +121,8 @@ public sealed class DbCommandCounterInterceptor : DbCommandInterceptor
     {
         public int CommandCount;
 
+        public long RowCount;
+
         public int Disposed;
 
         public ScopeState? Parent { get; } = parent;
@@ -120,6 +142,8 @@ public sealed class DbCommandCounterInterceptor : DbCommandInterceptor
         }
 
         public int CommandCount => Volatile.Read(ref state.CommandCount);
+
+        public long RowCount => Volatile.Read(ref state.RowCount);
 
         public void Dispose() => owner.EndScope(state);
     }
