@@ -5,10 +5,10 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
-using StructaDoc.Host.Workers;
 using StructaDoc.Contracts.Documents;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Contracts.Providers;
+using StructaDoc.Host.Workers;
 
 namespace StructaDoc.Host.Tests;
 

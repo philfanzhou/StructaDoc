@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using StructaDoc.Application.Authentication;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Application.Authentication;
 
 namespace StructaDoc.Adapters.Authentication;
 

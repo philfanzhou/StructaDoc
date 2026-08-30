@@ -3,8 +3,8 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using StructaDoc.Contracts.Authentication;
 using StructaDoc.Adapters.ControlPlane;
+using StructaDoc.Contracts.Authentication;
 
 namespace StructaDoc.Host.Tests;
 

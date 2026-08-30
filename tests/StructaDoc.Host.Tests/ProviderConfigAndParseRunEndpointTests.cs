@@ -4,12 +4,12 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using StructaDoc.Adapters.Persistence;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.Documents;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Contracts.Providers;
-using StructaDoc.Adapters.Persistence;
 
 namespace StructaDoc.Host.Tests;
 

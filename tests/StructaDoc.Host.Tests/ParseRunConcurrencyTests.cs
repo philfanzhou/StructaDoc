@@ -1,12 +1,12 @@
 using System.IO.Compression;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using StructaDoc.Application.Providers;
-using StructaDoc.Application.Storage;
-using StructaDoc.Host.Workers;
-using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Application.Providers;
+using StructaDoc.Application.Storage;
+using StructaDoc.Domain.ParseRuns;
+using StructaDoc.Host.Workers;
 
 namespace StructaDoc.Host.Tests;
 

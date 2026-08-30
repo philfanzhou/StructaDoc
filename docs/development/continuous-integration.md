@@ -7,7 +7,7 @@ The repository [CI workflow](../../.github/workflows/ci.yml) runs on pushes, pul
 Six jobs run independently:
 
 1. **Web dependency audit** runs `npm audit` against `web/package-lock.json`. It is its own job so that an advisory published upstream cannot end the run before anything has been built.
-2. **Build and unit tests** installs .NET 10 and Node.js 24, restores and builds the backend and frontend, and runs tests that do not require Docker.
+2. **Build and unit tests** installs .NET 10 and Node.js 24, restores the backend, verifies its formatting before compilation, builds the backend and frontend, and runs tests that do not require Docker.
 3. **LibreOffice legacy format integration** installs the same LibreOffice no-GUI components as the production image, enables the environment-gated integration test, and converts checked-in real DOC, XLS, and PPT fixtures through the production converter and process runner.
 4. **Generated consumer SDK** starts the built Host, exports the consumer OpenAPI document, runs the pinned OpenAPI Generator C# client generator, and compiles the generated project. This catches schemas that are valid OpenAPI but unusable by the supported generator.
 5. **PostgreSQL, MySQL, and MariaDB contracts** sets `STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS=1`; Testcontainers starts PostgreSQL 17, MySQL 8.4, and MariaDB 11.4 and runs the same migration, persistence, lease, recovery, and canonical-commit contracts.
@@ -70,8 +70,13 @@ npm ci
 npm run build
 npm run test:e2e -- --list
 cd ..
+dotnet restore StructaDoc.slnx
+dotnet format StructaDoc.slnx --verify-no-changes --no-restore
 dotnet test StructaDoc.slnx
 ```
+
+The formatting command above is the authoritative local check. CI runs the same command after the
+.NET restore and before either solution build or test execution.
 
 With a Docker-compatible engine, run the real database contracts:
 

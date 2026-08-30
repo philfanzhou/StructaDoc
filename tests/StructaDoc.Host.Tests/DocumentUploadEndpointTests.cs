@@ -5,11 +5,11 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using StructaDoc.Application.Authentication;
-using StructaDoc.Contracts.Documents;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Application.Authentication;
+using StructaDoc.Contracts.Documents;
 
 namespace StructaDoc.Host.Tests;
 

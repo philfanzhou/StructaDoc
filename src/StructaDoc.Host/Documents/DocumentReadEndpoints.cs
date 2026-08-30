@@ -1,6 +1,6 @@
 using Microsoft.Net.Http.Headers;
-using StructaDoc.Application.Documents;
 using StructaDoc.Application.Authentication;
+using StructaDoc.Application.Documents;
 using StructaDoc.Contracts.Documents;
 using StructaDoc.Host.Authentication;
 

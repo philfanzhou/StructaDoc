@@ -1,10 +1,10 @@
-using Microsoft.Extensions.DependencyInjection;
-using StructaDoc.Application.Documents;
-using StructaDoc.Application.Storage;
-using StructaDoc.Adapters.Storage;
 using Amazon;
 using Amazon.Runtime;
 using Amazon.S3;
+using Microsoft.Extensions.DependencyInjection;
+using StructaDoc.Adapters.Storage;
+using StructaDoc.Application.Documents;
+using StructaDoc.Application.Storage;
 
 namespace StructaDoc.Adapters.Documents;
 

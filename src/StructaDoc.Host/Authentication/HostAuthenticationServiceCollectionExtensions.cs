@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
+using StructaDoc.Adapters.Authentication;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Providers;
-using StructaDoc.Adapters.Authentication;
 
 namespace StructaDoc.Host.Authentication;
 
