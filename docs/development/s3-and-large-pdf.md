@@ -19,14 +19,18 @@ Access and secret keys may be omitted to use the AWS SDK default credential chai
 
 ## Large PDFs
 
-When a PDF—including one produced from Office—exceeds a Provider's `MaxFileBytes` or `MaxPages`, the executor creates bounded page segments. Each segment has a deterministic ID and persists its source page range, object, SHA-256, submission checkpoint, external task ID, and stage.
+When a PDF—including one produced from Office—exceeds a Provider's `MaxFileBytes` or `MaxPages`, the executor creates bounded page segments. Each segment has a deterministic ID and persists its source page range, object reference, expected size and SHA-256, submission checkpoint, external task ID, and stage.
 
-Recovery reuses created segments, submitted external jobs, and downloaded Provider archives. Once all segments normalize successfully, the executor:
+Before an object write starts, the active Worker persists a fenced `creating` intent for that deterministic segment key. A matching conditional object write advances the intent to `created` through the same lease fence. If cancellation, storage failure, or lease loss interrupts either step, the intent remains reachable: recovery regenerates the same page range, creates a missing object, reuses matching content, and fails permanently with `parse-segment-object-conflict` rather than overwriting different content.
+
+Recovery also reuses completed segments, submitted external jobs, and downloaded Provider archives. Once all segments normalize successfully, the Segment orchestrator:
 
 1. translates local segment pages back to global source pages;
 2. rebuilds one contiguous Block sequence;
 3. merges Assets, Artifacts, and Markdown deterministically;
-4. commits one canonical parent Parse Bundle transaction.
+4. returns one canonical parent Parse Bundle for the executor's commit.
+
+The current executor still rejects the parent transition to `persisting` because a segmented run has Segment-level external task IDs rather than a Run-level external task ID. [Issue #88](https://github.com/philfanzhou/StructaDoc/issues/88) tracks that existing completion defect; it does not change the Segment recovery guarantees below.
 
 Segment creation and each submission, download, and normalization checkpoint go through the Parse Run lease session. The persistence boundary atomically checks the parent's running status, owner, lease expiry, and concurrency version while writing Segment state, then returns the advanced lease to the session. Heartbeats therefore continue from the latest version, while cancellation finalization, expiry, or another Worker's takeover rejects the stale mutation.
 
@@ -34,6 +38,6 @@ Large-PDF source reads, seekable copies, Segment object writes and saves, archiv
 
 If a single page exceeds the Provider limit by itself, the run fails with a stable permanent input error instead of looping or silently truncating it.
 
-Segment objects and Provider results participate in the same durable Cleanup Job as other document resources.
+Both partial and completed Segment intents participate in the same durable Cleanup Job as other document resources. Idempotent cleanup succeeds when a partial intent's object was never created. Objects written by versions predating durable Segment intents and lacking any relational row cannot be discovered or cleaned by this mechanism.
 
 Full-text search, OpenSearch, embeddings, RAG, and metadata/LLM extensions remain outside StructaDoc's product boundary.
