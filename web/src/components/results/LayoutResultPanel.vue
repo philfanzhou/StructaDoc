@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { ParseAsset, ParseBlock, ParsePage } from '../../api'
 
 const props = defineProps<{
@@ -33,6 +33,27 @@ function blockTypeName(type: string) { return blockTypeNames[type] ?? type }
 function assetUrl(assetId: string) { return `/api/v1/parse-runs/${props.runId}/assets/${assetId}/content` }
 
 const assetsById = computed(() => new Map(props.assets.map(asset => [asset.id, asset])))
+const pagePickerPageSize = 50
+const pagePickerPage = ref(1)
+const pagePickerPageCount = computed(() => Math.max(1, Math.ceil(props.pages.length / pagePickerPageSize)))
+const pagePickerStart = computed(() => (pagePickerPage.value - 1) * pagePickerPageSize)
+const visiblePages = computed(() => props.pages.slice(pagePickerStart.value, pagePickerStart.value + pagePickerPageSize))
+const pagePickerEnd = computed(() => Math.min(pagePickerStart.value + visiblePages.value.length, props.pages.length))
+
+function clampPagePickerPage(page: number) {
+  pagePickerPage.value = Math.min(Math.max(page, 1), pagePickerPageCount.value)
+}
+
+function showSelectedPage(pageNumber?: number) {
+  const selectedIndex = props.pages.findIndex(page => page.number === pageNumber)
+  if (selectedIndex >= 0) pagePickerPage.value = Math.floor(selectedIndex / pagePickerPageSize) + 1
+  else clampPagePickerPage(pagePickerPage.value)
+}
+
+watch(() => props.pages, () => showSelectedPage(props.pageNumber), { immediate: true })
+watch(() => props.pageNumber, showSelectedPage)
+watch(() => props.runId, () => { pagePickerPage.value = 1 })
+
 const layoutPage = computed(() => props.pages.find(page => page.number === props.pageNumber))
 const layoutAspectKnown = computed(() => !!layoutPage.value?.width && !!layoutPage.value?.height)
 const layoutHeight = computed(() => layoutAspectKnown.value
@@ -58,7 +79,20 @@ const selectedBlock = computed(() => props.blocks.find(block => block.id === pro
     <template v-else-if="loaded">
       <template v-if="pages.length">
         <div class="page-picker">
-          <button v-for="page in pages" :key="page.number" :class="{ active: page.number === pageNumber }" @click="emit('selectPage', page.number)">{{ page.number }}</button>
+          <div class="page-picker-pages">
+            <button
+              v-for="page in visiblePages"
+              :key="page.number"
+              type="button"
+              :class="{ active: page.number === pageNumber }"
+              :aria-current="page.number === pageNumber ? 'page' : undefined"
+              @click="emit('selectPage', page.number)">{{ page.number }}</button>
+          </div>
+          <nav v-if="pagePickerPageCount > 1" class="local-pagination" aria-label="版面页选择分页">
+            <button type="button" :disabled="pagePickerPage === 1" @click="clampPagePickerPage(pagePickerPage - 1)">上一组</button>
+            <span aria-live="polite">第 {{ pagePickerStart + 1 }}–{{ pagePickerEnd }} 页，共 {{ pages.length }} 页</span>
+            <button type="button" :disabled="pagePickerPage === pagePickerPageCount" @click="clampPagePickerPage(pagePickerPage + 1)">下一组</button>
+          </nav>
         </div>
         <div v-if="layoutPage" class="layout-view">
           <svg class="layout-map" :viewBox="`0 0 1000 ${layoutHeight}`" preserveAspectRatio="xMidYMin meet" role="group" aria-label="页面版面示意">
@@ -109,9 +143,13 @@ const selectedBlock = computed(() => props.blocks.find(block => block.id === pro
 <style scoped>
 .result-pane{padding-top:16px}
 .pane-empty{padding:44px 8px;text-align:center}
-.page-picker{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;max-height:88px;overflow:auto}
-.page-picker button{border:1px solid var(--line);background:#fff;color:var(--muted);font-size:11px;min-width:32px;padding:5px 8px;border-radius:3px}
-.page-picker button.active{border-color:var(--green);background:var(--green);color:#fff}
+.page-picker{display:grid;gap:9px;margin-bottom:14px}
+.page-picker-pages{display:flex;flex-wrap:wrap;gap:5px}
+.page-picker-pages button{border:1px solid var(--line);background:#fff;color:var(--muted);font-size:11px;min-width:32px;padding:5px 8px;border-radius:3px}
+.page-picker-pages button.active{border-color:var(--green);background:var(--green);color:#fff}
+.local-pagination{display:flex;align-items:center;justify-content:flex-end;gap:9px;font-size:11px;color:var(--muted)}
+.local-pagination button{border:1px solid var(--line);background:#fff;color:var(--green);font-size:11px;padding:5px 9px;border-radius:3px}
+.local-pagination button:disabled{color:#9aa59f;background:#f2f4f2;cursor:default}
 .layout-view{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(200px,1fr);gap:18px;align-items:start}
 .layout-map{width:100%;max-height:620px}
 .layout-paper{fill:#fff;stroke:var(--line)}

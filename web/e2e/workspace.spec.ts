@@ -329,6 +329,142 @@ test('result tabs load and mount on first use, then preserve their state', async
   expect(layoutBlockRequests).toBe(1)
 })
 
+test('large result collections keep layout, resource DOM, and image requests bounded', async ({ page }) => {
+  const document = documentItem('large-document', 'large-result.pdf')
+  const runs = [
+    parseRun('large-run-a', document.id, 'Large provider A'),
+    parseRun('large-run-b', document.id, 'Large provider B'),
+  ]
+  const collectionSize = 10_000
+  const layoutPageRequests: string[] = []
+  const assetContentRequests: string[] = []
+
+  const artifactsFor = (runId: string) => Array.from({ length: collectionSize }, (_, index) => ({
+    id: `${runId}-artifact-${index}`,
+    type: index === 0 ? 'markdown' : 'provider-archive',
+    name: `${runId}-artifact-${index}.zip`,
+    mediaType: index === 0 ? 'text/markdown' : 'application/zip',
+    sizeBytes: 100,
+    sha256: `${runId}-artifact-sha-${index}`,
+    createdAt: '2026-08-29T00:00:01Z',
+  }))
+  const assetsFor = (runId: string) => Array.from({ length: collectionSize }, (_, index) => ({
+    id: `${runId}-asset-${index}`,
+    name: `${runId}-asset-${index}.svg`,
+    mediaType: 'image/svg+xml',
+    sizeBytes: 100,
+    sha256: `${runId}-asset-sha-${index}`,
+    width: 20,
+    height: 20,
+  }))
+  const pages = Array.from({ length: collectionSize }, (_, index) => ({
+    number: index + 1,
+    width: 100,
+    height: 140,
+    unit: 'pt',
+  }))
+
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/parse-execution') {
+      return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    }
+    if (path === '/api/v1/documents') return fulfillJson(route, { items: [document] })
+    if (path === `/api/v1/documents/${document.id}/parse-runs`) return fulfillJson(route, runs)
+
+    const metadataMatch = path.match(/^\/api\/v1\/parse-runs\/(large-run-[ab])\/(artifacts|assets|pages)$/)
+    if (metadataMatch) {
+      const [, runId, collection] = metadataMatch
+      if (collection === 'artifacts') return fulfillJson(route, artifactsFor(runId))
+      if (collection === 'assets') return fulfillJson(route, assetsFor(runId))
+      return fulfillJson(route, pages)
+    }
+
+    const blocksMatch = path.match(/^\/api\/v1\/parse-runs\/(large-run-[ab])\/blocks$/)
+    if (blocksMatch && url.searchParams.has('pageNumber')) {
+      layoutPageRequests.push(`${blocksMatch[1]}:${url.searchParams.get('pageNumber')}`)
+      return fulfillJson(route, { items: [] })
+    }
+    if (/^\/api\/v1\/parse-runs\/large-run-[ab]\/markdown\/preview$/.test(path)) {
+      return route.fulfill({ status: 200, contentType: 'text/html', body: '<p>Large rendered document</p>' })
+    }
+
+    const assetContentMatch = path.match(/^\/api\/v1\/parse-runs\/(large-run-[ab])\/assets\/(.+)\/content$/)
+    if (assetContentMatch) {
+      assetContentRequests.push(assetContentMatch[2])
+      return route.fulfill({
+        status: 200,
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"></svg>',
+      })
+    }
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+
+  await page.goto('/')
+  await page.getByText(document.originalFileName, { exact: true }).click()
+  await page.getByText(runs[0].providerType, { exact: true }).click()
+
+  const tabs = page.locator('.result-tabs')
+  await tabs.getByRole('button', { name: /版面/ }).click()
+  const layoutPanel = page.locator('[data-result-panel="layout"]')
+  const layoutPageButtons = layoutPanel.locator('.page-picker-pages button')
+  await expect(layoutPageButtons).toHaveCount(50)
+  await expect(layoutPageButtons.first()).toHaveText('1')
+  await expect(layoutPageButtons.last()).toHaveText('50')
+
+  const layoutPagination = layoutPanel.getByRole('navigation', { name: '版面页选择分页' })
+  await layoutPagination.getByRole('button', { name: '下一组' }).click()
+  await expect(layoutPageButtons).toHaveCount(50)
+  await expect(layoutPageButtons.first()).toHaveText('51')
+  await layoutPageButtons.first().click()
+  await expect.poll(() => layoutPageRequests).toContain('large-run-a:51')
+
+  await tabs.getByRole('button', { name: /资源/ }).click()
+  const resources = page.locator('[data-result-panel="resources"]')
+  const assetLinks = resources.locator('.asset-grid > a')
+  const artifactLinks = resources.locator('.artifact-list > a')
+  await expect(assetLinks).toHaveCount(24)
+  await expect(artifactLinks).toHaveCount(50)
+  await expect(assetLinks.first()).toHaveAttribute('href', /large-run-a-asset-0\/content$/)
+  await expect(artifactLinks.first()).toHaveAttribute('href', /large-run-a-artifact-0\/content$/)
+  await expect(assetLinks.locator('img')).toHaveCount(24)
+  await expect(assetLinks.locator('img').first()).toHaveAttribute('loading', 'lazy')
+
+  await expect.poll(() => assetContentRequests.length).toBeGreaterThan(0)
+  expect(assetContentRequests.length).toBeLessThanOrEqual(24)
+  expect(assetContentRequests.every(id => Number(id.split('-').at(-1)) < 24)).toBe(true)
+
+  await resources.getByRole('button', { name: '下一页图片' }).click()
+  await expect(assetLinks).toHaveCount(24)
+  await expect(assetLinks.first()).toHaveAttribute('href', /large-run-a-asset-24\/content$/)
+  await expect(resources.locator('a[href$="large-run-a-asset-0/content"]')).toHaveCount(0)
+  await resources.getByRole('button', { name: '下一页制品' }).click()
+  await expect(artifactLinks).toHaveCount(50)
+  await expect(artifactLinks.first()).toHaveAttribute('href', /large-run-a-artifact-50\/content$/)
+
+  await settleUi(page)
+  expect(assetContentRequests.length).toBeLessThanOrEqual(48)
+  expect(assetContentRequests.every(id => Number(id.split('-').at(-1)) < 48)).toBe(true)
+
+  await tabs.getByRole('button', { name: /版面/ }).click()
+  await expect(layoutPageButtons.first()).toHaveText('51')
+  await expect(layoutPageButtons.filter({ hasText: /^51$/ })).toHaveAttribute('aria-current', 'page')
+  await tabs.getByRole('button', { name: /资源/ }).click()
+  await expect(assetLinks.first()).toHaveAttribute('href', /large-run-a-asset-24\/content$/)
+  await expect(artifactLinks.first()).toHaveAttribute('href', /large-run-a-artifact-50\/content$/)
+
+  await page.getByText(runs[1].providerType, { exact: true }).click()
+  await tabs.getByRole('button', { name: /版面/ }).click()
+  await expect(layoutPageButtons.first()).toHaveText('1')
+  await expect(layoutPageButtons.filter({ hasText: /^1$/ })).toHaveAttribute('aria-current', 'page')
+  await tabs.getByRole('button', { name: /资源/ }).click()
+  await expect(assetLinks.first()).toHaveAttribute('href', /large-run-b-asset-0\/content$/)
+  await expect(artifactLinks.first()).toHaveAttribute('href', /large-run-b-artifact-0\/content$/)
+})
+
 test('result reads ignore stale success, failure, and loading completion', async ({ page }) => {
   const document = documentItem('stale-result-document', 'stale-result.pdf')
   const runs = [
