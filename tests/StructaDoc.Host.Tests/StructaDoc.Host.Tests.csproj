@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\StructaDoc.Host\StructaDoc.Host.csproj" />
+    <ProjectReference Include="..\StructaDoc.Testing\StructaDoc.Testing.csproj" />
   </ItemGroup>
 
 </Project>

@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\StructaDoc.Adapters\StructaDoc.Adapters.csproj" />
     <ProjectReference Include="..\..\src\StructaDoc.Migrations.Sqlite\StructaDoc.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="..\StructaDoc.Testing\StructaDoc.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -15,5 +15,6 @@
     <Project Path="tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj" />
     <Project Path="tests/StructaDoc.Host.Tests/StructaDoc.Host.Tests.csproj" />
     <Project Path="tests/StructaDoc.Persistence.Tests/StructaDoc.Persistence.Tests.csproj" />
+    <Project Path="tests/StructaDoc.Testing/StructaDoc.Testing.csproj" />
   </Folder>
 </Solution>
