@@ -107,11 +107,7 @@ public sealed class LargePdfParseOrchestrator(
         CancellationToken cancellationToken)
     {
         var existing = await dbContext.ParseSegments.Where(item => item.ParseRunId == parseRunId).OrderBy(item => item.Index).ToListAsync(cancellationToken);
-        if (existing.Count > 0)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return existing;
-        }
+        var existingByIndex = existing.ToDictionary(segment => segment.Index);
         await using var input = await SeekableCopyAsync(await source.OpenReadAsync(cancellationToken), cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         using var pdf = PdfReader.Open(input, PdfDocumentOpenMode.Import);
@@ -129,7 +125,7 @@ public sealed class LargePdfParseOrchestrator(
         {
             cancellationToken.ThrowIfCancellationRequested();
             var range = ranges.Dequeue();
-            await using var chunk = CreateChunk(pdf, range.Start, range.Count);
+            await using var chunk = CreateChunk(pdf, parseRunId, range.Start, range.Count);
             cancellationToken.ThrowIfCancellationRequested();
             if (capabilities.MaxFileBytes.HasValue && chunk.Length > capabilities.MaxFileBytes.Value)
             {
@@ -139,28 +135,85 @@ public sealed class LargePdfParseOrchestrator(
             var index = created.Count;
             var id = DeterministicId(parseRunId, $"segment:{index}:{range.Start}:{range.Count}");
             var storageRef = $"parse-runs/{parseRunId:N}/segments/{index:D4}.pdf";
-            var stored = await storage.WriteAsync(storageRef, chunk, capabilities.MaxFileBytes ?? Math.Max(source.SizeBytes * 2, 1024 * 1024), cancellationToken);
-            created.Add(new ParseSegmentEntity { Id = id, ParseRunId = parseRunId, Index = index, StartPage = range.Start + 1, EndPage = range.Start + range.Count, StorageRef = stored.StorageRef, SizeBytes = stored.SizeBytes, Sha256 = stored.Sha256, Status = "created", UpdatedAtUtc = clock.GetUtcNow().UtcDateTime });
+            var sizeBytes = chunk.Length;
+            var sha256 = Convert.ToHexString(await SHA256.HashDataAsync(chunk, cancellationToken)).ToLowerInvariant();
+            chunk.Position = 0;
+            if (!existingByIndex.TryGetValue(index, out var segment))
+            {
+                segment = new ParseSegmentEntity
+                {
+                    Id = id,
+                    ParseRunId = parseRunId,
+                    Index = index,
+                    StartPage = range.Start + 1,
+                    EndPage = range.Start + range.Count,
+                    StorageRef = storageRef,
+                    SizeBytes = sizeBytes,
+                    Sha256 = sha256,
+                    Status = "creating",
+                    UpdatedAtUtc = clock.GetUtcNow().UtcDateTime,
+                };
+                var intent = new ParseSegmentCreation(
+                    segment.Id,
+                    segment.Index,
+                    segment.StartPage,
+                    segment.EndPage,
+                    segment.StorageRef,
+                    segment.SizeBytes,
+                    segment.Sha256,
+                    segment.Status);
+                if (await session.TryCreateSegmentsAsync([intent], cancellationToken) is null)
+                {
+                    throw new OperationCanceledException(session.ExecutionCancellationToken);
+                }
+            }
+            else if (segment.Id != id
+                || segment.StartPage != range.Start + 1
+                || segment.EndPage != range.Start + range.Count
+                || !string.Equals(segment.StorageRef, storageRef, StringComparison.Ordinal))
+            {
+                throw SegmentConflict("The persisted Parse Segment does not match the deterministic identity or page range.");
+            }
+            else if (!string.Equals(segment.Status, "creating", StringComparison.Ordinal))
+            {
+                created.Add(segment);
+                continue;
+            }
+            else if (segment.SizeBytes != sizeBytes
+                || !string.Equals(segment.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw SegmentConflict($"The persisted Parse Segment intent expects {segment.SizeBytes} bytes with SHA-256 {segment.Sha256}, but the source regenerated {sizeBytes} bytes with SHA-256 {sha256}.");
+            }
+
+            try
+            {
+                var stored = await storage.WriteAsync(
+                    storageRef,
+                    chunk,
+                    capabilities.MaxFileBytes ?? Math.Max(source.SizeBytes * 2, 1024 * 1024),
+                    cancellationToken);
+                if (stored.SizeBytes != sizeBytes
+                    || !string.Equals(stored.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw SegmentConflict("The stored Parse Segment does not match its durable intent.");
+                }
+            }
+            catch (StorageObjectConflictException exception)
+            {
+                throw SegmentConflict("The Parse Segment storage key contains different content.", exception);
+            }
+
+            if (segment.Status == "creating")
+            {
+                segment.Status = "created";
+                await SaveSegmentAsync(session, segment, cancellationToken);
+            }
+            created.Add(segment);
         }
         cancellationToken.ThrowIfCancellationRequested();
-        created.Sort((a, b) => a.StartPage.CompareTo(b.StartPage));
-        for (var index = 0; index < created.Count; index++)
+        if (existingByIndex.Keys.Any(index => index >= created.Count))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            created[index].Index = index;
-        }
-        var creations = created.Select(segment => new ParseSegmentCreation(
-            segment.Id,
-            segment.Index,
-            segment.StartPage,
-            segment.EndPage,
-            segment.StorageRef,
-            segment.SizeBytes,
-            segment.Sha256,
-            segment.Status)).ToArray();
-        if (await session.TryCreateSegmentsAsync(creations, cancellationToken) is null)
-        {
-            throw new OperationCanceledException(session.ExecutionCancellationToken);
+            throw SegmentConflict("Persisted Parse Segment intents do not match the source page ranges.");
         }
         return created;
     }
@@ -261,11 +314,53 @@ public sealed class LargePdfParseOrchestrator(
         }
     }
 
-    private static FileStream CreateChunk(PdfDocument source, int start, int count)
+    private static FileStream CreateChunk(
+        PdfDocument source,
+        Guid parseRunId,
+        int start,
+        int count)
     {
         var path = Path.Combine(Path.GetTempPath(), $"structadoc-segment-{Guid.NewGuid():N}.pdf");
         var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 64 * 1024, FileOptions.Asynchronous | FileOptions.RandomAccess | FileOptions.DeleteOnClose);
-        using var output = new PdfDocument(); for (var index = start; index < start + count; index++) output.AddPage(source.Pages[index]); output.Save(stream, closeStream: false); stream.Position = 0; return stream;
+        using var output = new PdfDocument();
+        for (var index = start; index < start + count; index++) output.AddPage(source.Pages[index]);
+        output.Info.CreationDate = DateTime.UnixEpoch;
+        output.Info.ModificationDate = DateTime.UnixEpoch;
+        var documentIdBytes = SHA256.HashData(
+            Encoding.UTF8.GetBytes($"{parseRunId:N}:segment-pdf:{start}:{count}"));
+        var documentId = Convert.ToHexString(documentIdBytes.AsSpan(0, 16));
+        output.Internals.FirstDocumentID = documentId;
+        output.Internals.SecondDocumentID = documentId;
+        output.Save(stream, closeStream: false);
+        NormalizeGeneratedXmpIdentifiers(
+            stream,
+            new Guid(documentIdBytes.AsSpan(0, 16)).ToString("D"));
+        stream.Position = 0;
+        return stream;
+    }
+
+    private static void NormalizeGeneratedXmpIdentifiers(FileStream stream, string stableUuid)
+    {
+        stream.Position = 0;
+        var bytes = new byte[stream.Length];
+        stream.ReadExactly(bytes);
+        var uuidBytes = Encoding.ASCII.GetBytes(stableUuid);
+        NormalizeXmpUuid(bytes, "<xmpMM:DocumentID>uuid:"u8, uuidBytes);
+        NormalizeXmpUuid(bytes, "<xmpMM:InstanceID>uuid:"u8, uuidBytes);
+        stream.Position = 0;
+        stream.Write(bytes);
+    }
+
+    private static void NormalizeXmpUuid(
+        byte[] bytes,
+        ReadOnlySpan<byte> prefix,
+        ReadOnlySpan<byte> stableUuid)
+    {
+        var offset = bytes.AsSpan().IndexOf(prefix);
+        if (offset < 0) return;
+        var valueStart = offset + prefix.Length;
+        if (valueStart + stableUuid.Length > bytes.Length) return;
+        stableUuid.CopyTo(bytes.AsSpan(valueStart));
     }
 
     private static async Task<FileStream> SeekableCopyAsync(Stream source, CancellationToken cancellationToken)
@@ -280,4 +375,5 @@ public sealed class LargePdfParseOrchestrator(
 
     private static Guid DeterministicId(Guid parent, string value) { var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{parent:N}:{value}")); return new Guid(bytes.AsSpan(0, 16)); }
     private static ProviderException InputFailure(string code, string message) => new(code, message, ProviderFailureCategory.Input);
+    private static ProviderException SegmentConflict(string message, Exception? inner = null) => new("parse-segment-object-conflict", message, ProviderFailureCategory.Permanent, inner);
 }

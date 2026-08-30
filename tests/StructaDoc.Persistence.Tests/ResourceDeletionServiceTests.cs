@@ -89,14 +89,18 @@ public sealed class ResourceDeletionServiceTests
 
         await using var verification = new StructaDocDbContext(database.Options);
         var job = await verification.CleanupJobs.AsNoTracking().SingleAsync(cancellationToken);
-        var refs = JsonSerializer.Deserialize<string[]>(job.StorageRefsJson);
+        var refs = Assert.IsType<string[]>(
+            JsonSerializer.Deserialize<string[]>(job.StorageRefsJson));
         Assert.Equal(database.ExpectedStorageRefs(target), refs);
         Assert.Equal(
             1,
-            refs!.Count(value => string.Equals(
+            refs.Count(value => string.Equals(
                 value,
                 database.ConversionStorageRef,
                 StringComparison.Ordinal)));
+        Assert.All(
+            database.SegmentStorageRefs(target),
+            storageRef => Assert.Contains(storageRef, refs));
         Assert.Equal(
             target == DeletionTarget.Document
                 ? ResourceLifecycleStates.DeletionPending
@@ -249,7 +253,7 @@ public sealed class ResourceDeletionServiceTests
             int parseRunCount = 1,
             int assetsPerRun = 1,
             int artifactsPerRun = 1,
-            int segmentsPerRun = 1)
+            int segmentsPerRun = 2)
         {
             var directory = Path.Combine(
                 Path.GetTempPath(),
@@ -375,7 +379,7 @@ public sealed class ResourceDeletionServiceTests
                         StorageRef = segment.StorageRef,
                         SizeBytes = 7,
                         Sha256 = PayloadSha256,
-                        Status = ParseRunStatuses.Succeeded,
+                        Status = segment.Index == 0 ? "creating" : "normalized",
                         UpdatedAtUtc = nowUtc,
                     }));
             }
@@ -418,6 +422,14 @@ public sealed class ResourceDeletionServiceTests
 
             return storageRefs.Distinct(StringComparer.Ordinal).ToArray();
         }
+
+        public IReadOnlyList<string> SegmentStorageRefs(DeletionTarget target) =>
+            (target == DeletionTarget.Document
+                    ? ParseRuns
+                    : ParseRuns.Where(parseRun => parseRun.Id == ParseRunId))
+                .SelectMany(parseRun => parseRun.Segments)
+                .Select(segment => segment.StorageRef)
+                .ToArray();
 
         public long ExpectedReadRows(DeletionTarget target)
         {

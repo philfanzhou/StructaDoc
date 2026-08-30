@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.IO;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Adapters.Persistence.ParseRuns;
@@ -234,7 +236,7 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         var storageOperations = new ConcurrentQueue<FileStorageOperation>();
         var segmentWriteCount = 0;
 
-        await ExecuteAsync(
+        var result = await ExecuteAsync(
             provider,
             largePdfPageCount: 5,
             executeLargePdfThroughExecutor: true,
@@ -264,11 +266,142 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 && operation.StorageRef.Contains("/segments/", StringComparison.Ordinal))
             .ToArray();
         Assert.Single(segmentWrites);
+        Assert.Collection(
+            result.Segments,
+            segment => Assert.Equal(new SegmentResult(0, 1, 2, "creating"), segment));
         Assert.All(
             segmentWrites,
             operation => Assert.Equal(
                 provider.CapabilitiesCancellationToken,
                 operation.CancellationToken));
+        Assert.DoesNotContain(
+            storageOperations,
+            operation => operation.Kind == FileStorageOperationKind.Delete
+                && operation.StorageRef.Contains("/segments/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Large_pdf_persists_each_intent_before_starting_its_object_write()
+    {
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+        var statusesObservedBeforeWrite = new ConcurrentQueue<string>();
+
+        await ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            configureServices: services =>
+            {
+                services.RemoveAll<IFileStorage>();
+                services.AddSingleton<IFileStorage>(serviceProvider =>
+                    new CallbackFileStorage(
+                        new LocalFileStorage(
+                            serviceProvider.GetRequiredService<FileStorageOptions>()),
+                        operation =>
+                        {
+                            if (operation.Kind != FileStorageOperationKind.Write
+                                || !operation.StorageRef.Contains("/segments/", StringComparison.Ordinal))
+                            {
+                                return;
+                            }
+
+                            using var scope = serviceProvider.CreateScope();
+                            var status = scope.ServiceProvider
+                                .GetRequiredService<StructaDocDbContext>()
+                                .ParseSegments
+                                .AsNoTracking()
+                                .Where(segment => segment.StorageRef == operation.StorageRef)
+                                .Select(segment => segment.Status)
+                                .Single();
+                            statusesObservedBeforeWrite.Enqueue(status);
+                        }));
+            });
+
+        Assert.Equal(["creating", "creating", "creating"], statusesObservedBeforeWrite);
+    }
+
+    [Fact]
+    public async Task Large_pdf_does_not_write_an_object_when_intent_persistence_loses_the_lease()
+    {
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+        var storageOperations = new ConcurrentQueue<FileStorageOperation>();
+
+        var result = await ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            executeLargePdfThroughExecutor: true,
+            configureServices: services =>
+            {
+                services.RemoveAll<IParseSegmentMutationStore>();
+                services.AddSingleton<IParseSegmentMutationStore>(new LeaseLosingSegmentStore());
+                services.RemoveAll<IFileStorage>();
+                services.AddSingleton<IFileStorage>(serviceProvider =>
+                    new CallbackFileStorage(
+                        new LocalFileStorage(
+                            serviceProvider.GetRequiredService<FileStorageOptions>()),
+                        storageOperations.Enqueue));
+            });
+
+        Assert.Empty(result.Segments);
+        Assert.DoesNotContain(
+            storageOperations,
+            operation => operation.Kind == FileStorageOperationKind.Write
+                && operation.StorageRef.Contains("/segments/", StringComparison.Ordinal));
+        Assert.Equal(0, provider.SubmitCount);
+    }
+
+    [Fact]
+    public async Task Large_pdf_rebuilds_a_missing_object_from_a_partial_intent()
+    {
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+
+        var result = await ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            seedExecution: (services, parseRunId, sourceBytes) =>
+                SeedSegmentIntentAsync(services, parseRunId, sourceBytes, writeObject: false));
+
+        Assert.Equal(3, result.Segments.Count);
+        Assert.All(result.Segments, segment => Assert.Equal("normalized", segment.Status));
+        Assert.NotNull(result.MergedBundle);
+    }
+
+    [Fact]
+    public async Task Large_pdf_reuses_an_object_matching_a_partial_intent()
+    {
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+
+        var result = await ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            seedExecution: (services, parseRunId, sourceBytes) =>
+                SeedSegmentIntentAsync(services, parseRunId, sourceBytes, writeObject: true));
+
+        Assert.Equal(3, result.Segments.Count);
+        Assert.All(result.Segments, segment => Assert.Equal("normalized", segment.Status));
+        Assert.NotNull(result.MergedBundle);
+    }
+
+    [Fact]
+    public async Task Large_pdf_fails_permanently_when_a_partial_intent_object_conflicts()
+    {
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+
+        var result = await ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            executeLargePdfThroughExecutor: true,
+            seedExecution: (services, parseRunId, sourceBytes) =>
+                SeedSegmentIntentAsync(
+                    services,
+                    parseRunId,
+                    sourceBytes,
+                    writeObject: true,
+                    conflictingObject: true));
+
+        Assert.Equal(ParseRunStatuses.Failed, result.Status);
+        Assert.Equal("parse-segment-object-conflict", result.ErrorCode);
+        Assert.Collection(result.Segments, segment => Assert.Equal("creating", segment.Status));
+        Assert.Equal(0, provider.SubmitCount);
     }
 
     [Fact]
@@ -367,7 +500,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         int? largePdfPageCount = null,
         Action<IServiceCollection>? configureServices = null,
         bool executeLargePdfThroughExecutor = false,
-        CancellationTokenSource? executionCancellationSource = null)
+        CancellationTokenSource? executionCancellationSource = null,
+        Func<IServiceProvider, Guid, byte[], Task>? seedExecution = null)
     {
         var executionCancellationToken = executionCancellationSource?.Token
             ?? TestContext.Current.CancellationToken;
@@ -484,6 +618,10 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 CreatedAtUtc = nowUtc,
             });
             await dbContext.SaveChangesAsync();
+            if (seedExecution is not null)
+            {
+                await seedExecution(scope.ServiceProvider, parseRunId, sourceBytes);
+            }
         }
 
         ParseBundle? mergedBundle = null;
@@ -621,6 +759,88 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
     private static byte[] CreateSourceBytes(string mediaType) =>
         System.Text.Encoding.UTF8.GetBytes($"executor-source:{mediaType}");
 
+    private static async Task SeedSegmentIntentAsync(
+        IServiceProvider services,
+        Guid parseRunId,
+        byte[] sourceBytes,
+        bool writeObject,
+        bool conflictingObject = false)
+    {
+        var segmentBytes = CreateSegmentBytes(sourceBytes, parseRunId, 0, 2);
+        var storageRef = $"parse-runs/{parseRunId:N}/segments/0000.pdf";
+        var segment = new ParseSegmentEntity
+        {
+            Id = DeterministicSegmentId(parseRunId, "segment:0:0:2"),
+            ParseRunId = parseRunId,
+            Index = 0,
+            StartPage = 1,
+            EndPage = 2,
+            StorageRef = storageRef,
+            SizeBytes = segmentBytes.Length,
+            Sha256 = Convert.ToHexString(SHA256.HashData(segmentBytes)).ToLowerInvariant(),
+            Status = "creating",
+            UpdatedAtUtc = DateTime.UtcNow,
+        };
+        var dbContext = services.GetRequiredService<StructaDocDbContext>();
+        dbContext.ParseSegments.Add(segment);
+        await dbContext.SaveChangesAsync();
+        if (writeObject)
+        {
+            var bytes = conflictingObject ? "different-segment-content"u8.ToArray() : segmentBytes;
+            await using var content = new MemoryStream(bytes, writable: false);
+            await services.GetRequiredService<IFileStorage>().WriteAsync(
+                storageRef,
+                content,
+                bytes.Length,
+                TestContext.Current.CancellationToken);
+        }
+    }
+
+    private static byte[] CreateSegmentBytes(
+        byte[] sourceBytes,
+        Guid parseRunId,
+        int start,
+        int count)
+    {
+        using var input = new MemoryStream(sourceBytes, writable: false);
+        using var source = PdfReader.Open(input, PdfDocumentOpenMode.Import);
+        using var output = new PdfDocument();
+        for (var index = start; index < start + count; index++) output.AddPage(source.Pages[index]);
+        output.Info.CreationDate = DateTime.UnixEpoch;
+        output.Info.ModificationDate = DateTime.UnixEpoch;
+        var documentIdBytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+            $"{parseRunId:N}:segment-pdf:{start}:{count}"));
+        var documentId = Convert.ToHexString(documentIdBytes.AsSpan(0, 16));
+        output.Internals.FirstDocumentID = documentId;
+        output.Internals.SecondDocumentID = documentId;
+        using var content = new MemoryStream();
+        output.Save(content, closeStream: false);
+        var bytes = content.ToArray();
+        var stableUuid = System.Text.Encoding.ASCII.GetBytes(
+            new Guid(documentIdBytes.AsSpan(0, 16)).ToString("D"));
+        NormalizeXmpUuid(bytes, "<xmpMM:DocumentID>uuid:"u8, stableUuid);
+        NormalizeXmpUuid(bytes, "<xmpMM:InstanceID>uuid:"u8, stableUuid);
+        return bytes;
+    }
+
+    private static void NormalizeXmpUuid(
+        byte[] bytes,
+        ReadOnlySpan<byte> prefix,
+        ReadOnlySpan<byte> stableUuid)
+    {
+        var offset = bytes.AsSpan().IndexOf(prefix);
+        if (offset < 0) return;
+        var valueStart = offset + prefix.Length;
+        if (valueStart + stableUuid.Length > bytes.Length) return;
+        stableUuid.CopyTo(bytes.AsSpan(valueStart));
+    }
+
+    private static Guid DeterministicSegmentId(Guid parseRunId, string value)
+    {
+        var bytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{parseRunId:N}:{value}"));
+        return new Guid(bytes.AsSpan(0, 16));
+    }
+
     private sealed class TestParseProvider(
         bool failSubmission,
         bool useCheckpoint = false,
@@ -737,6 +957,21 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             stream.Position = 0;
             return stream;
         }
+    }
+
+    private sealed class LeaseLosingSegmentStore : IParseSegmentMutationStore
+    {
+        public Task<ParseRunLease?> TryCreateAsync(
+            ParseRunLease currentLease,
+            IReadOnlyList<ParseSegmentCreation> segments,
+            DateTime nowUtc,
+            CancellationToken cancellationToken = default) => Task.FromResult<ParseRunLease?>(null);
+
+        public Task<ParseRunLease?> TryUpdateCheckpointAsync(
+            ParseRunLease currentLease,
+            ParseSegmentCheckpoint checkpoint,
+            DateTime nowUtc,
+            CancellationToken cancellationToken = default) => Task.FromResult<ParseRunLease?>(null);
     }
 
     private sealed class TestDocumentConverter : IDocumentConverter
