@@ -27,11 +27,14 @@ public sealed class ServerDatabaseContractTests
     {
         await using var container = new MySqlBuilder("mysql:8.4")
             .WithDatabase("structadoc")
-            .WithUsername("structadoc")
             .WithPassword("structadoc-test")
             .Build();
         await container.StartAsync();
 
+        await InnoDbMigrationPreflightContract.AssertAsync(
+            DatabaseProvider.MySql,
+            container.GetConnectionString(),
+            serverVersion: "8.4.0");
         await ParseRunLeaseContract.AssertAsync(
             DatabaseProvider.MySql,
             container.GetConnectionString(),
@@ -43,11 +46,14 @@ public sealed class ServerDatabaseContractTests
     {
         await using var container = new MariaDbBuilder("mariadb:11.4")
             .WithDatabase("structadoc")
-            .WithUsername("structadoc")
             .WithPassword("structadoc-test")
             .Build();
         await container.StartAsync();
 
+        await InnoDbMigrationPreflightContract.AssertAsync(
+            DatabaseProvider.MariaDb,
+            container.GetConnectionString(),
+            serverVersion: "11.4.0");
         await ParseRunLeaseContract.AssertAsync(
             DatabaseProvider.MariaDb,
             container.GetConnectionString(),

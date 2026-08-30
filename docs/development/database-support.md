@@ -30,22 +30,38 @@ and the cross-reference in
 [ADR-0004](../adr/0004-relational-database-portability.md). See the upstream [MySQL row-format
 limits](https://dev.mysql.com/doc/refman/8.4/en/innodb-row-format.html) and [MariaDB
 InnoDB limitations](https://mariadb.com/docs/server/server-usage/storage-engines/innodb/innodb-limitations).
-Target behavior pending #43 and #45: both the application-managed and one-shot
-external migration paths will perform this
-preflight only when a pending migration creates or rebuilds an index that depends on
-the larger InnoDB key limit. For an absent database it will use a server connection
-with no default database selected to validate `innodb_page_size >= 16384` and
+The application-managed path performs this preflight only when a pending migration
+creates or rebuilds an index registered as depending on the larger InnoDB key limit.
+The reusable service, database-existence result, pending-migration decision, and
+affected migration/table/index registry are implemented by
+[#43](https://github.com/philfanzhou/StructaDoc/issues/43). The one-shot external
+migration entry point tracked by
+[#45](https://github.com/philfanzhou/StructaDoc/issues/45) will call that same service;
+it must not duplicate the SQL or registry. For an absent database the service uses a
+server connection with no default database selected to validate
+`innodb_page_size >= 16384` and
 `innodb_default_row_format = DYNAMIC` before EF Core creates the database. For an
-existing database it will validate the global page size and the actual `ROW_FORMAT`
+existing database it validates the global page size and the actual `ROW_FORMAT`
 of each affected existing table from `information_schema`, consulting the server
 default only for a table that does not exist yet. With no relevant pending migration,
 a later change to the server default will not block an already-migrated deployment.
 The replacement migrations will explicitly request `ROW_FORMAT=DYNAMIC` and verify
 the resulting table formats before rebuilding their indexes. This preflight and
 row-format validation are required by
-[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md) but are not implemented
-yet. At present an unsupported server can instead fail in an existing migration with
-the database's raw key-too-long error.
+[ADR-0009](../adr/0009-canonical-persisted-actor-identity.md). The registry already
+covers the existing migration that creates the 2080-byte
+`ux_parse_runs_idempotency` index; #35, #44, and #36 add their own affected indexes
+when their migrations are implemented.
+
+Application startup migrates the control plane before touching the business database.
+It then performs preflight through the unqualified server connection. An absent
+database has no legacy administrator table, so that read is skipped and EF Core is
+allowed to create and migrate it only after preflight succeeds. For an existing
+database, the legacy administrator import runs after preflight and before any business
+migration that can remove `admin_users`. Preflight, legacy import, and business
+migration are inside the same configuration-source failure boundary: browser-stored
+configuration records a startup fault, keeps `/admin` available, and makes readiness
+unhealthy, while deployment-fixed configuration continues to stop startup.
 
 ### SQLite encoding requirement
 

@@ -162,10 +162,30 @@ pending migration creates or rebuilds an index that depends on that boundary. If
 such migration is pending, startup does not reject a database merely because the
 server's current default row format later changed.
 
-The reusable preflight and application-managed execution point are owned by
-[issue #43](https://github.com/philfanzhou/StructaDoc/issues/43). The equivalent
-one-shot external migration entry point is owned by
-[issue #45](https://github.com/philfanzhou/StructaDoc/issues/45).
+The reusable preflight and application-managed execution point are implemented by
+[issue #43](https://github.com/philfanzhou/StructaDoc/issues/43). One registry maps
+each affected migration to its table and index, so the application-managed path and
+the equivalent one-shot external migration entry point owned by
+[issue #45](https://github.com/philfanzhou/StructaDoc/issues/45) use the same gated
+decision and support boundary.
+
+For MySQL and MariaDB, preflight derives a server connection with no default database
+from the configured business connection string and establishes whether the database
+exists before any database-qualified business access. An absent database has no
+migration history, so the complete migration set is pending and legacy-administrator
+import is skipped. An existing database supplies its actual pending migrations; each
+affected existing table is checked through `information_schema`, while the global
+default row format is consulted only when that table does not exist. The global page
+size is checked whenever at least one registered migration is pending. With no
+registered migration pending, neither the current default nor existing table formats
+are queried.
+
+Application startup first migrates the control plane, then performs this preflight,
+then imports a legacy administrator from an existing business database, and only then
+applies business migrations. Preflight, legacy import, and business migration share
+one configuration-source failure boundary. A failure from browser-stored business
+configuration records a startup fault, leaves `/admin` available, and fails readiness;
+the same failure from deployment-fixed configuration stops startup.
 
 The new 1059-byte index alone would fit the 1536-byte limit of an 8 KiB `DYNAMIC`
 page. StructaDoc requires 16 KiB because a fresh installation must first apply the
@@ -264,9 +284,10 @@ access-grant schema changes. [Issue #36](https://github.com/philfanzhou/StructaD
 owns the Parse Run schema change, and
 [issue #26](https://github.com/philfanzhou/StructaDoc/issues/26) is implemented by
 #36's one index/collation migration rather than by a second index rebuild. The reusable
-InnoDB preflight and its application-managed integration are owned by
+InnoDB preflight and its application-managed integration are implemented by
 [issue #43](https://github.com/philfanzhou/StructaDoc/issues/43); the external migration
-entry point is owned by [issue #45](https://github.com/philfanzhou/StructaDoc/issues/45).
+entry point remains owned by
+[issue #45](https://github.com/philfanzhou/StructaDoc/issues/45).
 
 ## Alternatives Considered
 
