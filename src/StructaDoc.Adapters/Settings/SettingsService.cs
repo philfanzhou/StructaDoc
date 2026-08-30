@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using StructaDoc.Application.Settings;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.ControlPlane.Entities;
+using StructaDoc.Application.Settings;
 
 namespace StructaDoc.Adapters.Settings;
 
@@ -106,9 +106,9 @@ public sealed class SettingsService(
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
-                // Clearing restores the default, so listeners are told the default rather than the
-                // value that was just removed.
-                return await ApplyAsync(definition, definition.Default, cancellationToken);
+            // Clearing restores the default, so listeners are told the default rather than the
+            // value that was just removed.
+            return await ApplyAsync(definition, definition.Default, cancellationToken);
         }
 
         var normalized = SettingCatalog.Normalize(definition, value);

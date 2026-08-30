@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using StructaDoc.Application.Authentication;
 using StructaDoc.Adapters.ControlPlane.Entities;
+using StructaDoc.Application.Authentication;
 
 namespace StructaDoc.Adapters.ControlPlane.Configurations;
 

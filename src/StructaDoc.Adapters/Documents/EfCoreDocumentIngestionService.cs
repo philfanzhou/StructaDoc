@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Logging;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.Storage;
-using StructaDoc.Adapters.Persistence;
-using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Adapters.Documents;
 

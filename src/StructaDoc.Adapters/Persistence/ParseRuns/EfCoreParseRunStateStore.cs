@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
+using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
-using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Adapters.Persistence.ParseRuns;
 

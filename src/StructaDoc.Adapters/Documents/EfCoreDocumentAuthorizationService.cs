@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Documents;
 using StructaDoc.Domain.Resources;
-using StructaDoc.Adapters.Persistence;
-using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Adapters.Documents;
 

@@ -2,11 +2,11 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using StructaDoc.Application.Settings;
-using StructaDoc.Contracts.Settings;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Storage;
+using StructaDoc.Application.Settings;
+using StructaDoc.Contracts.Settings;
 
 namespace StructaDoc.Host.Tests;
 

@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Antiforgery;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Settings;
 using StructaDoc.Host.Authentication;
-using StructaDoc.Adapters.Persistence;
-using StructaDoc.Adapters.Storage;
 
 namespace StructaDoc.Host.Settings;
 

@@ -74,6 +74,9 @@ jobs:
       - name: Restore .NET dependencies
         run: dotnet restore StructaDoc.slnx
 
+      - name: Verify .NET formatting
+        run: dotnet format StructaDoc.slnx --verify-no-changes --no-restore
+
       - name: Install web dependencies
         working-directory: web
         run: npm ci

@@ -1,9 +1,9 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
+using StructaDoc.Adapters.Authentication;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Contracts.Authentication;
-using StructaDoc.Adapters.Authentication;
 
 namespace StructaDoc.Host.Authentication;
 

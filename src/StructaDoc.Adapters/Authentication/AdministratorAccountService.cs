@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using StructaDoc.Application.Authentication;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.ControlPlane.Entities;
+using StructaDoc.Application.Authentication;
 
 namespace StructaDoc.Adapters.Authentication;
 

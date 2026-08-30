@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
-using StructaDoc.Application.Authentication;
 using StructaDoc.Adapters.ControlPlane.Entities;
+using StructaDoc.Application.Authentication;
 
 namespace StructaDoc.Adapters.Authentication;
 

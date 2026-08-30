@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using StructaDoc.Application.ParseRuns;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Adapters.Persistence.ParseRuns;
+using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.Resources;
 using StructaDoc.Migrations.Sqlite;
 

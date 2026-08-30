@@ -1,12 +1,12 @@
 using System.Text;
 using Microsoft.EntityFrameworkCore;
-using StructaDoc.Application.Canonical;
-using StructaDoc.Application.ParseRuns;
-using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Adapters.Storage;
+using StructaDoc.Application.Canonical;
+using StructaDoc.Application.ParseRuns;
+using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Migrations.Sqlite;
 
 namespace StructaDoc.Persistence.Tests;

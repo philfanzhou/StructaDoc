@@ -1,8 +1,8 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using StructaDoc.Adapters.Persistence;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.Resources;
-using StructaDoc.Adapters.Persistence;
 
 namespace StructaDoc.Host.Workers;
 

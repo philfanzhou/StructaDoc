@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
-using StructaDoc.Application.Settings;
 using StructaDoc.Adapters.ControlPlane;
+using StructaDoc.Application.Settings;
 
 namespace StructaDoc.Host.Settings;
 

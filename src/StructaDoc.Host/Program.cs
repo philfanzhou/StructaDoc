@@ -2,6 +2,16 @@ using System.Reflection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using StructaDoc.Adapters.Authentication;
+using StructaDoc.Adapters.ControlPlane;
+using StructaDoc.Adapters.Conversion;
+using StructaDoc.Adapters.Documents;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Providers;
+using StructaDoc.Adapters.ProviderResults;
+using StructaDoc.Adapters.Providers;
+using StructaDoc.Adapters.Settings;
+using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Settings;
@@ -16,16 +26,6 @@ using StructaDoc.Host.Resources;
 using StructaDoc.Host.Settings;
 using StructaDoc.Host.Setup;
 using StructaDoc.Host.Workers;
-using StructaDoc.Adapters.Authentication;
-using StructaDoc.Adapters.ControlPlane;
-using StructaDoc.Adapters.Conversion;
-using StructaDoc.Adapters.Documents;
-using StructaDoc.Adapters.Persistence;
-using StructaDoc.Adapters.Persistence.Providers;
-using StructaDoc.Adapters.ProviderResults;
-using StructaDoc.Adapters.Providers;
-using StructaDoc.Adapters.Settings;
-using StructaDoc.Adapters.Storage;
 
 if (BusinessDatabaseMigrationCommand.TryExtractArguments(args, out var migrationArguments))
 {
