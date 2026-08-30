@@ -188,6 +188,39 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task<ParseRunLease?> TryCreateSegmentsAsync(
+        IReadOnlyList<ParseSegmentCreation> segments,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+
+        return ApplyMutationAsync(
+            (services, lease, nowUtc, operationToken) =>
+                services.GetRequiredService<IParseSegmentMutationStore>().TryCreateAsync(
+                    lease,
+                    segments,
+                    nowUtc,
+                    operationToken),
+            cancellationToken);
+    }
+
+    public Task<ParseRunLease?> TryUpdateSegmentCheckpointAsync(
+        ParseSegmentCheckpoint checkpoint,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(checkpoint);
+
+        return ApplyMutationAsync(
+            (services, lease, nowUtc, operationToken) =>
+                services.GetRequiredService<IParseSegmentMutationStore>()
+                    .TryUpdateCheckpointAsync(
+                        lease,
+                        checkpoint,
+                        nowUtc,
+                        operationToken),
+            cancellationToken);
+    }
+
     public async Task<ParseRunExecutionContext?> LoadExecutionContextAsync(
         CancellationToken cancellationToken = default)
     {

@@ -1,12 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using StructaDoc.Adapters.Persistence.ParseRuns;
+using StructaDoc.Adapters.Persistence.Providers;
+using StructaDoc.Adapters.Resources;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Resources;
-using StructaDoc.Adapters.Persistence.ParseRuns;
-using StructaDoc.Adapters.Persistence.Providers;
-using StructaDoc.Adapters.Resources;
 
 namespace StructaDoc.Adapters.Persistence;
 
@@ -29,6 +29,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IParseRunStateStore, EfCoreParseRunStateStore>();
         services.AddScoped<IParseRunConversionStore, EfCoreParseRunConversionStore>();
         services.AddScoped<IParseRunSubmissionCheckpointStore, EfCoreParseRunSubmissionCheckpointStore>();
+        services.AddScoped<IParseSegmentMutationStore, EfCoreParseSegmentMutationStore>();
         services.AddScoped<IParseRunExecutionContextStore, EfCoreParseRunExecutionContextStore>();
         services.AddScoped<IParseBundleCommitStore, EfCoreParseBundleCommitStore>();
         services.AddScoped<IParseRunService, EfCoreParseRunService>();

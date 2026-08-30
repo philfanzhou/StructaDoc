@@ -2,6 +2,11 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using StructaDoc.Adapters.Authentication;
+using StructaDoc.Adapters.Documents;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.Documents;
@@ -10,11 +15,6 @@ using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Domain.Resources;
-using StructaDoc.Adapters.Authentication;
-using StructaDoc.Adapters.Documents;
-using StructaDoc.Adapters.Persistence;
-using StructaDoc.Adapters.Persistence.Entities;
-using StructaDoc.Adapters.Persistence.ParseRuns;
 
 namespace StructaDoc.DatabaseContractTests;
 
@@ -30,6 +30,7 @@ internal static class ParseRunLeaseContract
         var options = CreateOptions(provider, connectionString, serverVersion);
         await InitializeAsync(options);
         await AssertCreationGuardsAsync(options);
+        await AssertSegmentMutationFencingAsync(options);
 
         var nowUtc = DateTime.UtcNow;
         var claims = await Task.WhenAll(
@@ -494,6 +495,246 @@ internal static class ParseRunLeaseContract
             .ExecuteDeleteAsync();
         await cleanup.ProviderConfigs.Where(config => config.Id == configId).ExecuteDeleteAsync();
         await cleanup.Documents.Where(document => document.Id == documentId).ExecuteDeleteAsync();
+    }
+
+    private static async Task AssertSegmentMutationFencingAsync(
+        DbContextOptions<StructaDocDbContext> options)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var documentId = Guid.NewGuid();
+        var validRunId = Guid.NewGuid();
+        var expiredRunId = Guid.NewGuid();
+        var cancelledRunId = Guid.NewGuid();
+        var takeoverRunId = Guid.NewGuid();
+        var validLease = new ParseRunLease(
+            validRunId,
+            "segment-worker",
+            1,
+            nowUtc.AddMinutes(5));
+        var expiredLease = new ParseRunLease(
+            expiredRunId,
+            "expired-segment-worker",
+            1,
+            nowUtc.AddSeconds(1));
+        var cancelledLease = new ParseRunLease(
+            cancelledRunId,
+            "cancelled-segment-worker",
+            1,
+            nowUtc.AddMinutes(5));
+        var takeoverLease = new ParseRunLease(
+            takeoverRunId,
+            "original-segment-worker",
+            1,
+            nowUtc.AddSeconds(-1));
+
+        await using (var seed = new StructaDocDbContext(options))
+        {
+            seed.Documents.Add(new DocumentEntity
+            {
+                Id = documentId,
+                OriginalFileName = "segment-fence-contract.pdf",
+                MediaType = "application/pdf",
+                Extension = ".pdf",
+                SizeBytes = 128,
+                Sha256 = new string('b', 64),
+                StorageRef = "documents/segment-fence-contract.pdf",
+                CreatedAtUtc = nowUtc,
+            });
+            seed.ParseRuns.AddRange(
+                CreateRunningRun(validLease, documentId, nowUtc),
+                CreateRunningRun(expiredLease, documentId, nowUtc),
+                CreateRunningRun(cancelledLease, documentId, nowUtc),
+                CreateRunningRun(
+                    takeoverLease,
+                    documentId,
+                    nowUtc,
+                    externalTaskId: "segment-takeover-task"));
+            await seed.SaveChangesAsync();
+        }
+
+        var validSegment = Segment(validRunId, 0);
+        ParseRunLease checkpointLease;
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var store = new EfCoreParseSegmentMutationStore(dbContext);
+            var createdLease = Assert.IsType<ParseRunLease>(await store.TryCreateAsync(
+                validLease,
+                [validSegment],
+                nowUtc));
+            Assert.Equal(validLease.ConcurrencyVersion + 1, createdLease.ConcurrencyVersion);
+
+            checkpointLease = Assert.IsType<ParseRunLease>(
+                await store.TryUpdateCheckpointAsync(
+                    createdLease,
+                    new ParseSegmentCheckpoint(
+                        validSegment.Id,
+                        "submitted",
+                        "segment-task-1",
+                        null),
+                    nowUtc.AddSeconds(1)));
+            Assert.Equal(createdLease.ConcurrencyVersion + 1, checkpointLease.ConcurrencyVersion);
+
+            var persistedSegment = await dbContext.ParseSegments
+                .AsNoTracking()
+                .SingleAsync(segment => segment.Id == validSegment.Id);
+            Assert.Equal("submitted", persistedSegment.Status);
+            Assert.Equal("segment-task-1", persistedSegment.ExternalTaskId);
+            Assert.Equal(
+                nowUtc.AddSeconds(1),
+                persistedSegment.UpdatedAtUtc,
+                TimeSpan.FromMicroseconds(1));
+        }
+
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var expiredSegment = Segment(expiredRunId, 0);
+            var store = new EfCoreParseSegmentMutationStore(dbContext);
+            var createdLease = Assert.IsType<ParseRunLease>(await store.TryCreateAsync(
+                expiredLease,
+                [expiredSegment],
+                nowUtc));
+            Assert.Null(await store.TryUpdateCheckpointAsync(
+                createdLease,
+                new ParseSegmentCheckpoint(expiredSegment.Id, "submitted", "too-late", null),
+                nowUtc.AddSeconds(2)));
+            var lateSegment = Segment(expiredRunId, 1);
+            Assert.Null(await store.TryCreateAsync(
+                createdLease,
+                [lateSegment],
+                nowUtc.AddSeconds(2)));
+            Assert.False(await dbContext.ParseSegments.AnyAsync(segment => segment.Id == lateSegment.Id));
+            Assert.Equal(
+                "created",
+                await dbContext.ParseSegments
+                    .Where(segment => segment.Id == expiredSegment.Id)
+                    .Select(segment => segment.Status)
+                    .SingleAsync());
+        }
+
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var cancelledSegment = Segment(cancelledRunId, 0);
+            var store = new EfCoreParseSegmentMutationStore(dbContext);
+            var createdLease = Assert.IsType<ParseRunLease>(await store.TryCreateAsync(
+                cancelledLease,
+                [cancelledSegment],
+                nowUtc));
+            var cancellation = await new EfCoreParseRunService(dbContext)
+                .RequestCancellationAsync(cancelledRunId, nowUtc.AddSeconds(1));
+            Assert.Equal(ParseRunCancellationStatus.Requested, cancellation.Status);
+            Assert.Null(await store.TryUpdateCheckpointAsync(
+                createdLease,
+                new ParseSegmentCheckpoint(cancelledSegment.Id, "submitted", "too-late", null),
+                nowUtc.AddSeconds(2)));
+            var postCancellationSegment = Segment(cancelledRunId, 1);
+            Assert.Null(await store.TryCreateAsync(
+                createdLease,
+                [postCancellationSegment],
+                nowUtc.AddSeconds(2)));
+            Assert.False(await dbContext.ParseSegments.AnyAsync(
+                segment => segment.Id == postCancellationSegment.Id));
+            Assert.Equal(
+                "created",
+                await dbContext.ParseSegments
+                    .Where(segment => segment.Id == cancelledSegment.Id)
+                    .Select(segment => segment.Status)
+                    .SingleAsync());
+        }
+
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var takeoverSegment = Segment(takeoverRunId, 0);
+            var store = new EfCoreParseSegmentMutationStore(dbContext);
+            var preTakeoverLease = Assert.IsType<ParseRunLease>(await store.TryCreateAsync(
+                takeoverLease,
+                [takeoverSegment],
+                nowUtc.AddSeconds(-2)));
+            var recoveredLease = Assert.IsType<ParseRunLease>(
+                await new EfCoreParseRunLeaseStore(dbContext).TryRecoverNextRunningAsync(
+                    "takeover-segment-worker",
+                    nowUtc,
+                    TimeSpan.FromMinutes(5)));
+            Assert.Equal(takeoverRunId, recoveredLease.ParseRunId);
+
+            Assert.Null(await store.TryUpdateCheckpointAsync(
+                preTakeoverLease,
+                new ParseSegmentCheckpoint(takeoverSegment.Id, "submitted", "stale-task", null),
+                nowUtc.AddSeconds(1)));
+            var competingSegment = Segment(takeoverRunId, 1);
+            Assert.Null(await store.TryCreateAsync(
+                recoveredLease with { WorkerId = "competing-segment-worker" },
+                [competingSegment],
+                nowUtc.AddSeconds(1)));
+            var takeoverCheckpointLease = Assert.IsType<ParseRunLease>(
+                await store.TryUpdateCheckpointAsync(
+                    recoveredLease,
+                    new ParseSegmentCheckpoint(
+                        takeoverSegment.Id,
+                        "submitted",
+                        "takeover-task",
+                        null),
+                    nowUtc.AddSeconds(1)));
+            Assert.NotNull(await store.TryCreateAsync(
+                takeoverCheckpointLease,
+                [competingSegment],
+                nowUtc.AddSeconds(2)));
+            Assert.Equal(
+                "takeover-task",
+                await dbContext.ParseSegments
+                    .Where(segment => segment.Id == takeoverSegment.Id)
+                    .Select(segment => segment.ExternalTaskId)
+                    .SingleAsync());
+        }
+
+        await using (var cleanup = new StructaDocDbContext(options))
+        {
+            await cleanup.ParseSegments
+                .Where(segment => segment.ParseRun.DocumentId == documentId)
+                .ExecuteDeleteAsync();
+            await cleanup.ParseRuns
+                .Where(parseRun => parseRun.DocumentId == documentId)
+                .ExecuteDeleteAsync();
+            await cleanup.Documents
+                .Where(document => document.Id == documentId)
+                .ExecuteDeleteAsync();
+        }
+
+        static ParseRunEntity CreateRunningRun(
+            ParseRunLease lease,
+            Guid documentId,
+            DateTime createdAtUtc,
+            string? externalTaskId = null) => new()
+            {
+                Id = lease.ParseRunId,
+                DocumentId = documentId,
+                Status = ParseRunStatuses.Running,
+                Stage = ParseRunStages.Segmenting,
+                ProviderType = "test-provider",
+                ProviderConfigId = Guid.NewGuid(),
+                ProviderConfigVersion = Guid.NewGuid(),
+                OptionsJson = "{}",
+                SourceMediaType = "application/pdf",
+                SubmittedMediaType = "application/pdf",
+                ExternalTaskId = externalTaskId,
+                AttemptCount = 1,
+                MaxAttempts = 3,
+                NextAttemptAtUtc = createdAtUtc,
+                ClaimedBy = lease.WorkerId,
+                LeaseExpiresAtUtc = lease.LeaseExpiresAtUtc,
+                CreatedAtUtc = createdAtUtc,
+                StartedAtUtc = createdAtUtc,
+                ConcurrencyVersion = lease.ConcurrencyVersion,
+            };
+
+        static ParseSegmentCreation Segment(Guid parseRunId, int index) => new(
+            Guid.NewGuid(),
+            index,
+            index + 1,
+            index + 1,
+            $"parse-runs/{parseRunId:N}/segments/{index:D4}.pdf",
+            128,
+            new string('c', 64),
+            "created");
     }
 
     private static async Task InitializeAsync(

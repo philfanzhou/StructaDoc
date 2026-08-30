@@ -157,6 +157,8 @@ A run cannot be `succeeded` while canonical data is incomplete. If object storag
 
 Large PDFs use deterministic segment identities and stored per-segment stages/checkpoints. The parent succeeds only after all segments normalize and merge into one globally ordered bundle. Before segment Markdown is concatenated, its image links are rewritten against that segment's own Asset map to the same segment-prefixed names used by the merged canonical Assets. This keeps equal file names from different segments bound to their own images in Markdown, HTML, and ZIP exports.
 
+Segment creation and every Segment checkpoint mutation are durably fenced by the parent Parse Run's active lease. The mutation and validation of the parent's running status, owner, unexpired lease, and concurrency version share one atomic database transaction. A successful mutation advances the concurrency version and returns the updated lease to the serialized heartbeat session; expiry, cancellation finalization, or takeover prevents the old Worker from committing Segment state.
+
 ## 12. Retry Policy
 
 ### Retriable by Default
@@ -204,7 +206,7 @@ The request deliberately leaves any live lease in place. Lease renewal requires 
 - the owning Worker completes it immediately after stopping, guarded by its claim rather than by its now-stale concurrency version;
 - Parse Run maintenance completes any `cancel-requested` run whose lease is absent or lapsed, which covers `queued` and `retry-wait` runs and any Worker that crashed mid-cancellation.
 
-The same linked execution token covers local large-PDF reads, seekable copies, Segment object writes, Segment saves, archive reads, and final merge I/O. Host shutdown, lease loss, and the execution deadline therefore stop that work through one cancellation path. PdfSharp opens and creates individual chunks synchronously, so cancellation cannot interrupt an operation already in progress; checkpoints before and after those calls prevent another chunk, Segment, or final merge from starting.
+The same linked execution token covers local large-PDF reads, seekable copies, Segment object writes, fenced Segment saves, archive reads, and final merge I/O. Host shutdown, lease loss, and the execution deadline therefore stop that work through one cancellation path. The durable fence, rather than cooperative token observation alone, prevents a stale Worker from saving Segment state after cancellation or takeover. PdfSharp opens and creates individual chunks synchronously, so cancellation cannot interrupt an operation already in progress; checkpoints before and after those calls prevent another chunk, Segment, or final merge from starting.
 
 Completion clears the stage, claim, lease, and encrypted submission continuation, and sets `completedAt`. Maintenance and execution are separate Workers, so cancellation completes on a Host whose execution slots are all busy. Error facts from the last attempt are retained for diagnosis; `status` remains the only authority on finality.
 

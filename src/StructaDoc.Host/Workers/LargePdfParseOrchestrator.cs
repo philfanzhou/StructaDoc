@@ -4,6 +4,8 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
+using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.ProviderResults;
@@ -11,8 +13,6 @@ using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.ParseRuns;
-using StructaDoc.Adapters.Persistence;
-using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Host.Workers;
 
@@ -45,7 +45,12 @@ public sealed class LargePdfParseOrchestrator(
         CancellationToken cancellationToken)
     {
         if (await session.TryUpdateStageAsync(ParseRunStages.Segmenting, cancellationToken) is null) throw new OperationCanceledException(cancellationToken);
-        var segments = await EnsureSegmentsAsync(context.ParseRunId, source, capabilities, cancellationToken);
+        var segments = await EnsureSegmentsAsync(
+            session,
+            context.ParseRunId,
+            source,
+            capabilities,
+            cancellationToken);
         var bundles = new List<(ParseSegmentEntity Segment, ParseBundle Bundle)>(segments.Count);
         foreach (var segment in segments)
         {
@@ -62,7 +67,7 @@ public sealed class LargePdfParseOrchestrator(
                         segment.ExternalTaskId = checkpoint.ExternalTaskId;
                         segment.ProtectedSubmissionContinuation = submissionProtector.Protect(checkpoint.ContinuationToken);
                         segment.Status = "submission-prepared";
-                        await SaveSegmentAsync(segment, cancellationToken);
+                        await SaveSegmentAsync(session, segment, cancellationToken);
                     }
                 }
 
@@ -75,26 +80,31 @@ public sealed class LargePdfParseOrchestrator(
                     segment.ExternalTaskId = submission.ExternalTaskId;
                     segment.ProtectedSubmissionContinuation = null;
                     segment.Status = "submitted";
-                    await SaveSegmentAsync(segment, cancellationToken);
+                    await SaveSegmentAsync(session, segment, cancellationToken);
                 }
 
                 await WaitAsync(provider, context.ProviderConfiguration, segment.ExternalTaskId!, session.ExecutionCancellationToken);
                 await using var result = await provider.OpenResultAsync(context.ProviderConfiguration, segment.ExternalTaskId!, session.ExecutionCancellationToken);
                 archive = await resultIntake.StoreArchiveAsync(segment.Id, result, session.ExecutionCancellationToken);
                 segment.Status = "downloaded";
-                await SaveSegmentAsync(segment, cancellationToken);
+                await SaveSegmentAsync(session, segment, cancellationToken);
             }
 
             var bundle = await normalizer.NormalizeAsync(new ProviderResultNormalizationRequest(segment.Id, context.ProviderConfiguration.ProviderType, archive, context.ProviderConfiguration.Model, context.ProviderConfiguration.Backend), session.ExecutionCancellationToken);
             segment.Status = "normalized";
-            await SaveSegmentAsync(segment, cancellationToken);
+            await SaveSegmentAsync(session, segment, cancellationToken);
             bundles.Add((segment, bundle));
         }
         cancellationToken.ThrowIfCancellationRequested();
         return await MergeAsync(context.ParseRunId, bundles, cancellationToken);
     }
 
-    private async Task<IReadOnlyList<ParseSegmentEntity>> EnsureSegmentsAsync(Guid parseRunId, ProviderDocumentSource source, ProviderCapabilities capabilities, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ParseSegmentEntity>> EnsureSegmentsAsync(
+        ParseRunLeaseSession session,
+        Guid parseRunId,
+        ProviderDocumentSource source,
+        ProviderCapabilities capabilities,
+        CancellationToken cancellationToken)
     {
         var existing = await dbContext.ParseSegments.Where(item => item.ParseRunId == parseRunId).OrderBy(item => item.Index).ToListAsync(cancellationToken);
         if (existing.Count > 0)
@@ -139,8 +149,19 @@ public sealed class LargePdfParseOrchestrator(
             cancellationToken.ThrowIfCancellationRequested();
             created[index].Index = index;
         }
-        dbContext.ParseSegments.AddRange(created);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        var creations = created.Select(segment => new ParseSegmentCreation(
+            segment.Id,
+            segment.Index,
+            segment.StartPage,
+            segment.EndPage,
+            segment.StorageRef,
+            segment.SizeBytes,
+            segment.Sha256,
+            segment.Status)).ToArray();
+        if (await session.TryCreateSegmentsAsync(creations, cancellationToken) is null)
+        {
+            throw new OperationCanceledException(session.ExecutionCancellationToken);
+        }
         return created;
     }
 
@@ -212,7 +233,22 @@ public sealed class LargePdfParseOrchestrator(
         return mergedBundle;
     }
 
-    private async Task SaveSegmentAsync(ParseSegmentEntity segment, CancellationToken cancellationToken) { segment.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime; await dbContext.SaveChangesAsync(cancellationToken); }
+    private static async Task SaveSegmentAsync(
+        ParseRunLeaseSession session,
+        ParseSegmentEntity segment,
+        CancellationToken cancellationToken)
+    {
+        if (await session.TryUpdateSegmentCheckpointAsync(
+                new ParseSegmentCheckpoint(
+                    segment.Id,
+                    segment.Status,
+                    segment.ExternalTaskId,
+                    segment.ProtectedSubmissionContinuation),
+                cancellationToken) is null)
+        {
+            throw new OperationCanceledException(session.ExecutionCancellationToken);
+        }
+    }
     private ProviderDocumentSource Source(ParseSegmentEntity segment) => new($"segment-{segment.Index:D4}.pdf", "application/pdf", segment.SizeBytes, token => storage.OpenReadAsync(segment.StorageRef, token));
     private static async Task WaitAsync(IParseProvider provider, ProviderExecutionConfiguration config, string id, CancellationToken cancellationToken)
     {
