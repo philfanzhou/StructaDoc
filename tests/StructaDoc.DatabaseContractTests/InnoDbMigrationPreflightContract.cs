@@ -184,6 +184,10 @@ internal static class InnoDbMigrationPreflightContract
         var builder = new MySqlConnectionStringBuilder(source.ConnectionString)
         {
             Database = string.Empty,
+            // Changing a global variable is test-fixture administration, not an application
+            // preflight permission. Official Testcontainers images assign the configured password
+            // to root as well as the ordinary test user.
+            UserID = "root",
         };
         var connection = new MySqlConnection(builder.ConnectionString);
         await connection.OpenAsync();
