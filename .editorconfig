@@ -15,6 +15,12 @@ indent_size = 4
 csharp_style_namespace_declarations = file_scoped:warning
 dotnet_sort_system_directives_first = true
 
+# Preserve pinned dotnet-ef output and historical generated encoding/namespace shapes.
+# Every other C# formatting and analyzer rule remains inherited from the section above.
+[src/StructaDoc.Migrations.{Sqlite,PostgreSql,MySql,MariaDb}/Migrations/**.cs]
+charset = unset
+csharp_style_namespace_declarations = block_scoped:none
+
 [*.{json,jsonc}]
 indent_style = space
 indent_size = 2
