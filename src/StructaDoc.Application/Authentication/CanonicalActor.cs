@@ -57,21 +57,7 @@ public sealed record CanonicalActor
             return new CanonicalActor(issuer, subjectId.ToString("D"));
         }
 
-        if (!ExternalIdentityConstraints.IsValidIssuer(issuer))
-        {
-            throw new ArgumentException(
-                "OIDC actor issuer must be an accepted absolute HTTP(S) ASCII issuer.",
-                nameof(issuer));
-        }
-
-        if (!ExternalIdentityConstraints.IsValidSubject(subject))
-        {
-            throw new ArgumentException(
-                "OIDC actor subject must be accepted ASCII text of at most 255 characters.",
-                nameof(subject));
-        }
-
-        return new CanonicalActor(issuer, subject);
+        return CreateOidc(issuer, subject);
     }
 
     public static CanonicalActor FromStoredBytes(
@@ -115,12 +101,31 @@ public sealed record CanonicalActor
 
         try
         {
-            return Create(issuer, subject);
+            return CreateOidc(issuer, subject);
         }
         catch (ArgumentException exception)
         {
             throw new InvalidOperationException("OIDC actor claims are invalid.", exception);
         }
+    }
+
+    private static CanonicalActor CreateOidc(string issuer, string subject)
+    {
+        if (!ExternalIdentityConstraints.IsValidIssuer(issuer))
+        {
+            throw new ArgumentException(
+                "OIDC actor issuer must be an accepted absolute HTTP(S) ASCII issuer.",
+                nameof(issuer));
+        }
+
+        if (!ExternalIdentityConstraints.IsValidSubject(subject))
+        {
+            throw new ArgumentException(
+                "OIDC actor subject must be accepted ASCII text of at most 255 characters.",
+                nameof(subject));
+        }
+
+        return new CanonicalActor(issuer, subject);
     }
 
     private static CanonicalActor FromUuidPrincipal(

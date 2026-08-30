@@ -119,6 +119,25 @@ public sealed class CanonicalActorTests
         Assert.Contains("at most 255", exception.InnerException?.Message);
     }
 
+    [Theory]
+    [InlineData(PrincipalIdentity.ApiClientIssuer)]
+    [InlineData(CanonicalActor.AdministratorIssuer)]
+    public void Oidc_reserved_issuer_has_an_explicit_error(string issuer)
+    {
+        var principal = CreatePrincipal(
+            SubjectTypes.User,
+            new(StructaDocClaimTypes.ExternalIssuer, issuer),
+            new(
+                StructaDocClaimTypes.ExternalSubject,
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"));
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => CanonicalActor.FromPrincipal(principal));
+
+        Assert.Equal("OIDC actor claims are invalid.", exception.Message);
+        Assert.Contains("accepted absolute HTTP(S)", exception.InnerException?.Message);
+    }
+
     [Fact]
     public void Invalid_uuid_backed_subject_has_an_explicit_error()
     {
