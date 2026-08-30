@@ -1,8 +1,8 @@
-using StructaDoc.Application.Documents;
-using StructaDoc.Application.Settings;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Storage;
+using StructaDoc.Application.Documents;
+using StructaDoc.Application.Settings;
 
 namespace StructaDoc.ArchitectureTests;
 

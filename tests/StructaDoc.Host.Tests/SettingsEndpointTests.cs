@@ -4,11 +4,11 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Contracts.Settings;
-using StructaDoc.Adapters.ControlPlane;
 
 namespace StructaDoc.Host.Tests;
 

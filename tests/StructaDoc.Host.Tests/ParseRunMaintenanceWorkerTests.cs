@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using StructaDoc.Domain.ParseRuns;
-using StructaDoc.Host.Workers;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Domain.ParseRuns;
+using StructaDoc.Host.Workers;
 
 namespace StructaDoc.Host.Tests;
 

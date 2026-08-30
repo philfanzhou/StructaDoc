@@ -4,9 +4,9 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using StructaDoc.Application.Authentication;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.Persistence;
+using StructaDoc.Application.Authentication;
 
 namespace StructaDoc.Host.Authentication;
 

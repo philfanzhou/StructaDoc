@@ -5,10 +5,10 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using StructaDoc.Application.Authentication;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.ControlPlane.Entities;
 using StructaDoc.Adapters.Persistence;
+using StructaDoc.Application.Authentication;
 
 namespace StructaDoc.Adapters.Authentication;
 

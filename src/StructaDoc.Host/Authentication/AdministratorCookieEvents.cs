@@ -2,8 +2,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
-using StructaDoc.Application.Authentication;
 using StructaDoc.Adapters.ControlPlane;
+using StructaDoc.Application.Authentication;
 
 namespace StructaDoc.Host.Authentication;
 
