@@ -1,9 +1,10 @@
+using StructaDoc.Application.Authentication;
+
 namespace StructaDoc.Application.Documents;
 
 public sealed record DocumentIngestionRequest(
     string OriginalFileName,
     string? DeclaredMediaType,
     Stream Content,
-    string? CreatedBy = null,
-    string? OwnerIssuer = null,
-    string? OwnerSubject = null);
+    CanonicalActor? CreatedBy = null,
+    CanonicalActor? Owner = null);

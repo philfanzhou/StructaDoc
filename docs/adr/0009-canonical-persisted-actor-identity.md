@@ -219,9 +219,9 @@ encoded as strict UTF-8 without a byte-order mark and copied into
 OIDC and preserves ASCII control bytes such as NUL in a binary field. Null legacy
 actors remain the all-absent state.
 
-Provider-specific conversion and validation details are owned by
-[issues #49](https://github.com/philfanzhou/StructaDoc/issues/49) and
-[#50](https://github.com/philfanzhou/StructaDoc/issues/50) for Documents,
+Provider-specific conversion and validation details are implemented by
+[issue #49](https://github.com/philfanzhou/StructaDoc/issues/49) for Documents
+(the former #50 owner conversion was consolidated into the same coordinated migration),
 [issues #51](https://github.com/philfanzhou/StructaDoc/issues/51) and
 [#52](https://github.com/philfanzhou/StructaDoc/issues/52) for access grants, and
 [issue #36](https://github.com/philfanzhou/StructaDoc/issues/36) for Parse Runs.
@@ -276,9 +276,9 @@ fields are compared separately.
 ### Migration ownership
 
 [Issue #48](https://github.com/philfanzhou/StructaDoc/issues/48) owns the shared
-canonical actor mapping. [Issues #49](https://github.com/philfanzhou/StructaDoc/issues/49)
-and [#50](https://github.com/philfanzhou/StructaDoc/issues/50) own the coordinated
-Document schema changes; [issues #51](https://github.com/philfanzhou/StructaDoc/issues/51)
+canonical actor mapping. [Issue #49](https://github.com/philfanzhou/StructaDoc/issues/49)
+implements the coordinated Document audit and owner schema change in one migration
+per provider; [issues #51](https://github.com/philfanzhou/StructaDoc/issues/51)
 and [#52](https://github.com/philfanzhou/StructaDoc/issues/52) own the coordinated
 access-grant schema changes. [Issue #36](https://github.com/philfanzhou/StructaDoc/issues/36)
 owns the Parse Run schema change, and

@@ -67,14 +67,6 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
             return;
         }
 
-        modelBuilder.Entity<DocumentEntity>()
-            .Property(document => document.OwnerIssuer)
-            .HasCharSet("ascii")
-            .UseCollation("ascii_bin");
-        modelBuilder.Entity<DocumentEntity>()
-            .Property(document => document.OwnerSubject)
-            .HasCharSet("ascii")
-            .UseCollation("ascii_bin");
         modelBuilder.Entity<DocumentAccessGrantEntity>()
             .Property(grant => grant.PrincipalIssuer)
             .HasCharSet("ascii")

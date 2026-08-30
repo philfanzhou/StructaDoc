@@ -20,6 +20,9 @@ public sealed class ServerDatabaseContractTests
         await BusinessDatabaseMigrationCommandContract.AssertAsync(
             DatabaseProvider.PostgreSql,
             container.GetConnectionString());
+        await DocumentIdentityMigrationContract.AssertAsync(
+            DatabaseProvider.PostgreSql,
+            container.GetConnectionString());
         await ParseRunLeaseContract.AssertAsync(
             DatabaseProvider.PostgreSql,
             container.GetConnectionString());
@@ -35,6 +38,10 @@ public sealed class ServerDatabaseContractTests
         await container.StartAsync();
 
         await InnoDbMigrationPreflightContract.AssertAsync(
+            DatabaseProvider.MySql,
+            container.GetConnectionString(),
+            serverVersion: "8.4.0");
+        await DocumentIdentityMigrationContract.AssertAsync(
             DatabaseProvider.MySql,
             container.GetConnectionString(),
             serverVersion: "8.4.0");
@@ -54,6 +61,10 @@ public sealed class ServerDatabaseContractTests
         await container.StartAsync();
 
         await InnoDbMigrationPreflightContract.AssertAsync(
+            DatabaseProvider.MariaDb,
+            container.GetConnectionString(),
+            serverVersion: "11.4.0");
+        await DocumentIdentityMigrationContract.AssertAsync(
             DatabaseProvider.MariaDb,
             container.GetConnectionString(),
             serverVersion: "11.4.0");

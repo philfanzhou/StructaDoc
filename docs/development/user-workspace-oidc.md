@@ -29,7 +29,10 @@ Because the workspace and administration areas are client-side routes, the Host 
 - External interactive users sign in with standard OIDC Authorization Code flow and PKCE.
 - The stable identity key is `(issuer, subject)`, not email, username, or a Provider-private user ID.
 - `issuer` is an ASCII HTTP(S) OIDC issuer without query or fragment, up to 512 characters. `subject` follows the 255-character ASCII bound used by the implementation.
-- Both identity parts compare case-sensitively. MySQL and MariaDB use `ascii_bin` so a default collation cannot merge distinct subjects.
+- Both identity parts compare case-sensitively. Document owners use the canonical
+  one-byte ASCII BLOB/bytea/varbinary mapping, so every accepted byte, including NUL,
+  compares directly; access-grant principal columns still use `ascii_bin` on MySQL
+  and MariaDB until their coordinated migration.
 - Authority, client, scopes, and claim/role mapping come from the generic `Oidc` configuration section, which an administrator can also fill in from the browser.
 - SignaCore can act as a compatible OIDC Provider, but StructaDoc does not reference or bind to SignaCore code or private contracts.
 - The local administrator is a username-based account in a separate local control-plane database, kept for first-run setup and break-glass access during identity-Provider outages.
@@ -39,7 +42,11 @@ The Host handles OIDC tokens and creates an encrypted HttpOnly application sessi
 
 ## Ownership and Sharing
 
-A document records the principal that created it, whether that was an OIDC user or an API client. Owners have full document permission. Explicit grants target another `(issuer, subject)`, which may be either kind of principal, and contain a subset of:
+A document records its creator as a canonical `(issuer, subject)` byte pair and keeps
+pre-upgrade creator text only as an opaque legacy audit payload. Its owner uses the
+same canonical pair whether the uploader was an OIDC user or an API client. Owners
+have full document permission. Explicit grants target another `(issuer, subject)`,
+which may be either kind of principal, and contain a subset of:
 
 - `read`
 - `parse`

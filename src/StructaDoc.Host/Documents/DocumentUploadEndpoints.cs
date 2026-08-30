@@ -64,15 +64,14 @@ public static class DocumentUploadEndpoints
             }
 
             await using var content = file.OpenReadStream();
-            var (ownerIssuer, ownerSubject) = GetOwner(request.HttpContext.User);
+            var actor = CanonicalActor.FromPrincipal(request.HttpContext.User);
             var document = await ingestionService.IngestAsync(
                 new DocumentIngestionRequest(
                     file.FileName,
                     file.ContentType,
                     content,
-                    GetActorId(request.HttpContext.User),
-                    ownerIssuer,
-                    ownerSubject),
+                    actor,
+                    GetOwner(request.HttpContext.User, actor)),
                 cancellationToken);
             var response = new DocumentResponse(
                 document.Id,
@@ -122,40 +121,16 @@ public static class DocumentUploadEndpoints
         }
     }
 
-    private static string GetActorId(ClaimsPrincipal user)
-    {
-        var subjectType = user.FindFirstValue(StructaDocClaimTypes.SubjectType)
-            ?? throw new InvalidOperationException("Authenticated subject type is missing.");
-        var subjectId = user.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? throw new InvalidOperationException("Authenticated subject ID is missing.");
-        return $"{subjectType}:{subjectId}";
-    }
-
     // An upload is owned by whoever made it, and an API client is one of the principals that can.
     // Without this the Document would be unowned, which is not the same as belonging to everyone:
     // the client that uploaded it could not read it back except through the global access this
     // change removed. An administrator upload stays unowned, because an administrator is not a
     // workspace principal and reaches every Document in any case.
-    private static (string? Issuer, string? Subject) GetOwner(ClaimsPrincipal user)
+    private static CanonicalActor? GetOwner(ClaimsPrincipal user, CanonicalActor actor)
     {
-        if (user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.ApiClient))
-        {
-            return (
-                PrincipalIdentity.ApiClientIssuer,
-                user.FindFirstValue(ClaimTypes.NameIdentifier)
-                    ?? throw new InvalidOperationException("Authenticated subject ID is missing."));
-        }
-
-        if (!user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.User))
-        {
-            return (null, null);
-        }
-
-        return (
-            user.FindFirstValue(StructaDocClaimTypes.ExternalIssuer)
-                ?? throw new InvalidOperationException("OIDC issuer is missing."),
-            user.FindFirstValue(StructaDocClaimTypes.ExternalSubject)
-                ?? throw new InvalidOperationException("OIDC subject is missing."));
+        return user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.Administrator)
+            ? null
+            : actor;
     }
 
     private static IResult UploadProblem(int statusCode, string code, string detail)

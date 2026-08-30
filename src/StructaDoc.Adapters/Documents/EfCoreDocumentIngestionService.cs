@@ -53,19 +53,15 @@ public sealed class EfCoreDocumentIngestionService(
                 SizeBytes = storedFile.SizeBytes,
                 Sha256 = storedFile.Sha256,
                 StorageRef = storedFile.StorageRef,
-                CreatedBy = NormalizeCreatedBy(request.CreatedBy),
-                OwnerIssuer = NormalizeOwnerPart(request.OwnerIssuer, ExternalIdentityConstraints.MaximumIssuerLength, nameof(request.OwnerIssuer)),
-                OwnerSubject = NormalizeOwnerPart(request.OwnerSubject, ExternalIdentityConstraints.MaximumSubjectLength, nameof(request.OwnerSubject)),
+                CreatedByIssuer = request.CreatedBy?.EncodeIssuer(),
+                CreatedBySubject = request.CreatedBy?.EncodeSubject(),
+                OwnerIssuer = request.Owner?.EncodeIssuer(),
+                OwnerSubject = request.Owner?.EncodeSubject(),
                 CreatedAtUtc = createdAtUtc,
             };
 
-            if ((entity.OwnerIssuer is null) != (entity.OwnerSubject is null))
-            {
-                throw new ArgumentException("Document owner issuer and subject must be provided together.");
-            }
-
-            if (entity.OwnerIssuer is not null
-                && !PrincipalIdentity.IsValid(entity.OwnerIssuer, entity.OwnerSubject))
+            if (request.Owner is not null
+                && !PrincipalIdentity.IsValid(request.Owner.Issuer, request.Owner.Subject))
             {
                 throw new ArgumentException("Document owner is neither an OIDC issuer and subject pair nor an API client.");
             }
@@ -129,29 +125,4 @@ public sealed class EfCoreDocumentIngestionService(
         return normalizedFileName;
     }
 
-    private static string? NormalizeCreatedBy(string? createdBy)
-    {
-        if (string.IsNullOrWhiteSpace(createdBy))
-        {
-            return null;
-        }
-
-        var normalized = createdBy.Trim();
-        return normalized.Length <= 255
-            ? normalized
-            : throw new ArgumentException("Creator ID cannot exceed 255 characters.", nameof(createdBy));
-    }
-
-    private static string? NormalizeOwnerPart(string? value, int maxLength, string parameterName)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var normalized = value.Trim();
-        return normalized.Length <= maxLength
-            ? normalized
-            : throw new ArgumentException($"{parameterName} cannot exceed {maxLength} characters.", parameterName);
-    }
 }

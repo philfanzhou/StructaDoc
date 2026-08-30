@@ -19,9 +19,33 @@ public sealed class SqliteDatabaseContractTests
 
         try
         {
+            var connectionString = $"Data Source={Path.Combine(directoryPath, "structadoc.db")};Pooling=False";
+            await DocumentIdentityMigrationContract.AssertAsync(
+                DatabaseProvider.Sqlite,
+                connectionString);
             await ParseRunLeaseContract.AssertAsync(
                 DatabaseProvider.Sqlite,
-                $"Data Source={Path.Combine(directoryPath, "structadoc.db")};Pooling=False");
+                connectionString);
+        }
+        finally
+        {
+            Directory.Delete(directoryPath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Sqlite_rejects_invalid_identity_source_before_rebuild()
+    {
+        var directoryPath = Path.Combine(
+            Path.GetTempPath(),
+            "structadoc-contract-tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directoryPath);
+
+        try
+        {
+            await DocumentIdentityMigrationContract.AssertSqlitePreflightAsync(
+                $"Data Source={Path.Combine(directoryPath, "invalid.db")};Pooling=False");
         }
         finally
         {

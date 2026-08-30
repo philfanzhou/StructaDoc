@@ -34,15 +34,21 @@ internal sealed class DocumentEntityConfiguration : IEntityTypeConfiguration<Doc
         builder.Property(document => document.StorageRef)
             .HasColumnName("storage_ref")
             .HasMaxLength(2048);
-        builder.Property(document => document.CreatedBy)
-            .HasColumnName("created_by")
-            .HasMaxLength(255);
+        builder.Property(document => document.CreatedByIssuer)
+            .HasColumnName("created_by_issuer")
+            .HasMaxLength(CanonicalActorPersistence.MaximumIssuerByteCount);
+        builder.Property(document => document.CreatedBySubject)
+            .HasColumnName("created_by_subject")
+            .HasMaxLength(CanonicalActorPersistence.MaximumSubjectByteCount);
+        builder.Property(document => document.CreatedByLegacy)
+            .HasColumnName("created_by_legacy")
+            .HasMaxLength(CanonicalActorPersistence.MaximumDocumentOrParseRunLegacyByteCount);
         builder.Property(document => document.OwnerIssuer)
             .HasColumnName("owner_issuer")
-            .HasMaxLength(ExternalIdentityConstraints.MaximumIssuerLength);
+            .HasMaxLength(CanonicalActorPersistence.MaximumIssuerByteCount);
         builder.Property(document => document.OwnerSubject)
             .HasColumnName("owner_subject")
-            .HasMaxLength(ExternalIdentityConstraints.MaximumSubjectLength);
+            .HasMaxLength(CanonicalActorPersistence.MaximumSubjectByteCount);
         builder.Property(document => document.LifecycleState)
             .HasColumnName("lifecycle_state")
             .HasMaxLength(32)
@@ -65,5 +71,11 @@ internal sealed class DocumentEntityConfiguration : IEntityTypeConfiguration<Doc
             document.CreatedAtUtc,
         })
             .HasDatabaseName("ix_documents_owner_created_at");
+        builder.ToTable(table => table.HasCheckConstraint(
+            "ck_documents_created_by_state",
+            "((created_by_issuer IS NOT NULL AND created_by_subject IS NOT NULL AND created_by_legacy IS NULL) OR (created_by_issuer IS NULL AND created_by_subject IS NULL))"));
+        builder.ToTable(table => table.HasCheckConstraint(
+            "ck_documents_owner_state",
+            "((owner_issuer IS NULL AND owner_subject IS NULL) OR (owner_issuer IS NOT NULL AND owner_subject IS NOT NULL))"));
     }
 }
