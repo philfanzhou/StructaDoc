@@ -30,9 +30,18 @@ Recovery also reuses completed segments, submitted external jobs, and downloaded
 3. merges Assets, Artifacts, and Markdown deterministically;
 4. returns one canonical parent Parse Bundle for the executor's commit.
 
-The current executor still rejects the parent transition to `persisting` because a segmented run has Segment-level external task IDs rather than a Run-level external task ID. [Issue #88](https://github.com/philfanzhou/StructaDoc/issues/88) tracks that existing completion defect; it does not change the Segment recovery guarantees below.
+After the merge, the executor enters `persisting` through the parent lease fence without inventing a
+Run-level Provider task ID. The state store admits this segmented form only while the parent is at
+`segmenting` and its persisted Segment set is non-empty and entirely `normalized`; ordinary runs
+continue to require their Run-level external task ID. The existing fenced bundle commit then writes
+the canonical result and completes the parent as `succeeded`.
 
 Segment creation and each submission, download, and normalization checkpoint go through the Parse Run lease session. The persistence boundary atomically checks the parent's running status, owner, lease expiry, and concurrency version while writing Segment state, then returns the advanced lease to the session. Heartbeats therefore continue from the latest version, while cancellation finalization, expiry, or another Worker's takeover rejects the stale mutation.
+
+If the parent is interrupted after entering `persisting`, expiry requeues it through the existing
+recovery path for runs without a Run-level external task ID. Re-execution derives the same Segments,
+reuses their stored Provider archives and checkpoints, rebuilds the deterministic merged bundle,
+and retries the idempotent fenced commit without submitting completed Segments again.
 
 Large-PDF source reads, seekable copies, Segment object writes and saves, archive reads, and final merge I/O all use the Parse Run's linked execution token. Host shutdown, lease loss, or the maximum execution duration stops subsequent local work. PdfSharp opens and creates one chunk synchronously and cannot be interrupted mid-call, so the executor checks cancellation immediately before and after those calls and before starting each following Segment or the final merge.
 

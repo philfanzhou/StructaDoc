@@ -229,6 +229,109 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
     }
 
     [Fact]
+    public async Task Executor_commits_a_real_segmented_pdf_without_a_run_external_task()
+    {
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+
+        var result = await ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            executeLargePdfThroughExecutor: true);
+
+        Assert.Equal(ParseRunStatuses.Succeeded, result.Status);
+        Assert.Null(result.ErrorCode);
+        Assert.Null(result.ExternalTaskId);
+        Assert.NotNull(result.ResultSha256);
+        Assert.Equal(3, provider.SubmitCount);
+        Assert.Equal(3, provider.StatusCount);
+        Assert.Equal(3, provider.ResultCount);
+        Assert.Collection(
+            result.Segments,
+            segment => Assert.Equal(new SegmentResult(0, 1, 2, "normalized"), segment),
+            segment => Assert.Equal(new SegmentResult(1, 3, 4, "normalized"), segment),
+            segment => Assert.Equal(new SegmentResult(2, 5, 5, "normalized"), segment));
+        Assert.True(result.ArtifactCount >= 4);
+    }
+
+    [Fact]
+    public async Task Executor_recovers_segmented_persisting_without_resubmitting_completed_segments()
+    {
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+        var interruption = new CommitInterruption();
+
+        var result = await ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            executeLargePdfThroughExecutor: true,
+            configureServices: services =>
+            {
+                services.RemoveAll<IParseBundleCommitStore>();
+                services.AddScoped<IParseBundleCommitStore>(serviceProvider =>
+                    new InterruptingParseBundleCommitStore(
+                        new EfCoreParseBundleCommitStore(
+                            serviceProvider.GetRequiredService<StructaDocDbContext>(),
+                            serviceProvider.GetRequiredService<IFileStorage>()),
+                        interruption));
+            },
+            afterExecution: async (services, parseRunId) =>
+            {
+                await using var scope = services.CreateAsyncScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+                var interruptedRun = await dbContext.ParseRuns
+                    .AsNoTracking()
+                    .SingleAsync(
+                        parseRun => parseRun.Id == parseRunId,
+                        TestContext.Current.CancellationToken);
+                Assert.Equal(ParseRunStatuses.Running, interruptedRun.Status);
+                Assert.Equal(ParseRunStages.Persisting, interruptedRun.Stage);
+                Assert.Null(interruptedRun.ExternalTaskId);
+                Assert.Equal(3, await dbContext.ParseSegments.CountAsync(
+                    segment => segment.ParseRunId == parseRunId
+                        && segment.Status == "normalized",
+                    TestContext.Current.CancellationToken));
+
+                var recoveryTimeUtc = DateTime.UtcNow;
+                await dbContext.ParseRuns
+                    .Where(parseRun => parseRun.Id == parseRunId)
+                    .ExecuteUpdateAsync(
+                        setters => setters.SetProperty(
+                            parseRun => parseRun.LeaseExpiresAtUtc,
+                            recoveryTimeUtc.AddSeconds(-1)),
+                        TestContext.Current.CancellationToken);
+                var recovery = await scope.ServiceProvider
+                    .GetRequiredService<IParseRunLeaseStore>()
+                    .RecoverExpiredUnsubmittedRunsAsync(
+                        recoveryTimeUtc,
+                        maxCount: 1,
+                        TestContext.Current.CancellationToken);
+                Assert.Equal(1, recovery.RequeuedCount);
+                Assert.Equal(0, recovery.FailedUnknownSubmissionCount);
+
+                var recoveredLease = Assert.IsType<ParseRunLease>(
+                    await scope.ServiceProvider
+                        .GetRequiredService<IParseRunLeaseStore>()
+                        .TryClaimNextAsync(
+                            $"recovery-{parseRunId:N}",
+                            recoveryTimeUtc.AddSeconds(1),
+                            TimeSpan.FromMinutes(2),
+                            TestContext.Current.CancellationToken));
+                await scope.ServiceProvider.GetRequiredService<ParseRunExecutor>().ExecuteAsync(
+                    recoveredLease,
+                    alreadyRunning: false,
+                    stoppingToken: TestContext.Current.CancellationToken);
+            });
+
+        Assert.Equal(1, interruption.InterruptionCount);
+        Assert.Equal(ParseRunStatuses.Succeeded, result.Status);
+        Assert.Null(result.ExternalTaskId);
+        Assert.NotNull(result.ResultSha256);
+        Assert.Equal(3, provider.SubmitCount);
+        Assert.Equal(3, provider.StatusCount);
+        Assert.Equal(3, provider.ResultCount);
+        Assert.All(result.Segments, segment => Assert.Equal("normalized", segment.Status));
+    }
+
+    [Fact]
     public async Task Executor_propagates_the_execution_token_to_large_pdf_storage_work()
     {
         using var cancellationSource = new CancellationTokenSource();
@@ -501,7 +604,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         Action<IServiceCollection>? configureServices = null,
         bool executeLargePdfThroughExecutor = false,
         CancellationTokenSource? executionCancellationSource = null,
-        Func<IServiceProvider, Guid, byte[], Task>? seedExecution = null)
+        Func<IServiceProvider, Guid, byte[], Task>? seedExecution = null,
+        Func<IServiceProvider, Guid, Task>? afterExecution = null)
     {
         var executionCancellationToken = executionCancellationSource?.Token
             ?? TestContext.Current.CancellationToken;
@@ -674,6 +778,11 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                     alreadyRunning: false,
                     stoppingToken: executionCancellationToken);
             }
+        }
+
+        if (afterExecution is not null)
+        {
+            await afterExecution(application.Services, parseRunId);
         }
 
         await using (var scope = application.Services.CreateAsyncScope())
@@ -972,6 +1081,34 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             ParseSegmentCheckpoint checkpoint,
             DateTime nowUtc,
             CancellationToken cancellationToken = default) => Task.FromResult<ParseRunLease?>(null);
+    }
+
+    private sealed class CommitInterruption
+    {
+        private int interruptionCount;
+
+        public int InterruptionCount => Volatile.Read(ref interruptionCount);
+
+        public bool TryInterrupt() =>
+            Interlocked.CompareExchange(ref interruptionCount, 1, 0) == 0;
+    }
+
+    private sealed class InterruptingParseBundleCommitStore(
+        IParseBundleCommitStore inner,
+        CommitInterruption interruption) : IParseBundleCommitStore
+    {
+        public Task<ParseBundleCommitResult> TryCommitAsync(
+            ParseRunLease currentLease,
+            ParseBundle bundle,
+            DateTime nowUtc,
+            CancellationToken cancellationToken = default) =>
+            interruption.TryInterrupt()
+                ? Task.FromResult(new ParseBundleCommitResult(ParseBundleCommitStatus.LeaseLost))
+                : inner.TryCommitAsync(
+                    currentLease,
+                    bundle,
+                    nowUtc,
+                    cancellationToken);
     }
 
     private sealed class TestDocumentConverter : IDocumentConverter
