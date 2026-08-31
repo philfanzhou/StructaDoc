@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Adapters.Persistence.ParseRuns;
+using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Migrations.Sqlite;
 
@@ -243,6 +244,76 @@ public sealed class SqliteParseRunLeaseStoreTests
         Assert.Equal(
             expectedStatus == ParseRunStatuses.Failed,
             persistedRun.CompletedAtUtc.HasValue);
+    }
+
+    [Fact]
+    public async Task Expired_segmented_persisting_run_is_requeued_with_normalized_checkpoints()
+    {
+        await using var database = await SqliteLeaseTestDatabase.CreateAsync(parseRunCount: 1);
+        var nowUtc = DateTime.UtcNow;
+        var claimedLease = Assert.IsType<ParseRunLease>(await ClaimOneAsync(
+            database.Options,
+            "segment-worker",
+            nowUtc,
+            TimeSpan.FromSeconds(5)));
+
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            var segmentingLease = Assert.IsType<ParseRunLease>(await stateStore.TryStartAsync(
+                claimedLease,
+                ParseRunStages.Segmenting,
+                nowUtc.AddSeconds(1),
+                TestContext.Current.CancellationToken));
+            dbContext.ParseSegments.Add(new ParseSegmentEntity
+            {
+                Id = Guid.NewGuid(),
+                ParseRunId = segmentingLease.ParseRunId,
+                Index = 0,
+                StartPage = 1,
+                EndPage = 2,
+                StorageRef = $"parse-runs/{segmentingLease.ParseRunId:N}/segments/0000.pdf",
+                SizeBytes = 128,
+                Sha256 = new string('b', 64),
+                Status = "normalized",
+                ExternalTaskId = "segment-task-1",
+                UpdatedAtUtc = nowUtc.AddSeconds(1),
+            });
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+            Assert.NotNull(await stateStore.TryUpdateStageAsync(
+                segmentingLease,
+                ParseRunStages.Persisting,
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken));
+            await dbContext.ParseRuns.ExecuteUpdateAsync(
+                setters => setters.SetProperty(
+                    parseRun => parseRun.LeaseExpiresAtUtc,
+                    nowUtc.AddSeconds(3)),
+                TestContext.Current.CancellationToken);
+        }
+
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var recovery = await new EfCoreParseRunLeaseStore(dbContext)
+                .RecoverExpiredUnsubmittedRunsAsync(
+                    nowUtc.AddSeconds(4),
+                    maxCount: 10,
+                    cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(1, recovery.RequeuedCount);
+            Assert.Equal(0, recovery.FailedUnknownSubmissionCount);
+        }
+
+        await using var verificationContext = new StructaDocDbContext(database.Options);
+        var persistedRun = await verificationContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(ParseRunStatuses.Queued, persistedRun.Status);
+        Assert.Equal(ParseRunStages.Persisting, persistedRun.Stage);
+        Assert.Null(persistedRun.ExternalTaskId);
+        var persistedSegment = await verificationContext.ParseSegments
+            .AsNoTracking()
+            .SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("normalized", persistedSegment.Status);
+        Assert.Equal("segment-task-1", persistedSegment.ExternalTaskId);
     }
 
     private static async Task<StructaDoc.Application.ParseRuns.ParseRunLease?> ClaimOneAsync(

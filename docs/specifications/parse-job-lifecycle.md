@@ -123,7 +123,10 @@ SQLite supports concurrent Workers in one StructaDoc instance only. PostgreSQL, 
 - Expired `running` with an external task ID is adopted by one new Worker and resumes polling/download.
 - Expired pre-submission `running` without an external ID may return to `queued`.
 - An unknown outcome during non-checkpointed `submitting` fails conservatively with `provider-submission-outcome-unknown` rather than duplicating a remote job.
-- Interrupted `persisting` repeats idempotent object verification and bundle commit.
+- Interrupted `persisting` repeats idempotent object verification and bundle commit. A segmented
+  run has no Run-level external task ID, so expiry requeues it through the unsubmitted-run recovery
+  path; deterministic Segment identities, stored archives, and normalized checkpoints prevent new
+  Provider tasks for completed Segments.
 - When external-task existence is uncertain, use a durable Provider idempotency/checkpoint contract or surface a diagnosable state; never submit blindly.
 
 ## 9. Provider Submission
@@ -162,6 +165,13 @@ Success occurs in this order:
 6. publish any future completion notification only after commit.
 
 A run cannot be `succeeded` while canonical data is incomplete. If object storage succeeds and database commit fails, retry reuses the same logical keys; later orphan reconciliation handles objects that never obtained a database reference.
+
+The fenced transition to `persisting` accepts exactly two result shapes. An ordinary run must have
+a Run-level external task ID. A segmented run must have no Run-level external task ID, must still be
+at `segmenting`, and must have a non-empty persisted Segment set whose every status is `normalized`.
+Both shapes also require the parent to be `running`, the Worker and lease owner to match, the lease
+to remain unexpired, and the concurrency version to match. A successful transition advances that
+version before the existing fenced bundle-commit transaction runs.
 
 Large PDFs use deterministic segment identities and stored per-segment stages/checkpoints. Before writing each Segment object, the Worker computes its expected size and SHA-256 and durably records a `creating` intent with the deterministic storage reference. A successful conditional write advances that intent to `created`. Recovery re-derives the page ranges, rebuilds missing objects, reuses content matching the intent, and permanently rejects conflicting content without overwriting it. Historical objects created before this intent protocol and lacking a relational row remain outside automatic recovery and cleanup.
 

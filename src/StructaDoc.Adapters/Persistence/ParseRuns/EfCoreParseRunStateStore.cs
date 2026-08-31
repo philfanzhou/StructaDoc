@@ -9,6 +9,8 @@ namespace StructaDoc.Adapters.Persistence.ParseRuns;
 public sealed class EfCoreParseRunStateStore(StructaDocDbContext dbContext)
     : IParseRunStateStore
 {
+    private const string NormalizedSegmentStatus = "normalized";
+
     public async Task<ParseRunLease?> TryStartAsync(
         ParseRunLease currentLease,
         string initialStage,
@@ -65,12 +67,17 @@ public sealed class EfCoreParseRunStateStore(StructaDocDbContext dbContext)
         ValidateLease(currentLease, nowUtc);
         ValidateStage(stage);
 
-        return UpdateStageAsync(
-            currentLease,
-            stage,
-            RequiresExternalTask(stage),
-            nowUtc,
-            cancellationToken);
+        return stage == ParseRunStages.Persisting
+            ? UpdatePersistingStageAsync(
+                currentLease,
+                nowUtc,
+                cancellationToken)
+            : UpdateStageAsync(
+                currentLease,
+                stage,
+                RequiresExternalTask(stage),
+                nowUtc,
+                cancellationToken);
     }
 
     public async Task<ParseRunLease?> TryRecordProviderSubmissionAsync(
@@ -349,12 +356,45 @@ public sealed class EfCoreParseRunStateStore(StructaDocDbContext dbContext)
             : null;
     }
 
+    private async Task<ParseRunLease?> UpdatePersistingStageAsync(
+        ParseRunLease currentLease,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var affectedRows = await dbContext.ParseRuns
+            .Where(parseRun =>
+                parseRun.Id == currentLease.ParseRunId
+                && parseRun.Status == ParseRunStatuses.Running
+                && (parseRun.ExternalTaskId != null
+                    || (parseRun.ExternalTaskId == null
+                        && parseRun.Stage == ParseRunStages.Segmenting
+                        && parseRun.Segments.Any()
+                        && !parseRun.Segments.Any(
+                            segment => segment.Status != NormalizedSegmentStatus)))
+                && parseRun.ClaimedBy == currentLease.WorkerId
+                && parseRun.ConcurrencyVersion == currentLease.ConcurrencyVersion
+                && parseRun.LeaseExpiresAtUtc > nowUtc)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(parseRun => parseRun.Stage, ParseRunStages.Persisting)
+                    .SetProperty(
+                        parseRun => parseRun.ConcurrencyVersion,
+                        parseRun => parseRun.ConcurrencyVersion + 1),
+                cancellationToken);
+
+        return affectedRows == 1
+            ? currentLease with
+            {
+                ConcurrencyVersion = currentLease.ConcurrencyVersion + 1,
+            }
+            : null;
+    }
+
     private static bool RequiresExternalTask(string stage)
     {
         return stage is ParseRunStages.WaitingProvider
             or ParseRunStages.Downloading
             or ParseRunStages.Normalizing
-            or ParseRunStages.Persisting
             or ParseRunStages.CleaningUp;
     }
 

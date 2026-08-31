@@ -94,6 +94,168 @@ public sealed class SqliteParseRunStateStoreTests
     }
 
     [Fact]
+    public async Task Segmented_run_with_only_normalized_segments_can_enter_persisting()
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var store = new EfCoreParseRunStateStore(dbContext);
+        var segmentingLease = Assert.IsType<ParseRunLease>(
+            await store.TryUpdateStageAsync(
+                runningLease,
+                ParseRunStages.Segmenting,
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken));
+        dbContext.ParseSegments.AddRange(
+            Segment(segmentingLease.ParseRunId, 0, "normalized"),
+            Segment(segmentingLease.ParseRunId, 1, "normalized"));
+        await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var persistingLease = await store.TryUpdateStageAsync(
+            segmentingLease,
+            ParseRunStages.Persisting,
+            nowUtc.AddSeconds(3),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(persistingLease);
+        Assert.Equal(segmentingLease.ConcurrencyVersion + 1, persistingLease.ConcurrencyVersion);
+        var persistedRun = await dbContext.ParseRuns.AsNoTracking().SingleAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(ParseRunStages.Persisting, persistedRun.Stage);
+        Assert.Null(persistedRun.ExternalTaskId);
+    }
+
+    [Theory]
+    [InlineData("", ParseRunStages.Segmenting)]
+    [InlineData("downloaded", ParseRunStages.Segmenting)]
+    [InlineData("normalized,downloaded", ParseRunStages.Segmenting)]
+    [InlineData("normalized", ParseRunStages.Normalizing)]
+    public async Task Segmented_persisting_requires_non_empty_all_normalized_segments_and_segmenting_stage(
+        string segmentStatuses,
+        string priorStage)
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+        var claimedLease = await database.ClaimAsync(nowUtc);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var store = new EfCoreParseRunStateStore(dbContext);
+        var runningLease = Assert.IsType<ParseRunLease>(await store.TryStartAsync(
+            claimedLease,
+            priorStage,
+            nowUtc.AddSeconds(1),
+            TestContext.Current.CancellationToken));
+        var statuses = segmentStatuses.Split(
+            ',',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        dbContext.ParseSegments.AddRange(statuses.Select(
+            (status, index) => Segment(runningLease.ParseRunId, index, status)));
+        await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        Assert.Null(await store.TryUpdateStageAsync(
+            runningLease,
+            ParseRunStages.Persisting,
+            nowUtc.AddSeconds(2),
+            TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData(ParseRunStages.WaitingProvider)]
+    [InlineData(ParseRunStages.Downloading)]
+    [InlineData(ParseRunStages.Normalizing)]
+    [InlineData(ParseRunStages.Persisting)]
+    [InlineData(ParseRunStages.CleaningUp)]
+    public async Task Ordinary_run_without_external_task_cannot_enter_provider_post_submission_stage(
+        string stage)
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var store = new EfCoreParseRunStateStore(dbContext);
+
+        Assert.Null(await store.TryUpdateStageAsync(
+            runningLease,
+            stage,
+            nowUtc.AddSeconds(2),
+            TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("stale")]
+    [InlineData("wrong-worker")]
+    [InlineData("expired")]
+    [InlineData("cancelled")]
+    [InlineData("takeover")]
+    public async Task Segmented_persisting_cannot_bypass_the_active_lease_fence(string failure)
+    {
+        await using var database = await StateTestDatabase.CreateAsync(maxAttempts: 3);
+        var nowUtc = DateTime.UtcNow;
+        var runningLease = await database.ClaimAndStartAsync(nowUtc);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var store = new EfCoreParseRunStateStore(dbContext);
+        var segmentingLease = Assert.IsType<ParseRunLease>(
+            await store.TryUpdateStageAsync(
+                runningLease,
+                ParseRunStages.Segmenting,
+                nowUtc.AddSeconds(2),
+                TestContext.Current.CancellationToken));
+        dbContext.ParseSegments.Add(Segment(
+            segmentingLease.ParseRunId,
+            0,
+            "normalized"));
+        await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var attemptedLease = segmentingLease;
+        switch (failure)
+        {
+            case "stale":
+                attemptedLease = segmentingLease with
+                {
+                    ConcurrencyVersion = segmentingLease.ConcurrencyVersion - 1,
+                };
+                break;
+            case "wrong-worker":
+                attemptedLease = segmentingLease with { WorkerId = "another-worker" };
+                break;
+            case "expired":
+                await dbContext.ParseRuns.ExecuteUpdateAsync(
+                    setters => setters.SetProperty(
+                        parseRun => parseRun.LeaseExpiresAtUtc,
+                        nowUtc.AddSeconds(2)),
+                    TestContext.Current.CancellationToken);
+                break;
+            case "cancelled":
+                await new EfCoreParseRunService(dbContext).RequestCancellationAsync(
+                    segmentingLease.ParseRunId,
+                    nowUtc.AddSeconds(3),
+                    TestContext.Current.CancellationToken);
+                break;
+            case "takeover":
+                await dbContext.ParseRuns.ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(parseRun => parseRun.ClaimedBy, "takeover-worker")
+                        .SetProperty(
+                            parseRun => parseRun.ConcurrencyVersion,
+                            parseRun => parseRun.ConcurrencyVersion + 1),
+                    TestContext.Current.CancellationToken);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(failure), failure, null);
+        }
+
+        Assert.Null(await store.TryUpdateStageAsync(
+            attemptedLease,
+            ParseRunStages.Persisting,
+            nowUtc.AddSeconds(3),
+            TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task Conversion_snapshot_is_saved_atomically_under_the_current_lease()
     {
         const string sourceMediaType =
@@ -517,6 +679,21 @@ public sealed class SqliteParseRunStateStoreTests
             10,
             TestContext.Current.CancellationToken));
     }
+
+    private static ParseSegmentEntity Segment(Guid parseRunId, int index, string status) => new()
+    {
+        Id = Guid.NewGuid(),
+        ParseRunId = parseRunId,
+        Index = index,
+        StartPage = index + 1,
+        EndPage = index + 1,
+        StorageRef = $"parse-runs/{parseRunId:N}/segments/{index:D4}.pdf",
+        SizeBytes = 128,
+        Sha256 = new string('b', 64),
+        Status = status,
+        ExternalTaskId = $"segment-task-{index}",
+        UpdatedAtUtc = DateTime.UtcNow,
+    };
 
     private sealed class StateTestDatabase : IAsyncDisposable
     {

@@ -31,6 +31,7 @@ internal static class ParseRunLeaseContract
         await InitializeAsync(options);
         await AssertCreationGuardsAsync(options);
         await AssertSegmentMutationFencingAsync(options);
+        await AssertSegmentedPersistingAdmissionAsync(options);
 
         var nowUtc = DateTime.UtcNow;
         var claims = await Task.WhenAll(
@@ -737,6 +738,167 @@ internal static class ParseRunLeaseContract
             128,
             new string('c', 64),
             "created");
+    }
+
+    private static async Task AssertSegmentedPersistingAdmissionAsync(
+        DbContextOptions<StructaDocDbContext> options)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var documentId = Guid.NewGuid();
+        var validLease = Lease("valid-segment-worker");
+        var emptyLease = Lease("empty-segment-worker");
+        var incompleteLease = Lease("incomplete-segment-worker");
+        var wrongStageLease = Lease("wrong-stage-segment-worker");
+        var staleLease = Lease("stale-segment-worker");
+        var expiredLease = Lease("expired-segment-worker", nowUtc.AddSeconds(1));
+        var ordinaryLease = Lease("ordinary-worker");
+        var externalTaskLease = Lease("external-task-worker");
+
+        await using (var seed = new StructaDocDbContext(options))
+        {
+            seed.Documents.Add(new DocumentEntity
+            {
+                Id = documentId,
+                OriginalFileName = "segment-persisting-contract.pdf",
+                MediaType = "application/pdf",
+                Extension = ".pdf",
+                SizeBytes = 128,
+                Sha256 = new string('d', 64),
+                StorageRef = "documents/segment-persisting-contract.pdf",
+                CreatedAtUtc = nowUtc,
+            });
+            seed.ParseRuns.AddRange(
+                Run(validLease, ParseRunStages.Segmenting),
+                Run(emptyLease, ParseRunStages.Segmenting),
+                Run(incompleteLease, ParseRunStages.Segmenting),
+                Run(wrongStageLease, ParseRunStages.Normalizing),
+                Run(staleLease, ParseRunStages.Segmenting),
+                Run(expiredLease, ParseRunStages.Segmenting),
+                Run(ordinaryLease, ParseRunStages.Validating),
+                Run(
+                    externalTaskLease,
+                    ParseRunStages.Normalizing,
+                    externalTaskId: "run-task-1"));
+            seed.ParseSegments.AddRange(
+                Segment(validLease.ParseRunId, 0, "normalized"),
+                Segment(validLease.ParseRunId, 1, "normalized"),
+                Segment(incompleteLease.ParseRunId, 0, "normalized"),
+                Segment(incompleteLease.ParseRunId, 1, "downloaded"),
+                Segment(wrongStageLease.ParseRunId, 0, "normalized"),
+                Segment(staleLease.ParseRunId, 0, "normalized"),
+                Segment(expiredLease.ParseRunId, 0, "normalized"));
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var store = new EfCoreParseRunStateStore(dbContext);
+            var persistingLease = Assert.IsType<ParseRunLease>(
+                await store.TryUpdateStageAsync(
+                    validLease,
+                    ParseRunStages.Persisting,
+                    nowUtc));
+            Assert.Equal(validLease.ConcurrencyVersion + 1, persistingLease.ConcurrencyVersion);
+            Assert.Null(await store.TryUpdateStageAsync(
+                emptyLease,
+                ParseRunStages.Persisting,
+                nowUtc));
+            Assert.Null(await store.TryUpdateStageAsync(
+                incompleteLease,
+                ParseRunStages.Persisting,
+                nowUtc));
+            Assert.Null(await store.TryUpdateStageAsync(
+                wrongStageLease,
+                ParseRunStages.Persisting,
+                nowUtc));
+            Assert.Null(await store.TryUpdateStageAsync(
+                staleLease with { ConcurrencyVersion = staleLease.ConcurrencyVersion - 1 },
+                ParseRunStages.Persisting,
+                nowUtc));
+            Assert.Null(await store.TryUpdateStageAsync(
+                expiredLease,
+                ParseRunStages.Persisting,
+                nowUtc.AddSeconds(2)));
+            Assert.Null(await store.TryUpdateStageAsync(
+                ordinaryLease,
+                ParseRunStages.WaitingProvider,
+                nowUtc));
+            Assert.Null(await store.TryUpdateStageAsync(
+                ordinaryLease,
+                ParseRunStages.Persisting,
+                nowUtc));
+            Assert.NotNull(await store.TryUpdateStageAsync(
+                externalTaskLease,
+                ParseRunStages.Persisting,
+                nowUtc));
+        }
+
+        await using (var verification = new StructaDocDbContext(options))
+        {
+            var validRun = await verification.ParseRuns
+                .AsNoTracking()
+                .SingleAsync(parseRun => parseRun.Id == validLease.ParseRunId);
+            Assert.Equal(ParseRunStages.Persisting, validRun.Stage);
+            Assert.Null(validRun.ExternalTaskId);
+        }
+
+        await using var cleanup = new StructaDocDbContext(options);
+        await cleanup.ParseSegments
+            .Where(segment => segment.ParseRun.DocumentId == documentId)
+            .ExecuteDeleteAsync();
+        await cleanup.ParseRuns
+            .Where(parseRun => parseRun.DocumentId == documentId)
+            .ExecuteDeleteAsync();
+        await cleanup.Documents
+            .Where(document => document.Id == documentId)
+            .ExecuteDeleteAsync();
+
+        ParseRunLease Lease(string workerId, DateTime? leaseExpiresAtUtc = null) => new(
+            Guid.NewGuid(),
+            workerId,
+            1,
+            leaseExpiresAtUtc ?? nowUtc.AddMinutes(5));
+
+        ParseRunEntity Run(
+            ParseRunLease lease,
+            string stage,
+            string? externalTaskId = null) => new()
+            {
+                Id = lease.ParseRunId,
+                DocumentId = documentId,
+                Status = ParseRunStatuses.Running,
+                Stage = stage,
+                ProviderType = "test-provider",
+                ProviderConfigId = Guid.NewGuid(),
+                ProviderConfigVersion = Guid.NewGuid(),
+                OptionsJson = "{}",
+                SourceMediaType = "application/pdf",
+                SubmittedMediaType = "application/pdf",
+                ExternalTaskId = externalTaskId,
+                AttemptCount = 1,
+                MaxAttempts = 3,
+                NextAttemptAtUtc = nowUtc,
+                ClaimedBy = lease.WorkerId,
+                LeaseExpiresAtUtc = lease.LeaseExpiresAtUtc,
+                CreatedAtUtc = nowUtc,
+                StartedAtUtc = nowUtc,
+                ConcurrencyVersion = lease.ConcurrencyVersion,
+            };
+
+        ParseSegmentEntity Segment(Guid parseRunId, int index, string status) => new()
+        {
+            Id = Guid.NewGuid(),
+            ParseRunId = parseRunId,
+            Index = index,
+            StartPage = index + 1,
+            EndPage = index + 1,
+            StorageRef = $"parse-runs/{parseRunId:N}/segments/{index:D4}.pdf",
+            SizeBytes = 128,
+            Sha256 = new string('e', 64),
+            Status = status,
+            ExternalTaskId = $"segment-task-{index}",
+            UpdatedAtUtc = nowUtc,
+        };
     }
 
     private static async Task InitializeAsync(
