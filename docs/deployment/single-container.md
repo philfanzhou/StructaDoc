@@ -172,6 +172,12 @@ There is no separate switch to turn parsing on afterwards. Supplying a Provider'
 
 `Worker__Enabled=false` stops this Host running Workers at all. That is for splitting a deployment — one Host serving the API, others parsing — not for pausing: it is not settable from a browser, and a Host with it off still accepts Parse Runs and leaves them queued. The workspace says so when it is off, and `GET /api/v1/parse-execution` answers the same question for anything that is not a browser.
 
+## Multiple Containers
+
+A multi-container deployment — the split above, or several replicas behind one address — runs every container against the same server business database and repeats the deployment-pinned configuration (`Database__*`, `Storage__*`, and the bootstrap administrator settings) identically on each container. What it does not do is share `/data`: the control plane — administrator accounts, the setup claim, browser-stored settings — is a per-instance local SQLite database that allows one writer, so each container gets its own volume, and only one instance's `/admin` is the one a browser can reach.
+
+That has consequences an operator should decide on deliberately rather than discover: an administrator account exists only on the instance it was created on, a setting written through one instance's `/admin` reaches that instance alone, and an unclaimed replica still exposes `/setup` to its first visitor. [Database Support](../development/database-support.md) states the full boundary, and it is the authority on this topic.
+
 Sign-in through an identity provider is configured under `/admin` as well. Until it is, only administrators can use the deployment: the workspace has no other way in. See [User Workspace and OIDC](../development/user-workspace-oidc.md) for what to register at the provider, and [Service Settings](../development/service-settings.md) for what else is settable from the browser and what each change requires.
 
 ## Where /data Comes From
