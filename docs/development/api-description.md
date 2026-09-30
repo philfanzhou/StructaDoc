@@ -51,7 +51,7 @@ The credential is described as an API key in the `Authorization` header rather t
 
 A scope authorizes the endpoint; ownership or an explicit grant authorizes the resource. See [Authentication](./authentication.md#resource-boundary) and [ADR-0008](../adr/0008-api-client-resource-isolation.md). The document says so in its overview, because a reader who sees only the scope list will otherwise expect a key to reach the whole workspace.
 
-Browser-only endpoints are described in the separate operator document and are not offered an API-client credential. Keeping the operator surface visible without putting it in the consumer contract lets administrators inspect the complete Host while integrations generate only callable methods.
+Browser-only endpoints are described in the separate operator document and are not offered an API-client credential. Keeping the operator surface visible without putting it in the consumer contract lets administrators inspect the complete Host while integrations generate only callable methods. The management audit trail's query endpoint, `GET /api/v1/admin/audit`, is one of these: browser-only, cursor-paginated, and described with the cursor and count semantics a caller needs to walk it.
 
 ## Reachable Without Signing In
 
