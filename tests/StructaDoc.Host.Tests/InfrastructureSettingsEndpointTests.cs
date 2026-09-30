@@ -254,6 +254,11 @@ public sealed class InfrastructureSettingsEndpointTests
     public async Task A_stored_database_preflight_failure_is_recoverable_and_fails_readiness()
     {
         using var deployment = new SettingsTestDeployment();
+        // A database with pending migrations: the orchestration only reaches the migration
+        // workflow — and the preflight that gates it — when there is work to do.
+        var pendingDatabasePath = Path.Combine(
+            Path.GetDirectoryName(deployment.ControlPlanePath)!,
+            "preflight-pending.db");
         using (var writer = UnpinnedFactory(deployment))
         using (var client = await SettingsTestDeployment.SignedInClientAsync(writer))
         {
@@ -261,7 +266,7 @@ public sealed class InfrastructureSettingsEndpointTests
                 "/api/v1/admin/settings",
                 new SettingUpdateRequest(
                     SettingCatalog.DatabaseConnectionString,
-                    $"Data Source={deployment.BusinessDatabasePath};Pooling=False"),
+                    $"Data Source={pendingDatabasePath};Pooling=False"),
                 cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, write.StatusCode);
         }
@@ -277,11 +282,14 @@ public sealed class InfrastructureSettingsEndpointTests
             pinBusinessDatabase: false);
         using var administrator = await SettingsTestDeployment.SignedInClientAsync(restarted);
 
+        // The orchestration maps an executor failure to a stable error code rather than the
+        // underlying exception text; the fault an administrator reads names the code, and the
+        // container log keeps the actionable detail the executor logged.
         var database = await administrator.GetFromJsonAsync<DatabaseStatusResponse>(
             "/api/v1/admin/settings/database",
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(
-            RejectingMigrationPreflight.Detail,
+            "migration.execution_failed",
             database!.StartupFault,
             StringComparison.Ordinal);
 
@@ -305,7 +313,7 @@ public sealed class InfrastructureSettingsEndpointTests
 
         var error = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
         Assert.Contains(
-            RejectingMigrationPreflight.Detail,
+            "migration.execution_failed",
             error.ToString(),
             StringComparison.Ordinal);
     }

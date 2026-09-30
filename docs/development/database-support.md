@@ -200,9 +200,12 @@ the command.
 The operation always performs these steps in order:
 
 1. migrate the SQLite control plane;
-2. run the shared business-database preflight;
-3. for an existing business database, import legacy administrators if required;
-4. apply the selected business migration assembly.
+2. run the shared business-database orchestration, whose executor performs the preflight, the
+   legacy administrator import for an existing database, and the selected business migration
+   assembly under the provider lease described above.
+
+The command and a running instance contend for the same lease, so an explicit migration and a
+concurrently starting replica cannot apply the same pending migration twice.
 
 `Database:ApplyMigrationsOnStartup=false` disables automatic startup migration but
 does not disable this explicit command. A successful, repeatable run exits `0`; any
@@ -228,6 +231,65 @@ change. All three migrations register their rebuilt indexes with the shared Inno
 preflight; the MySQL and MariaDB variants request `ROW_FORMAT=DYNAMIC` and verify the
 resulting table format.
 
+## Migration Orchestration
+
+Business-database migration runs through the ServiceMantle `DatabaseMigrationOrchestrator`. Both
+application startup and the one-shot migration command call the same orchestration entry, which is
+what keeps the "one entry verified on four databases" promise. The three-step workflow — InnoDB
+preflight, legacy administrator import, applying the selected migration assembly — is the
+orchestrator's single executor; no step is split, duplicated, or reordered.
+
+### Lease matrix
+
+| Database | Migration coordination | Scope |
+|---|---|---|
+| PostgreSQL | Session-level advisory lock (`pg_try_advisory_lock`, key derived from the `structadoc` service id) | Cross-process, one deployment |
+| MySQL | `GET_LOCK` on a dedicated unpooled target-database session; lease probed every 250 ms, loss reported within a 5-second bound | Cross-process, one deployment |
+| MariaDB | Same `GET_LOCK` lease contract as MySQL | Cross-process, one deployment |
+| SQLite | No cross-process lease. Process-local serialization keyed by the physical database file, gated by the single-instance deployment declaration | One process only |
+
+The lease is acquired with a bounded 30-second wait that is fixed, not configurable: a deployment
+that needs longer is a deployment whose container restart policy is the right retry. While the
+lease is held, the workflow inspects, executes at most once, and re-inspects before succeeding:
+waiting instances pass without executing, a database already at the current version is skipped,
+and a database whose `__EFMigrationsHistory` contains migrations this build does not define fails
+closed with `migration.version_too_new` before the executor runs. Caller cancellation keeps its
+original `OperationCanceledException` semantics; lease loss fails closed with `migration.lock_failed`.
+
+A target that cannot be opened at all — a database that does not exist yet, or is unreachable —
+never reaches the lease. It is left to the Entity Framework migration path, exactly as before
+orchestration: EF Core creates a missing server database while migrating, database target
+preparation is out of scope, and the preflight's server-connection checks still gate an absent
+MySQL or MariaDB database before EF Core can create it under an unsupported InnoDB default.
+
+SQLite is single-instance: the orchestration validates the single-instance deployment capability
+before touching the filesystem, so a multi-instance request for SQLite fails with
+`migration.lock_not_supported` and no side effect. The process-local turn is not a cross-process
+lock; two processes pointed at one SQLite file remain outside the supported boundary, as before.
+The single-instance target identity is the physical database file — the bootstrap copy of a
+relative `Data Source` is resolved against the working directory and symbolic links are resolved
+to the physical location, while the connection string the deployment supplied is unchanged.
+
+### Orchestration error codes
+
+| Code | Meaning |
+|---|---|
+| `migration.lock_not_supported` | Deployment mode rejected: SQLite requested multi-instance, or no lease exists for the provider |
+| `migration.lock_timeout` | The lease could not be acquired within the bounded wait (another instance is migrating) |
+| `migration.lock_failed` | Lease acquisition or monitoring failed, including lease loss during a stage |
+| `migration.inspection_failed` | `__EFMigrationsHistory` could not be read before or after migration |
+| `migration.version_too_new` | The database has migrations this build does not define; migration must not proceed |
+| `migration.execution_failed` | The migration workflow itself failed (preflight rejection, import failure, or DDL failure) |
+| `migration.final_state_invalid` | The database was not at the current version after the workflow ran |
+
+These codes are the only failure text mapped into the existing sanitized startup diagnostics, so a
+recorded fault or a migration-command failure names the stage without echoing driver messages,
+credentials, or connection strings. The executor logs the underlying actionable detail — including
+the preflight's row-format guidance — to the application log at error level. Recovery semantics are
+unchanged: a browser-stored database configuration that fails orchestration records a startup
+fault, keeps `/admin` available, and fails readiness; a deployment-pinned configuration stops
+startup.
+
 ## Contract Tests
 
 Ordinary test runs always exercise SQLite file-database contracts. Server-database tests use Testcontainers and run only when explicitly enabled:
@@ -237,7 +299,13 @@ $env:STRUCTADOC_RUN_DATABASE_CONTRACT_TESTS = '1'
 dotnet test tests/StructaDoc.DatabaseContractTests/StructaDoc.DatabaseContractTests.csproj
 ```
 
-The suite migrates an empty database and checks for pending migrations. It also upgrades
+The suite migrates an empty database and checks for pending migrations. It also verifies the
+ServiceMantle migration orchestration against real server containers: two concurrent orchestration
+sessions apply the schema exactly once (the waiting session skips), the lease times out with
+`migration.lock_timeout` while another session holds it, and a future `__EFMigrationsHistory` row
+fails closed with `migration.version_too_new` before the executor runs. SQLite orchestration tests
+run without a container and cover process-local serialization, the multi-instance rejection, and
+relative data sources. The suite also upgrades
 the previous Document, access-grant, and Parse Run schemas and verifies legacy UTF-8
 bytes, exact replay, collation narrowing, canonical runtime writes, raw binary identity
 storage, state constraints, index shape, authorization isolation, SQLite preflight

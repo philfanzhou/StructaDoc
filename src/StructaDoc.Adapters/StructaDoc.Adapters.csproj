@@ -18,6 +18,11 @@
     <PackageReference Include="Microting.EntityFrameworkCore.MySql" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="PDFsharp" />
+    <PackageReference Include="ServiceMantle" />
+    <PackageReference Include="ServiceMantle.Database.MariaDb" />
+    <PackageReference Include="ServiceMantle.Database.MySql" />
+    <PackageReference Include="ServiceMantle.Database.PostgreSql" />
+    <PackageReference Include="ServiceMantle.Database.Sqlite" />
     <PackageReference Include="ServiceMantle.Persistence.Relational" />
   </ItemGroup>
 

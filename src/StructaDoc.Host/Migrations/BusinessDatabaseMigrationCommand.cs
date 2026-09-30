@@ -109,20 +109,10 @@ public static class BusinessDatabaseMigrationCommand
             logger.LogInformation(
                 "Checking the {DatabaseProvider} business database before migration.",
                 databaseOptions.Provider);
-            var migrationPreflight = migrationProvider
-                .GetRequiredService<IBusinessDatabaseMigrationPreflight>();
-            var preflightResult = await migrationPreflight.CheckAsync(
-                databaseOptions,
-                cancellationToken);
-
-            if (preflightResult.DatabaseExists)
-            {
-                await migrationProvider.MigrateLegacyAdministratorsAsync(
-                    databaseOptions,
-                    logger,
-                    cancellationToken);
-            }
-
+            // The same orchestration entry application startup uses: the InnoDB preflight, the
+            // legacy administrator import, and the assembly migrations run as one workflow under a
+            // provider lease, so the command and a running instance cannot apply the database
+            // twice.
             await migrationProvider.ApplyStructaDocMigrationsAsync(
                 databaseOptions,
                 cancellationToken);

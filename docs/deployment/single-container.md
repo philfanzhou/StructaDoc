@@ -1,5 +1,7 @@
 # Single-Container Deployment
 
+- Last updated: 2026-09-30
+
 This document describes the current single-container entry point with a SQLite volume. The image boundary follows [ADR-0003](../adr/0003-technology-and-single-image-deployment.md). PostgreSQL, MySQL, and MariaDB run as external services rather than inside the StructaDoc image.
 
 ## Image Contents
@@ -304,9 +306,14 @@ For an upgrade that requires exclusive schema access:
    database secrets;
 4. start the target application version only after the command exits `0`.
 
-The command migrates the control plane first, then runs the shared database preflight,
-imports legacy administrators from an existing business database when necessary, and
-finally applies business migrations. Success exits `0`, including a second run with
-nothing pending. Failure prints a sanitized actionable diagnostic and exits nonzero;
+The command migrates the control plane first, then runs the shared migration orchestration:
+its executor performs the database preflight, imports legacy administrators from an existing
+business database when necessary, and applies business migrations, under the provider migration
+lease described in [Database Support](../development/database-support.md). That lease also
+coordinates a concurrent replica against a server database, so a simultaneous start and this
+command cannot apply the same pending migration twice. Success exits `0`, including a second run
+with nothing pending. Failure names the orchestration's stable error code without echoing
+credentials or connection strings — the actionable detail, such as an InnoDB row-format
+instruction, is in the container log — and exits nonzero;
 do not start the new version until the cause is corrected or the recovery set is
 restored. Rolling mixed-version deployment is not a substitute for this cutover.

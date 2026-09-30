@@ -22,6 +22,15 @@
     <PackageVersion Include="Microting.EntityFrameworkCore.MySql" Version="10.0.10" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="PDFsharp" Version="6.2.4" />
+    <!-- ServiceMantle migration orchestration: the core contract types, plus one package per
+         supported business database for its provider-specific migration lease. The core and
+         database packages are stable 0.2.0; the split lets the Adapters layer host the orchestration
+         without the Host's logging or web wiring. -->
+    <PackageVersion Include="ServiceMantle" Version="0.2.1-rc.1" />
+    <PackageVersion Include="ServiceMantle.Database.MariaDb" Version="0.2.0" />
+    <PackageVersion Include="ServiceMantle.Database.MySql" Version="0.2.0" />
+    <PackageVersion Include="ServiceMantle.Database.PostgreSql" Version="0.2.0" />
+    <PackageVersion Include="ServiceMantle.Database.Sqlite" Version="0.2.0" />
     <!-- ServiceMantle management audit domain and its EF Core relational mapping. The core
          contract types (ManagementAuditEvent and friends) arrive transitively; the relational
          package supplies the service_audit_logs mapping and the staging writer. -->

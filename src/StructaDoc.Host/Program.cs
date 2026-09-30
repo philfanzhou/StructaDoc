@@ -205,28 +205,13 @@ await app.Services.ApplyStructaDocControlPlaneMigrationsAsync(app.Lifetime.Appli
 // can be corrected from, so a stored configuration that cannot be prepared is recorded and the
 // service starts without a usable business database. Readiness still fails, so nothing routes real
 // traffic to it, and a database the deployment pinned still stops startup as before.
+// The migration itself runs under the ServiceMantle orchestration: the InnoDB preflight, the legacy
+// administrator import, and the assembly migrations run as one workflow under a provider lease, so
+// two instances starting against the same server database cannot apply it twice.
 try
 {
     if (databaseOptions.ApplyMigrationsOnStartup)
     {
-        var migrationPreflight = app.Services
-            .GetRequiredService<IBusinessDatabaseMigrationPreflight>();
-        var preflightResult = await migrationPreflight.CheckAsync(
-            databaseOptions,
-            app.Lifetime.ApplicationStopping);
-
-        // The historical business-database administrator table is removed by a later migration.
-        // Import it before that migration can run. A database the server preflight proved absent has
-        // no legacy table, and opening its qualified connection here would replace the actionable
-        // preflight result with an unknown-database error.
-        if (preflightResult.DatabaseExists)
-        {
-            await app.Services.MigrateLegacyAdministratorsAsync(
-                databaseOptions,
-                app.Logger,
-                app.Lifetime.ApplicationStopping);
-        }
-
         await app.Services.ApplyStructaDocMigrationsAsync(
             databaseOptions,
             app.Lifetime.ApplicationStopping);
