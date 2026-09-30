@@ -26,7 +26,7 @@
          supported business database for its provider-specific migration lease. The core and
          database packages are stable 0.2.0; the split lets the Adapters layer host the orchestration
          without the Host's logging or web wiring. -->
-    <PackageVersion Include="ServiceMantle" Version="0.2.0" />
+    <PackageVersion Include="ServiceMantle" Version="0.2.1-rc.1" />
     <PackageVersion Include="ServiceMantle.Database.MariaDb" Version="0.2.0" />
     <PackageVersion Include="ServiceMantle.Database.MySql" Version="0.2.0" />
     <PackageVersion Include="ServiceMantle.Database.PostgreSql" Version="0.2.0" />
