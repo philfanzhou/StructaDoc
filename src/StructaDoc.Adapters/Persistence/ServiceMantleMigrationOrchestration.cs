@@ -1,0 +1,271 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
+using ServiceMantle;
+using ServiceMantle.Bootstrap;
+using ServiceMantle.Database.MariaDb.Migration;
+using ServiceMantle.Database.MySql.Migration;
+using ServiceMantle.Database.PostgreSql.Migration;
+using ServiceMantle.Database.Sqlite;
+using ServiceMantle.Migration;
+
+namespace StructaDoc.Adapters.Persistence;
+
+/// <summary>
+/// Composes the ServiceMantle migration orchestration for the business database: maps deployment
+/// database options onto the library's bootstrap model, owns the provider-specific lease
+/// registrations, and fixes the deployment mode each provider supports.
+/// </summary>
+public static class ServiceMantleMigrationOrchestration
+{
+    /// <summary>
+    /// The identity the migration lease is scoped to. One StructaDoc deployment shares one id, so
+    /// every instance and the one-shot migration command contend for the same lease.
+    /// </summary>
+    public static ServiceId MigrationServiceId { get; } = ServiceId.Parse("structadoc");
+
+    /// <summary>
+    /// How long a starting instance waits for the migration lease before failing. Not
+    /// configurable: a deployment that needs longer than this to wait out a peer's migration is a
+    /// deployment whose container restart policy is the right retry mechanism.
+    /// </summary>
+    public static TimeSpan DefaultLockAcquireTimeout { get; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Maps deployment database options onto the library's bootstrap model.</summary>
+    public static BootstrapDatabaseConfiguration ToBootstrapDatabaseConfiguration(
+        DatabaseOptions databaseOptions)
+    {
+        ArgumentNullException.ThrowIfNull(databaseOptions);
+
+        var connectionString = databaseOptions.Provider == DatabaseProvider.Sqlite
+            ? ResolveSqliteBootstrapConnectionString(databaseOptions.ConnectionString)
+            : databaseOptions.ConnectionString;
+
+        return new BootstrapDatabaseConfiguration(
+            MapProviderId(databaseOptions.Provider),
+            databaseOptions.ServerVersion,
+            connectionString);
+    }
+
+    /// <summary>
+    /// The deployment mode StructaDoc supports per provider. SQLite is single-instance by design
+    /// (see the database support documentation); the server databases take the multi-instance
+    /// lease path.
+    /// </summary>
+    public static DatabaseDeploymentMode ResolveDeploymentMode(DatabaseProvider provider) =>
+        provider == DatabaseProvider.Sqlite
+            ? DatabaseDeploymentMode.SingleInstance
+            : DatabaseDeploymentMode.MultiInstance;
+
+    /// <summary>
+    /// The provider-specific migration leases. SQLite is deliberately absent: it has no
+    /// cross-process lease, and its single-instance turn is coordinated through the deployment
+    /// capability registry instead.
+    /// </summary>
+    public static DatabaseMigrationLockProviderRegistry CreateMigrationLockProviderRegistry() => new(
+        [
+            new PostgreSqlMigrationLockProvider(),
+            new MySqlMigrationLockProvider(),
+            new MariaDbMigrationLockProvider(),
+        ],
+        DatabaseProviderIdResolver.Empty);
+
+    /// <summary>
+    /// The deployment capability declarations consulted before any migration side effect. Only
+    /// SQLite declares one: it is single-instance only, so a multi-instance request fails closed
+    /// before anything touches the filesystem.
+    /// </summary>
+    public static DatabaseDeploymentCapabilityRegistry CreateDeploymentCapabilityRegistry() => new(
+        [new SqliteDatabaseTargetPreparationProvider()],
+        DatabaseProviderIdResolver.Empty);
+
+    /// <summary>
+    /// Runs one migration orchestration session for the business database through the shared
+    /// registrations. Both application startup and the one-shot migration command call this.
+    /// </summary>
+    /// <param name="serviceProvider">
+    /// A provider carrying the registrations made by
+    /// <c>AddStructaDocPersistenceMigrationServices</c>.
+    /// </param>
+    /// <param name="databaseOptions">The deployment database configuration.</param>
+    /// <param name="deploymentMode">
+    /// The requested deployment mode. SQLite validates it against the declared capability before
+    /// any side effect; the server databases always take the real-lease path regardless of mode.
+    /// </param>
+    /// <param name="lockAcquireTimeout">
+    /// The lease acquisition timeout, or <see langword="null"/> for
+    /// <see cref="DefaultLockAcquireTimeout"/>.
+    /// </param>
+    /// <param name="cancellationToken">Propagates caller cancellation into every stage.</param>
+    /// <returns>The orchestration result, whose failure codes and messages are safe to log.</returns>
+    public static async Task<MigrationExecutionResult> OrchestrateStructaDocMigrationsAsync(
+        this IServiceProvider serviceProvider,
+        DatabaseOptions databaseOptions,
+        DatabaseDeploymentMode deploymentMode,
+        TimeSpan? lockAcquireTimeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(serviceProvider);
+        ArgumentNullException.ThrowIfNull(databaseOptions);
+
+        var bootstrap = ToBootstrapDatabaseConfiguration(databaseOptions);
+        var timeout = lockAcquireTimeout ?? DefaultLockAcquireTimeout;
+        await using var scope = serviceProvider.CreateAsyncScope();
+
+        if (databaseOptions.Provider != DatabaseProvider.Sqlite)
+        {
+            // The provider lease is a session in the target database, so it can only be taken when
+            // the database is there to hold it. A target that cannot be opened at all is left to
+            // the Entity Framework migration path, exactly as before orchestration: EF Core creates
+            // a missing database while migrating and reports an unreachable one with its own
+            // diagnostics, and database target preparation is deliberately out of scope for
+            // StructaDoc today.
+            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+            if (!await dbContext.Database.CanConnectAsync(cancellationToken))
+            {
+                var executor = scope.ServiceProvider
+                    .GetRequiredService<IDatabaseMigrationExecutor>();
+                await executor.ExecuteAsync(cancellationToken);
+                return MigrationExecutionResult.Success(executorWasCalled: true);
+            }
+
+            var serverOrchestrator = scope.ServiceProvider
+                .GetRequiredService<DatabaseMigrationOrchestrator>();
+            return await serverOrchestrator.OrchestrateMigrationAsync(
+                MigrationServiceId,
+                bootstrap,
+                timeout,
+                cancellationToken);
+        }
+
+        // The deployment request is validated before anything touches the filesystem: a
+        // multi-instance request against the single-instance-only SQLite capability must fail with
+        // no side effect at all, which the directory creation below would otherwise violate.
+        var capabilities = scope.ServiceProvider
+            .GetRequiredService<DatabaseDeploymentCapabilityRegistry>();
+        var validation = new DatabaseDeploymentValidator(capabilities)
+            .Validate(WellKnownDatabaseProviderIds.Sqlite, deploymentMode);
+        if (!validation.IsSupported)
+        {
+            return MigrationExecutionResult.Failure(
+                validation.MigrationErrorCode ?? WellKnownMigrationErrorCodes.LockNotSupported,
+                "The SQLite business database supports only a single-instance deployment.");
+        }
+
+        // SQLite opens its file lazily from the parent directory, and the single-instance target
+        // identity resolution fails on a missing parent, so the directory must exist first. The
+        // validation above already accepted this deployment mode.
+        EnsureSqliteDirectoryExists(databaseOptions.ConnectionString);
+
+        var orchestrator = scope.ServiceProvider.GetRequiredService<DatabaseMigrationOrchestrator>();
+        return await orchestrator.OrchestrateMigrationAsync(
+            MigrationServiceId,
+            bootstrap,
+            deploymentMode,
+            timeout,
+            cancellationToken);
+    }
+
+    /// <summary>Canonicalizes provider enum values onto the library's provider ids.</summary>
+    private static string MapProviderId(DatabaseProvider provider) => provider switch
+    {
+        DatabaseProvider.Sqlite => WellKnownDatabaseProviderIds.Sqlite,
+        DatabaseProvider.PostgreSql => WellKnownDatabaseProviderIds.PostgreSql,
+        DatabaseProvider.MySql => WellKnownDatabaseProviderIds.MySql,
+        DatabaseProvider.MariaDb => WellKnownDatabaseProviderIds.MariaDb,
+        _ => throw new InvalidOperationException(
+            $"Unsupported database provider '{provider}'."),
+    };
+
+    /// <summary>
+    /// The library's SQLite target identity accepts fully-qualified local file paths only, while
+    /// the shipped development default is relative and Entity Framework resolves it against the
+    /// working directory. The bootstrap copy is normalized the same way, and symbolic links in the
+    /// path are resolved to the physical location, because the identity's single-instance
+    /// serialization must be keyed by the file that is actually opened, not by one of its spellings
+    /// (on macOS the system temporary directory itself lives behind a symbolic link). The database
+    /// options themselves stay byte-for-byte what the deployment supplied.
+    /// </summary>
+    private static string ResolveSqliteBootstrapConnectionString(string connectionString)
+    {
+        var builder = new SqliteConnectionStringBuilder(connectionString);
+        var dataSource = builder.DataSource;
+        if (string.IsNullOrWhiteSpace(dataSource)
+            || string.Equals(dataSource, ":memory:", StringComparison.OrdinalIgnoreCase)
+            || dataSource.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+        {
+            return connectionString;
+        }
+
+        builder.DataSource = ResolvePhysicalPath(dataSource);
+        return builder.ConnectionString;
+    }
+
+    /// <summary>
+    /// Makes a data source absolute and resolves the symbolic links that exist along it. Segments
+    /// that do not exist yet — the leaf of a not-yet-created database, or its not-yet-created
+    /// parent — are kept as spelled, because a path that does not exist cannot be an alias for
+    /// another one.
+    /// </summary>
+    private static string ResolvePhysicalPath(string dataSource)
+    {
+        var path = Path.GetFullPath(dataSource);
+        var root = Path.GetPathRoot(path);
+        if (string.IsNullOrEmpty(root) || path.Length <= root.Length)
+        {
+            return path;
+        }
+
+        var current = root;
+        var segments = path[root.Length..]
+            .Split(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                StringSplitOptions.RemoveEmptyEntries);
+        foreach (var segment in segments)
+        {
+            var candidate = Path.Join(current, segment);
+            FileSystemInfo? entry = File.Exists(candidate)
+                ? new FileInfo(candidate)
+                : Directory.Exists(candidate) ? new DirectoryInfo(candidate) : null;
+            if (entry is null)
+            {
+                current = candidate;
+                continue;
+            }
+
+            try
+            {
+                if (entry.ResolveLinkTarget(returnFinalTarget: true) is { } target)
+                {
+                    candidate = target.FullName;
+                }
+            }
+            catch (IOException)
+            {
+                // A link that cannot be resolved is left as spelled; the library's target
+                // inspection is the authority that fails closed on it.
+            }
+
+            current = candidate;
+        }
+
+        return current;
+    }
+
+    private static void EnsureSqliteDirectoryExists(string connectionString)
+    {
+        var dataSource = new SqliteConnectionStringBuilder(connectionString).DataSource;
+
+        if (string.IsNullOrWhiteSpace(dataSource)
+            || string.Equals(dataSource, ":memory:", StringComparison.OrdinalIgnoreCase)
+            || dataSource.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(Path.GetFullPath(dataSource));
+        if (directory is not null)
+        {
+            Directory.CreateDirectory(directory);
+        }
+    }
+}

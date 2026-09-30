@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ServiceMantle.Migration;
 using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Adapters.Persistence.Providers;
 using StructaDoc.Adapters.Resources;
@@ -59,6 +60,20 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<IBusinessDatabaseMigrationPreflight, InnoDbMigrationPreflight>();
         services.AddDbContext<StructaDocDbContext>(
             options => ConfigureDatabase(options, databaseOptions));
+        // The executor logs through the standard logging abstraction, and the migration command's
+        // builder already provides it. Registering it here keeps the composition usable on a bare
+        // service collection as well; AddLogging is idempotent in a host.
+        services.AddLogging();
+        // ServiceMantle orchestration: the executor carries the three-step migration workflow, the
+        // registries carry the provider leases and deployment declarations, and the orchestrator
+        // joins them. Everything is resolved per orchestration session so one session's lease never
+        // outlives it.
+        services.AddSingleton(_ =>
+            ServiceMantleMigrationOrchestration.CreateMigrationLockProviderRegistry());
+        services.AddSingleton(_ =>
+            ServiceMantleMigrationOrchestration.CreateDeploymentCapabilityRegistry());
+        services.AddScoped<IDatabaseMigrationExecutor, StructaDocMigrationExecutor>();
+        services.AddScoped<DatabaseMigrationOrchestrator>();
 
         return services;
     }
