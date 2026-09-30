@@ -1,6 +1,11 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.Extensions.Logging;
+using ServiceMantle.Audit;
+using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Contracts.Authentication;
+using StructaDoc.Host.Auditing;
 
 namespace StructaDoc.Host.Authentication;
 
@@ -47,9 +52,12 @@ public static class ApiClientAdministrationEndpoints
 
     private static async Task<IResult> CreateAsync(
         ApiClientRequest request,
+        ClaimsPrincipal user,
         HttpContext context,
         IAntiforgery antiforgery,
         IApiClientAdministrationService service,
+        StructaDocManagementAuditRecorder auditRecorder,
+        ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
@@ -69,6 +77,22 @@ public static class ApiClientAdministrationEndpoints
             definition!,
             timeProvider.GetUtcNow().UtcDateTime,
             cancellationToken);
+
+        // The issued credential itself never reaches the audit trail: the target identity and the
+        // client's name are the whole record.
+        await RecordClientAuditAsync(
+            auditRecorder,
+            logger,
+            user,
+            StructaDocManagementAudit.Actions.ApiClientCreated,
+            issuedClient.Client.Id.ToString("D"),
+            issuedClient.Client.Name,
+            ManagementAuditOutcome.Success,
+            "An API client was created.",
+            timeProvider,
+            HostManagementAudit.ClientAddress(context),
+            cancellationToken);
+
         context.Response.Headers.CacheControl = "no-store";
         return Results.Json(
             ToCredentialResponse(issuedClient),
@@ -136,9 +160,12 @@ public static class ApiClientAdministrationEndpoints
 
     private static async Task<IResult> RevokeAsync(
         Guid id,
+        ClaimsPrincipal user,
         HttpContext context,
         IAntiforgery antiforgery,
         IApiClientAdministrationService service,
+        StructaDocManagementAuditRecorder auditRecorder,
+        ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
@@ -153,9 +180,69 @@ public static class ApiClientAdministrationEndpoints
             id,
             timeProvider.GetUtcNow().UtcDateTime,
             cancellationToken);
+
+        // A revoke of an already-revoked client still records: the state it produced is the state
+        // that was requested, and the actor asking for it twice is part of the trail.
+        await RecordClientAuditAsync(
+            auditRecorder,
+            logger,
+            user,
+            StructaDocManagementAudit.Actions.ApiClientRevoked,
+            id.ToString("D"),
+            id.ToString("D"),
+            status == ApiClientMutationStatus.NotFound
+                ? ManagementAuditOutcome.Failure
+                : ManagementAuditOutcome.Success,
+            status == ApiClientMutationStatus.NotFound
+                ? "The revocation named an API client that does not exist."
+                : "An API client was revoked.",
+            timeProvider,
+            HostManagementAudit.ClientAddress(context),
+            cancellationToken);
+
         return status == ApiClientMutationStatus.NotFound
             ? NotFound(id)
             : Results.NoContent();
+    }
+
+    /// <summary>
+    /// The API client record point. The client's name is the only metadata; the issued credential
+    /// never enters an audit field.
+    /// </summary>
+    private static async Task RecordClientAuditAsync(
+        StructaDocManagementAuditRecorder auditRecorder,
+        ILogger logger,
+        ClaimsPrincipal user,
+        ManagementAuditAction action,
+        string clientId,
+        string clientName,
+        ManagementAuditOutcome outcome,
+        string? securityDescription,
+        TimeProvider timeProvider,
+        string? clientIp,
+        CancellationToken cancellationToken)
+    {
+        var auditEvent = ManagementAuditEvent.Create(
+            HostManagementAudit.AdministratorOperator(user),
+            action,
+            ManagementAuditTarget.Create(
+                StructaDocManagementAudit.TargetTypes.ApiClient,
+                clientId),
+            outcome,
+            clientIp: clientIp,
+            securityDescription: securityDescription,
+            metadata: new Dictionary<string, string>
+            {
+                ["name"] = clientName,
+            },
+            timeProvider: timeProvider);
+
+        await HostManagementAudit.RecordAsync(
+            auditRecorder,
+            logger,
+            auditEvent,
+            "API client administration",
+            cancellationToken);
     }
 
     private static bool TryCreateDefinition(

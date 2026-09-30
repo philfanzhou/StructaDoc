@@ -221,7 +221,8 @@ A deployment whose administrators are not expected to change settings can leave 
 
 The image declares `/data` and prepares:
 
-- `/data/control.db` — control-plane database holding administrator accounts, always local SQLite;
+- `/data/control.db` — control-plane database holding administrator accounts and the management
+  audit trail, always local SQLite;
 - `/data/structadoc.db` — SQLite business database and sidecar files;
 - `/data/storage` — originals, Provider archives, segments, Assets, and Artifacts;
 - `/data/keys` — the Data Protection key ring for cookies, antiforgery, Provider credentials, and submission checkpoints;

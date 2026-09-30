@@ -1,5 +1,10 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.Extensions.Logging;
+using ServiceMantle.Audit;
+using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Contracts.Settings;
+using StructaDoc.Host.Auditing;
 using StructaDoc.Host.Authentication;
 
 namespace StructaDoc.Host.Settings;
@@ -19,9 +24,11 @@ public static class SystemControlEndpoints
         return endpoints;
 
         async Task<IResult> RestartAsync(
+            ClaimsPrincipal user,
             HttpContext context,
             IAntiforgery antiforgery,
             IHostApplicationLifetime lifetime,
+            StructaDocManagementAuditRecorder auditRecorder,
             ILoggerFactory loggerFactory)
         {
             var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
@@ -29,6 +36,25 @@ public static class SystemControlEndpoints
             {
                 return antiforgeryFailure;
             }
+
+            // The audit record is written before the stop is scheduled: the process is about to
+            // disappear, and an audit that races the shutdown is an audit that can be lost.
+            var auditEvent = ManagementAuditEvent.Create(
+                HostManagementAudit.AdministratorOperator(user),
+                StructaDocManagementAudit.Actions.RestartRequested,
+                ManagementAuditTarget.Create(
+                    WellKnownManagementAuditTargetTypes.Service,
+                    "structadoc"),
+                ManagementAuditOutcome.Success,
+                clientIp: HostManagementAudit.ClientAddress(context),
+                securityDescription: "An administrator requested a service restart.",
+                timeProvider: TimeProvider.System);
+            await HostManagementAudit.RecordAsync(
+                auditRecorder,
+                loggerFactory.CreateLogger<ManagementAuditRecordPoints>(),
+                auditEvent,
+                "system restart request",
+                CancellationToken.None);
 
             loggerFactory
                 .CreateLogger("StructaDoc.SystemControl")

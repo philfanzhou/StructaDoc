@@ -34,6 +34,12 @@ public enum SettingWriteStatus
 public sealed record SettingWriteResult(SettingWriteStatus Status, bool RestartRequired = false);
 
 /// <summary>
+/// The administrator a setting write is attributed to: the account's stable identifier for the
+/// audit operator, and the username the settings row has always recorded.
+/// </summary>
+public sealed record SettingActor(string AdministratorId, string Username);
+
+/// <summary>
 /// Applies a changed setting to something already running. Returning <see langword="false"/> means
 /// this listener does not handle the key, which is how a setting is known to need a restart.
 /// </summary>
@@ -52,7 +58,7 @@ public interface ISettingsService
     Task<SettingWriteResult> SetAsync(
         string key,
         string? value,
-        string updatedBy,
+        SettingActor actor,
         DateTime nowUtc,
         CancellationToken cancellationToken = default);
 }

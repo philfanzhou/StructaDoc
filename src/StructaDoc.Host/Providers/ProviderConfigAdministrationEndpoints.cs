@@ -1,6 +1,12 @@
+using System.Globalization;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.Extensions.Logging;
+using ServiceMantle.Audit;
+using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Providers;
 using StructaDoc.Contracts.Providers;
+using StructaDoc.Host.Auditing;
 using StructaDoc.Host.Authentication;
 
 namespace StructaDoc.Host.Providers;
@@ -54,9 +60,12 @@ public static class ProviderConfigAdministrationEndpoints
 
     private static async Task<IResult> CreateAsync(
         ProviderConfigRequest request,
+        ClaimsPrincipal user,
         HttpContext context,
         IAntiforgery antiforgery,
         IProviderConfigAdministrationService service,
+        StructaDocManagementAuditRecorder auditRecorder,
+        ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
@@ -74,6 +83,26 @@ public static class ProviderConfigAdministrationEndpoints
             failure.Definition!,
             timeProvider.GetUtcNow().UtcDateTime,
             cancellationToken);
+
+        // Provider audits carry only the configuration identity and its version: the credential and
+        // the endpoint address are configuration values, not identity.
+        await RecordProviderAuditAsync(
+            auditRecorder,
+            logger,
+            user,
+            StructaDocManagementAudit.Actions.ProviderConfigCreated,
+            result.Config?.Id.ToString("D") ?? Guid.Empty.ToString("D"),
+            result.Config,
+            outcome: result.Status == ProviderConfigMutationStatus.Succeeded
+                ? ManagementAuditOutcome.Success
+                : ManagementAuditOutcome.Failure,
+            securityDescription: result.Status == ProviderConfigMutationStatus.Succeeded
+                ? "A Provider configuration was created."
+                : "The Provider configuration creation was rejected.",
+            timeProvider,
+            HostManagementAudit.ClientAddress(context),
+            cancellationToken);
+
         context.Response.Headers.CacheControl = "no-store";
         return result.Status == ProviderConfigMutationStatus.Succeeded
             ? Results.Json(ToResponse(result.Config!), statusCode: StatusCodes.Status201Created)
@@ -83,9 +112,12 @@ public static class ProviderConfigAdministrationEndpoints
     private static async Task<IResult> UpdateAsync(
         Guid id,
         ProviderConfigRequest request,
+        ClaimsPrincipal user,
         HttpContext context,
         IAntiforgery antiforgery,
         IProviderConfigAdministrationService service,
+        StructaDocManagementAuditRecorder auditRecorder,
+        ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
@@ -99,11 +131,43 @@ public static class ProviderConfigAdministrationEndpoints
             return failure.Result;
         }
 
+        // The previous state decides which change this is: a pure enable or disable is its own
+        // action, and anything else is a new configuration version.
+        var existing = (await service.ListAsync(cancellationToken))
+            .FirstOrDefault(config => config.Id == id);
+
         var result = await service.UpdateAsync(
             id,
             failure.Definition!,
             timeProvider.GetUtcNow().UtcDateTime,
             cancellationToken);
+
+        var action = (existing is null, request.IsEnabled) switch
+        {
+            (false, true) when !existing!.IsEnabled =>
+                StructaDocManagementAudit.Actions.ProviderConfigEnabled,
+            (false, false) when existing!.IsEnabled =>
+                StructaDocManagementAudit.Actions.ProviderConfigDisabled,
+            _ => StructaDocManagementAudit.Actions.ProviderConfigChanged,
+        };
+
+        await RecordProviderAuditAsync(
+            auditRecorder,
+            logger,
+            user,
+            action,
+            id.ToString("D"),
+            result.Config,
+            outcome: result.Status == ProviderConfigMutationStatus.Succeeded
+                ? ManagementAuditOutcome.Success
+                : ManagementAuditOutcome.Failure,
+            securityDescription: result.Status == ProviderConfigMutationStatus.Succeeded
+                ? "A Provider configuration changed: a new immutable version now applies."
+                : "The Provider configuration update was rejected.",
+            timeProvider,
+            HostManagementAudit.ClientAddress(context),
+            cancellationToken);
+
         context.Response.Headers.CacheControl = "no-store";
         return result.Status switch
         {
@@ -205,6 +269,54 @@ public static class ProviderConfigAdministrationEndpoints
         descriptor.RequiresCredential,
         new ProviderSettingResponse(descriptor.Model.IsUsed, descriptor.Model.AppliedDefault),
         new ProviderSettingResponse(descriptor.Backend.IsUsed, descriptor.Backend.AppliedDefault));
+
+    /// <summary>
+    /// The Provider configuration record point. The metadata allowlist is the configuration's
+    /// identity and version only — name, type, version number, and the resulting enabled and
+    /// default state — never the credential or the endpoint address.
+    /// </summary>
+    private static async Task RecordProviderAuditAsync(
+        StructaDocManagementAuditRecorder auditRecorder,
+        ILogger logger,
+        ClaimsPrincipal user,
+        ManagementAuditAction action,
+        string providerConfigId,
+        ProviderConfigRecord? config,
+        ManagementAuditOutcome outcome,
+        string? securityDescription,
+        TimeProvider timeProvider,
+        string? clientIp,
+        CancellationToken cancellationToken)
+    {
+        var metadata = new Dictionary<string, string>();
+        if (config is not null)
+        {
+            metadata["name"] = config.Name;
+            metadata["providerType"] = config.ProviderType;
+            metadata["version"] = config.VersionNumber.ToString(CultureInfo.InvariantCulture);
+            metadata["isEnabled"] = config.IsEnabled.ToString(CultureInfo.InvariantCulture);
+            metadata["isDefault"] = config.IsDefault.ToString(CultureInfo.InvariantCulture);
+        }
+
+        var auditEvent = ManagementAuditEvent.Create(
+            HostManagementAudit.AdministratorOperator(user),
+            action,
+            ManagementAuditTarget.Create(
+                StructaDocManagementAudit.TargetTypes.ProviderConfig,
+                providerConfigId),
+            outcome,
+            clientIp: clientIp,
+            securityDescription: securityDescription,
+            metadata: metadata,
+            timeProvider: timeProvider);
+
+        await HostManagementAudit.RecordAsync(
+            auditRecorder,
+            logger,
+            auditEvent,
+            "Provider configuration administration",
+            cancellationToken);
+    }
 
     private static ProviderConfigResponse ToResponse(ProviderConfigRecord config) => new(
         config.Id,
