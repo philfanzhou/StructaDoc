@@ -25,6 +25,7 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | [ADR-0008](./adr/0008-api-client-resource-isolation.md) | Accepted | Bound API clients by ownership and grants rather than trusting them across the workspace |
 | [ADR-0009](./adr/0009-canonical-persisted-actor-identity.md) | Accepted | Persist actor identities as structured pairs; supersede parts of ADR-0004 and ADR-0008 |
 | [ADR-0010](./adr/0010-setup-and-management-model.md) | Accepted | Keep StructaDoc's first-run claim and administration surface; do not adopt the ServiceMantle installation and management model |
+| [ADR-0011](./adr/0011-settings-and-secret-foundation.md) | Accepted | Keep the control-plane settings and file key ring; adopt database-persisted Data Protection keys as future multi-instance work |
 
 ## Specifications
 
