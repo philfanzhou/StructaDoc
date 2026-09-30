@@ -1,7 +1,6 @@
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using ServiceMantle;
+using ServiceMantle.Health;
 using ServiceMantle.Web.Logging;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
@@ -20,6 +19,7 @@ using StructaDoc.Contracts.System;
 using StructaDoc.Host.Auditing;
 using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
+using StructaDoc.Host.Health;
 using StructaDoc.Host.Migrations;
 using StructaDoc.Host.OpenApi;
 using StructaDoc.Host.ParseRuns;
@@ -45,15 +45,19 @@ builder.Configuration.AddContainerDefaults(args);
 // performs no disk writes. No serviceVersion is passed: it resolves from the entry assembly
 // informational version, the assembly version, then "unknown". The builder it returns is kept
 // because the reverse-proxy trust registers on it below, once the options it needs are read.
+// The same registration maps the health endpoints: /health/live is always 200, and /health/ready with
+// its /health alias answer 200 only for the Completed + Succeeded + Reachable snapshot the
+// StructaDocHealthSnapshotSource composes from the control plane and the business database.
 //
 // The same registration opts into the core OpenTelemetry instrumentation: ASP.NET Core and
 // HttpClient tracing plus .NET runtime metrics, with no exporter registered. Trace and metric data
 // stays in the process; there is no telemetry network destination of any kind by default. The
-// OTel resource is exactly service.name, service.version, and service.instance.id, taken from the
-// same identity the log pipeline uses.
+// OTel resource is exactly service.name, service.version, and service.instance.id, taken from
+// the same identity the log pipeline uses.
 var serviceMantle = builder.Services.AddServiceMantle(
         ServiceId.Parse("structadoc"),
         InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"))
+    .AddServiceMantleHealthEndpoints()
     .AddOpenTelemetryInstrumentation();
 
 // Console logging runs through the ServiceMantle Serilog pipeline: structured properties are
@@ -157,17 +161,12 @@ providerResultNormalizationOptions.Validate();
 conversionOptions.Validate();
 var oidcOptions = OidcConfigurationBinder.Bind(settingsConfiguration, settingsStartupFault);
 
-builder.Services
-    .AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
-    .AddCheck(
-        "business-database-startup",
-        () => settingsStartupFault.DetailFor(SettingCatalog.DatabaseSection) is { } detail
-            ? HealthCheckResult.Unhealthy(detail)
-            : HealthCheckResult.Healthy(),
-        tags: ["ready"]);
 builder.Services.AddStructaDocControlPlane(controlPlaneOptions);
 builder.Services.AddStructaDocPersistence(databaseOptions);
+// Readiness is served by the ServiceMantle health endpoints, which read one snapshot per request
+// from the source below. The registration is scoped because the probes run on the request's own
+// control-plane and business-database contexts.
+builder.Services.AddScoped<IServiceHealthSnapshotSource, StructaDocHealthSnapshotSource>();
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions);
 builder.Services.AddStructaDocDocumentConversion(conversionOptions);
 builder.Services.AddStructaDocParseProviders();
@@ -332,14 +331,7 @@ app.MapParseResultEndpoints();
 app.MapParseExportEndpoints();
 app.MapResourceDeletionEndpoints();
 
-app.MapHealthChecks(
-    "/health/live",
-    new HealthCheckOptions
-    {
-        Predicate = registration => registration.Tags.Contains("live"),
-    });
-
-app.MapHealthChecks("/health/ready");
+app.MapServiceMantleHealthEndpoints();
 
 app.MapFallbackToFile("index.html")
     .WithMetadata(new ClientRouteFallbackMarker());

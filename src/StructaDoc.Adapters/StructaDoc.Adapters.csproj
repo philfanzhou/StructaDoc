@@ -13,7 +13,6 @@
          variables and the command line on their own rather than through the app configuration. -->
     <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" />
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.Extensions.Identity.Core" />
     <PackageReference Include="Microting.EntityFrameworkCore.MySql" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />

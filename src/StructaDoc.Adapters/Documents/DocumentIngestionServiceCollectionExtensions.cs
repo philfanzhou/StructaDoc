@@ -45,9 +45,6 @@ public static class DocumentIngestionServiceCollectionExtensions
         services.AddScoped<IDocumentIngestionService, EfCoreDocumentIngestionService>();
         services.AddScoped<IDocumentAuthorizationService, EfCoreDocumentAuthorizationService>();
         services.AddScoped<IDocumentReadService, EfCoreDocumentReadService>();
-        var health = services.AddHealthChecks();
-        if (string.Equals(storageOptions.Provider, "S3", StringComparison.OrdinalIgnoreCase)) health.AddCheck<S3FileStorageHealthCheck>("file-storage", tags: ["ready"]);
-        else health.AddCheck<LocalFileStorageHealthCheck>("file-storage", tags: ["ready"]);
         return services;
     }
 }
