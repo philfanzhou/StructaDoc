@@ -27,9 +27,6 @@ public static class ControlPlaneServiceCollectionExtensions
             new EfCoreManagementAuditWriter<ControlPlaneDbContext>(
                 serviceProvider.GetRequiredService<ControlPlaneDbContext>()));
         services.AddScoped<StructaDocManagementAuditRecorder>();
-        services
-            .AddHealthChecks()
-            .AddDbContextCheck<ControlPlaneDbContext>("control-plane", tags: ["ready"]);
 
         return services;
     }

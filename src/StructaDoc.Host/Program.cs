@@ -1,7 +1,6 @@
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using ServiceMantle;
+using ServiceMantle.Health;
 using ServiceMantle.Web.Logging;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
@@ -19,6 +18,7 @@ using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.System;
 using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
+using StructaDoc.Host.Health;
 using StructaDoc.Host.Migrations;
 using StructaDoc.Host.OpenApi;
 using StructaDoc.Host.ParseRuns;
@@ -42,10 +42,14 @@ builder.Configuration.AddContainerDefaults(args);
 // the stable "structadoc" service id and an instance id regenerated on every host start. No
 // bootstrap file path is passed, so the bootstrap store stays a lazy singleton and this wiring
 // performs no disk writes. No serviceVersion is passed: it resolves from the entry assembly
-// informational version, the assembly version, then "unknown".
+// informational version, the assembly version, then "unknown". The same registration maps the
+// health endpoints: /health/live is always 200, and /health/ready with its /health alias answer
+// 200 only for the Completed + Succeeded + Reachable snapshot the StructaDocHealthSnapshotSource
+// composes from the control plane and the business database.
 builder.Services.AddServiceMantle(
-    ServiceId.Parse("structadoc"),
-    InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"));
+        ServiceId.Parse("structadoc"),
+        InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"))
+    .AddServiceMantleHealthEndpoints();
 
 // Console logging runs through the ServiceMantle Serilog pipeline: structured properties are
 // sanitized by the library before they reach the sink, and the default MEL console providers are
@@ -144,17 +148,12 @@ providerResultNormalizationOptions.Validate();
 conversionOptions.Validate();
 var oidcOptions = OidcConfigurationBinder.Bind(settingsConfiguration, settingsStartupFault);
 
-builder.Services
-    .AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
-    .AddCheck(
-        "business-database-startup",
-        () => settingsStartupFault.DetailFor(SettingCatalog.DatabaseSection) is { } detail
-            ? HealthCheckResult.Unhealthy(detail)
-            : HealthCheckResult.Healthy(),
-        tags: ["ready"]);
 builder.Services.AddStructaDocControlPlane(controlPlaneOptions);
 builder.Services.AddStructaDocPersistence(databaseOptions);
+// Readiness is served by the ServiceMantle health endpoints, which read one snapshot per request
+// from the source below. The registration is scoped because the probes run on the request's own
+// control-plane and business-database contexts.
+builder.Services.AddScoped<IServiceHealthSnapshotSource, StructaDocHealthSnapshotSource>();
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions);
 builder.Services.AddStructaDocDocumentConversion(conversionOptions);
 builder.Services.AddStructaDocParseProviders();
@@ -318,14 +317,7 @@ app.MapParseResultEndpoints();
 app.MapParseExportEndpoints();
 app.MapResourceDeletionEndpoints();
 
-app.MapHealthChecks(
-    "/health/live",
-    new HealthCheckOptions
-    {
-        Predicate = registration => registration.Tags.Contains("live"),
-    });
-
-app.MapHealthChecks("/health/ready");
+app.MapServiceMantleHealthEndpoints();
 
 app.MapFallbackToFile("index.html")
     .WithMetadata(new ClientRouteFallbackMarker());

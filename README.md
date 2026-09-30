@@ -101,8 +101,8 @@ Useful unauthenticated endpoints are:
 
 - `GET /api/v1/openapi.json` and `/api/v1/docs` — the consumer API description and a page that browses it;
 - `GET /api/v1/system/info` — service identity and version;
-- `GET /health/live` — process liveness;
-- `GET /health/ready` — database and storage readiness.
+- `GET /health/live` — process liveness, always `200` while the process runs;
+- `GET /health/ready` (alias `GET /health`) — control-plane and business-database readiness, as a JSON body; only the status code is the deployment contract.
 
 For CI coverage and local reproduction, see [Continuous Integration](./docs/development/continuous-integration.md).
 
