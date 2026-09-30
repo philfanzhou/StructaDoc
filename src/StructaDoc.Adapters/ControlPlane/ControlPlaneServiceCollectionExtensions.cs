@@ -27,6 +27,12 @@ public static class ControlPlaneServiceCollectionExtensions
             new EfCoreManagementAuditWriter<ControlPlaneDbContext>(
                 serviceProvider.GetRequiredService<ControlPlaneDbContext>()));
         services.AddScoped<StructaDocManagementAuditRecorder>();
+        // The read side of the same table: one query service per request scope, reading through
+        // the request's own control-plane context. It validates queries, re-checks legacy rows,
+        // and never writes.
+        services.AddScoped<IManagementAuditQueryService>(serviceProvider =>
+            new EfCoreManagementAuditQueryService<ControlPlaneDbContext>(
+                serviceProvider.GetRequiredService<ControlPlaneDbContext>()));
 
         return services;
     }

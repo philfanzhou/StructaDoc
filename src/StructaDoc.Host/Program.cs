@@ -16,6 +16,7 @@ using StructaDoc.Application.Documents;
 using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.System;
+using StructaDoc.Host.Auditing;
 using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
 using StructaDoc.Host.Health;
@@ -311,6 +312,7 @@ app.MapAdministratorSessionEndpoints(
 app.MapInteractiveSessionEndpoints(oidcOptions);
 app.MapAdministratorAccountEndpoints(
     authenticationOptions.AdministratorSessionLifetime);
+app.MapManagementAuditQueryEndpoints();
 app.MapApiClientAdministrationEndpoints();
 app.MapSettingsEndpoints();
 app.MapOidcSettingsEndpoints();
