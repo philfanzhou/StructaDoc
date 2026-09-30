@@ -25,7 +25,12 @@ public sealed class AdministratorAccountTestFactory : WebApplicationFactory<Prog
     {
         Directory.CreateDirectory(testDirectory);
         builder.UseSetting("Worker:Enabled", "false");
-        builder.UseSetting("Authentication:LoginPermitLimit", "1000");
+        // Both ServiceMantle policies read these keys, so the narrower setup bounds are the ones
+        // this host must meet: 60 is the ceiling the setup policy accepts, and the ten-minute
+        // window (the widest the library allows) keeps that budget large enough for the many
+        // sign-ins the account suites perform where a real deployment would be refused.
+        builder.UseSetting("Authentication:LoginPermitLimit", "60");
+        builder.UseSetting("Authentication:LoginRateLimitWindow", "00:10:00");
         builder.UseSetting("Authentication:BootstrapAdministratorUsername", AdministratorUsername);
         builder.UseSetting("Authentication:BootstrapAdministratorPassword", AdministratorPassword);
         builder.UseSetting("Authentication:BootstrapAdministratorDisplayName", "Account Owner");

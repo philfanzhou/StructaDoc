@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
+using ServiceMantle.Web.RateLimiting;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Contracts.Authentication;
@@ -17,14 +18,20 @@ public static class AdministratorSessionEndpoints
         this IEndpointRouteBuilder endpoints,
         TimeSpan sessionLifetime)
     {
-        var group = endpoints.MapGroup("/api/v1/admin");
+        var group = endpoints.MapGroup("/api/v1/admin")
+            .RequireServiceMantleSecurityResponseHeaders();
 
         group.MapGet("/antiforgery", GetAntiforgeryToken)
             .AllowAnonymous()
             .Produces<AntiforgeryTokenResponse>();
+        // The sign-in limiter (`servicemantle.management`) is isolated from the setup one, so a
+        // burst of first-run claims cannot lock out sign-in or vice versa. The endpoint is
+        // anonymous, so the partition is the caller's address; a StructaDoc principal carries no
+        // ServiceMantle management identity, so even a signed-in caller stays in the same
+        // address-partitioned bucket.
         group.MapPost("/session", LoginAsync)
             .AllowAnonymous()
-            .RequireRateLimiting(AuthorizationPolicies.AdministratorLoginRateLimit)
+            .RequireRateLimiting(RateLimitingDefaults.ManagementPolicyName)
             .Produces<AdministratorSessionResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized);

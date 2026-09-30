@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
+using ServiceMantle.Web.RateLimiting;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Contracts.Setup;
@@ -17,23 +18,27 @@ public static class SetupEndpoints
         this IEndpointRouteBuilder endpoints,
         TimeSpan sessionLifetime)
     {
-        var group = endpoints.MapGroup("/api/v1/setup");
+        var group = endpoints.MapGroup("/api/v1/setup")
+            .RequireServiceMantleSecurityResponseHeaders();
 
         group.MapGet("", GetStatusAsync)
             .AllowAnonymous()
             .Produces<SetupStatusResponse>();
 
-        // Anonymous by necessity: first run has no account to authenticate against. The same rate
-        // limit as administrator sign-in applies, because this endpoint also mints an administrator.
+        // Anonymous by necessity: first run has no account to authenticate against. The setup
+        // limiter is its own isolated bucket (`servicemantle.setup`, partitioned by remote
+        // address), so attempts here can never consume the administrator sign-in quota or be
+        // hidden by it.
         group.MapPost("", ClaimAsync)
             .AllowAnonymous()
-            .RequireRateLimiting(AuthorizationPolicies.AdministratorLoginRateLimit)
+            .RequireRateLimiting(RateLimitingDefaults.SetupPolicyName)
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         var claimGroup = endpoints.MapGroup("/api/v1/admin/setup-claim")
-            .RequireAuthorization(AuthorizationPolicies.Administrator);
+            .RequireAuthorization(AuthorizationPolicies.Administrator)
+            .RequireServiceMantleSecurityResponseHeaders();
 
         claimGroup.MapGet("", GetClaimWarningAsync)
             .Produces<SetupClaimWarningResponse>()

@@ -12,7 +12,8 @@ public static class SettingsEndpoints
     public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/admin/settings")
-            .RequireAuthorization(AuthorizationPolicies.Administrator);
+            .RequireAuthorization(AuthorizationPolicies.Administrator)
+            .RequireServiceMantleSecurityResponseHeaders();
 
         group.MapGet("", ListAsync)
             .Produces<IReadOnlyList<SettingResponse>>();

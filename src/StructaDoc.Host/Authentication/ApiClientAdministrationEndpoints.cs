@@ -15,7 +15,8 @@ public static class ApiClientAdministrationEndpoints
         this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/admin/api-clients")
-            .RequireAuthorization(AuthorizationPolicies.Administrator);
+            .RequireAuthorization(AuthorizationPolicies.Administrator)
+            .RequireServiceMantleSecurityResponseHeaders();
 
         group.MapGet("", ListAsync)
             .Produces<IReadOnlyList<ApiClientResponse>>();

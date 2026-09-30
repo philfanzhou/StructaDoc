@@ -58,7 +58,7 @@ business database, preserving break-glass access when that database is unavailab
 
 While no administrator exists, `GET /api/v1/setup` reports `setupRequired`, `GET /api/v1/session` repeats it so the web application can route without a second request, and every client route leads to `/setup`. `POST /api/v1/setup` creates the first administrator and signs it in. Once an administrator exists the endpoint returns `404` and the client route redirects away.
 
-The endpoint is anonymous by necessity: first run has nothing to authenticate against. It requires antiforgery validation and shares the administrator sign-in rate limit. The claim is atomic against concurrent callers through a fixed-primary-key row in `setup_claims`, not through a read-then-write check, so two simultaneous claims choosing different usernames cannot both succeed.
+The endpoint is anonymous by necessity: first run has nothing to authenticate against. It requires antiforgery validation and is rate limited by the isolated `servicemantle.setup` policy (see below), so attempts against first-run setup can neither consume nor hide behind the administrator sign-in quota. The claim is atomic against concurrent callers through a fixed-primary-key row in `setup_claims`, not through a read-then-write check, so two simultaneous claims choosing different usernames cannot both succeed.
 
 Anyone who can reach the service before the operator does can claim it. That window is not closed, it is made attributable: the claim records its source address, and `GET /api/v1/admin/setup-claim` reports it to administrators until one confirms it through `POST /api/v1/admin/setup-claim/acknowledge`. The report is administrator-only, because the claimant address is not other users' business. Deployments that cannot accept the window should provision through configuration instead, which closes setup before the service accepts requests.
 
@@ -120,9 +120,30 @@ resolution matters.
 
 Authentication failure returns `401` without revealing whether an account is absent, disabled, or has the wrong password. API endpoints do not redirect to an HTML login page.
 
-The login endpoint uses a fixed window per `RemoteIpAddress`, defaulting to ten attempts per minute. Configure `Authentication:LoginPermitLimit` and `Authentication:LoginRateLimitWindow`. Multi-instance limits are currently per instance.
+Rate limiting comes from ServiceMantle's two isolated named policies, and only two endpoints are limited: `POST /api/v1/setup` by `servicemantle.setup` and `POST /api/v1/admin/session` by `servicemantle.management`. Everything else — every other administration endpoint included — carries no limiter. Each policy partitions its callers independently: setup by normalized remote address, sign-in by the caller's management identity when it has one and by normalized remote address otherwise. A StructaDoc principal carries no ServiceMantle management identity, so in practice sign-in is partitioned by address; the two buckets are fully isolated, so exhausting one never consumes the other's quota.
+
+Three behaviors are intentional tightenings over the previous local fixed-window limiter:
+
+- The window is sliding, not fixed: a caller cannot double its rate by aligning requests to a window boundary.
+- A rejected request is answered with the safe `application/problem+json` body — `type` `urn:servicemantle:error:rate_limit.exceeded`, `title` `Too many requests.`, `status` `429`, `errorCode` `rate_limit.exceeded`, and the `correlationId` that matches the `x-correlation-id` response header — instead of an empty 429. The body and the middleware's log line name no client address, partition key, operator identity, or credential. `Retry-After` appears only when the failed lease carries the metadata; a sliding-window lease never does.
+- Both policies read the same keys, `Authentication:LoginPermitLimit` (default 10) and `Authentication:LoginRateLimitWindow` (default 1 minute), so those keys must now satisfy the narrower of the two policies: a permit limit of 1–60 and a window of 10 seconds to 10 minutes. A value outside that range — previously accepted up to 1000 permits and down to a 1-second window — stops the host at startup with a stable error naming the field, instead of running with a limit one policy silently could not use.
+
+Multi-instance limits remain per instance: the counters live in the process, so the aggregate budget of N instances is N times the configured one. The limits are abuse friction, not a DDoS or WAF control.
 
 Behind a proxy that address is the proxy's until `ReverseProxy:TrustedProxies` names it, at which point every visitor shares one bucket and ten wrong passwords from anyone lock out everyone. Cookies are issued with `CookieSecurePolicy.SameAsRequest`, which is the same statement about the same fact: a proxy that terminates TLS forwards plain HTTP, so `Secure` is set once the forwarded scheme is believed and not before. Neither is settable from a browser, because which peer may speak for the client is a property of the network the container sits in. See [Behind a Reverse Proxy](../deployment/single-container.md#behind-a-reverse-proxy).
+
+## Security Response Headers
+
+Every endpoint under `/api/v1/setup` and `/api/v1/admin` is marked with `RequireServiceMantleSecurityResponseHeaders`, and the Host's pipeline turns that mark into a six-header baseline on everything those endpoints answer — success responses, validation failures such as the antiforgery `400`, `401`/`403` from authorization, the `429` from the rate limiter, and unhandled exceptions:
+
+- `Cache-Control: no-store`
+- `Pragma: no-cache`
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: no-referrer`
+- `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`
+
+The sign-in cookie is issued on responses that also carry `no-store`, which tells intermediaries not to cache the credential exchange while the cookie itself reaches the browser unchanged. Endpoints outside those groups — the consumer API, the OIDC session routes, the SPA, and static content — are unmarked and answer exactly as before; the rendered document views keep their own stricter sandbox CSP, which is not affected by this baseline. Responses that have already started when an exception occurs are left as sent. The baseline is not HSTS and not CORS; redirecting HTTP to HTTPS remains the terminating proxy's job.
 
 ## API-Client Credentials
 

@@ -15,7 +15,8 @@ public static class SystemControlEndpoints
         this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/admin/system")
-            .RequireAuthorization(AuthorizationPolicies.Administrator);
+            .RequireAuthorization(AuthorizationPolicies.Administrator)
+            .RequireServiceMantleSecurityResponseHeaders();
 
         group.MapPost("/restart", RestartAsync)
             .Produces<RestartAcceptedResponse>(StatusCodes.Status202Accepted)

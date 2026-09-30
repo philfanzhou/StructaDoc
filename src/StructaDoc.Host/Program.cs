@@ -174,7 +174,7 @@ builder.Services.AddStructaDocParseProviders();
 builder.Services.AddStructaDocProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
-builder.Services.AddStructaDocHostAuthentication(authenticationOptions, oidcOptions, keyRing);
+builder.Services.AddStructaDocHostAuthentication(authenticationOptions, oidcOptions, keyRing, serviceMantle);
 builder.Services.AddStructaDocApiDescription();
 builder.Services.AddSingleton(oidcOptions);
 builder.Services.AddSingleton(workerOptions);
@@ -275,7 +275,16 @@ app.UseStructaDocReverseProxy(reverseProxyOptions, app.Logger);
 // fields, so events written while handling a request carry the ID that was returned to the caller.
 app.UseServiceMantleCorrelationId();
 
-app.UseRateLimiter();
+// Setup and administration endpoints are marked with `RequireServiceMantleSecurityResponseHeaders`,
+// and this middleware is what turns that mark into the six-header baseline (`Cache-Control:
+// no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+// `Referrer-Policy: no-referrer`, and a `default-src 'none'` CSP) on everything they answer:
+// success, validation failure, 401/403, the 429 from the rate limiter below, and unhandled
+// exceptions. It sits after routing — the endpoint and its metadata are what decide — and before
+// every component that can produce one of those responses. Unmarked routes, the SPA, and static
+// content keep exactly the headers they had.
+app.UseServiceMantleSecurityResponseHeaders();
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 // Before authentication because the page carries no credential of its own, and before the endpoint
@@ -283,6 +292,11 @@ app.UseStaticFiles();
 // every path under it.
 app.UseStructaDocApiDescriptionPage();
 app.UseAuthentication();
+// After authentication and before authorization, because the `servicemantle.management` policy
+// partitions an authenticated caller by its management identity and falls back to the caller's
+// address otherwise; the resolver needs the principal that authentication has just produced. The
+// sign-in endpoint itself is anonymous, so its partition is the address either way.
+app.UseRateLimiter();
 app.UseAuthorization();
 
 // The workspace and administration areas are client-side routes of one SPA, so the Host answers
