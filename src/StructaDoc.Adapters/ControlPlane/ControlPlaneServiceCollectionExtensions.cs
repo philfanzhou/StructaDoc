@@ -33,9 +33,6 @@ public static class ControlPlaneServiceCollectionExtensions
         services.AddScoped<IManagementAuditQueryService>(serviceProvider =>
             new EfCoreManagementAuditQueryService<ControlPlaneDbContext>(
                 serviceProvider.GetRequiredService<ControlPlaneDbContext>()));
-        services
-            .AddHealthChecks()
-            .AddDbContextCheck<ControlPlaneDbContext>("control-plane", tags: ["ready"]);
 
         return services;
     }

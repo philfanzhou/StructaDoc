@@ -174,6 +174,21 @@ There is no separate switch to turn parsing on afterwards. Supplying a Provider'
 
 `Worker__Enabled=false` stops this Host running Workers at all. That is for splitting a deployment — one Host serving the API, others parsing — not for pausing: it is not settable from a browser, and a Host with it off still accepts Parse Runs and leaves them queued. The workspace says so when it is off, and `GET /api/v1/parse-execution` answers the same question for anything that is not a browser.
 
+## Health Endpoints
+
+Liveness and readiness are served by the ServiceMantle health endpoints:
+
+| Route | Answers |
+|---|---|
+| `GET /health/live` | Always `200` while the process can execute. Never resolves application state. |
+| `GET /health/ready`, `GET /health` | `200` only when the control-plane database answers, the business database carries no startup fault, and the business database still answers; otherwise `503`. |
+
+The response body is JSON with a fixed field set — `status`, `phase`, `migrationStatus`, `databaseStatus`, `errorCode` — and the status code is the part a deployment's tooling should depend on; that is all the Docker `HEALTHCHECK` and the CI health checks use. Readiness is decided per request from one read-only snapshot: each database is probed with a bounded, cancellation-aware connection test, and nothing is cached or polled in the background.
+
+`phase` is always `completed` once the host is running. Readiness deliberately does not depend on setup state: a container whose administrator has not been created yet would otherwise fail its `HEALTHCHECK` on `/health/ready` and be restarted by its `--restart` policy in a loop, when it is in fact waiting for its first visitor to complete `/setup`. `migrationStatus` is `failed` exactly when a stored business-database configuration could not be prepared at startup (deployment-pinned configuration failure stops the host instead, so it never appears here), and `databaseStatus` is `unreachable` when either database no longer answers. Each failure form carries one stable error code — `structadoc.database.startup_fault`, `structadoc.control_plane.unreachable`, or `structadoc.database.unreachable` — and a snapshot source that fails outright answers `503` with `health.probe_failed`. No body or code contains connection strings, paths, or exception text.
+
+Readiness covers the two databases only. Storage liveness is probed from the administration settings page instead, so a deployment with an unreachable storage backend routes no traffic but keeps its administration surface to fix it from.
+
 ## Multiple Containers
 
 A multi-container deployment — the split above, or several replicas behind one address — runs every container against the same server business database and repeats the deployment-pinned configuration (`Database__*`, `Storage__*`, and the bootstrap administrator settings) identically on each container. What it does not do is share `/data`: the control plane — administrator accounts, the setup claim, browser-stored settings — is a per-instance local SQLite database that allows one writer, so each container gets its own volume, and only one instance's `/admin` is the one a browser can reach.
