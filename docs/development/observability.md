@@ -50,6 +50,36 @@ The `--migrate-business-database` CLI path does not use this pipeline. It exits 
 host is built and keeps its own `Microsoft.EntityFrameworkCore` suppression, so migration command
 log output and behavior are unchanged.
 
+## Request Correlation
+
+The Host resolves exactly one Correlation ID per request through the ServiceMantle correlation
+middleware (`UseServiceMantleCorrelationId`), inserted after the reverse-proxy trust and before
+every other downstream component, so its coverage is the complete downstream response surface,
+including rate-limited 429s, API 401/404s, static files, and the SPA fallback:
+
+- Every response answers with that value in the `x-correlation-id` response header. This is an
+  additive change to the public HTTP surface within `v1`: no existing header or field changed.
+- The same value is published to the request context (`TryGetServiceMantleCorrelationId`) and to
+  the downstream `ILogger` scope, where it appears as the structured field `CorrelationId` beside
+  the identity fields `ServiceName`, `ServiceVersion`, and `InstanceId`. One `HttpContext.Items`
+  slot and one `Response.OnStarting` callback keep the three surfaces in agreement.
+- A caller-supplied header value is reused verbatim only when the request carries exactly one
+  value of 1–64 characters whose first character is an ASCII letter or digit and whose remaining
+  characters are ASCII letters, digits, `.`, `_`, or `-`. Missing, empty, whitespace, overlong,
+  illegal, comma-joined, and repeated headers are discarded as a whole and replaced by a generated
+  value matching `^[0-9a-f]{32}$`. The original request header is never rewritten, and the
+  rejected raw value never reaches the response header, the log scope, or a diagnostic object.
+- The scope wraps the whole downstream call and is released on success, failure, and cancellation
+  alike; downstream exceptions and cancellation propagate unchanged.
+
+A Correlation ID is a log-correlation handle, nothing more. It is not unique, unguessable, or
+unforgeable; it must not be used for authorization, idempotency, replay protection, or audit
+subject identity. It is not propagated to outbound `HttpClient` calls (MinerU, S3, OIDC) and is
+not mapped to W3C `traceparent` or OpenTelemetry. Responses produced outside the middleware —
+transport-level errors, aborted connections, responses already started before it ran — are not
+guaranteed to carry the header. Consumers should treat it as the key for matching a report to a
+request in the service logs.
+
 ## OpenTelemetry Instrumentation
 
 The Host opts into the ServiceMantle core OpenTelemetry instrumentation

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.Features;
 using ServiceMantle;
 using ServiceMantle.Health;
+using ServiceMantle.Web.Http;
 using ServiceMantle.Web.Logging;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
@@ -266,6 +267,13 @@ catch (Exception error) when (error is not OperationCanceledException)
 // sign-in redirect address composed for an identity provider is built from the scheme and host, and
 // the rate limiter below partitions on the caller's address.
 app.UseStructaDocReverseProxy(reverseProxyOptions, app.Logger);
+
+// Every response answers with the request's Correlation ID in `x-correlation-id`, including 4xx/5xx
+// from anything below, so a report from a consumer can be matched to the exact request in the logs.
+// It sits after the proxy trust (the proxy decision is not correlated) and before every other
+// downstream component, and the same value enters the downstream ILogger scope beside the identity
+// fields, so events written while handling a request carry the ID that was returned to the caller.
+app.UseServiceMantleCorrelationId();
 
 app.UseRateLimiter();
 app.UseDefaultFiles();

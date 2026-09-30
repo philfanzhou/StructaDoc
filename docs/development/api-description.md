@@ -57,6 +57,10 @@ Browser-only endpoints are described in the separate operator document and are n
 
 Neither route requires a credential. The web application is public static content that already contains every route in the document, so a credential here would withhold nothing from anyone who wanted it, while costing an integrator the one page they need before they have a key. What the endpoints *do* is authorized on every request, unchanged.
 
+## The Correlation Header on Every Response
+
+Every response — success, client error, or server error, from any endpoint or the static content — carries an `x-correlation-id` response header. It is an additive `v1` change: no existing header, field, or status code changed. A client that sends its own `x-correlation-id` request header with one well-formed value (1–64 characters, letters, digits, `.`, `_`, `-`, starting with a letter or digit) gets that exact value back; anything else — missing, malformed, repeated, or joined by commas — is answered with a generated 32-character hexadecimal value. The value identifies a request, not a caller: it is suitable for matching a report to the service logs and nothing else. See [Observability](./observability.md#request-correlation).
+
 ## Dependencies
 
 The document is produced by `Microsoft.AspNetCore.OpenApi`, which is the platform's own support and needs nothing else.
