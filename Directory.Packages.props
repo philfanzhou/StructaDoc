@@ -22,6 +22,10 @@
     <PackageVersion Include="Microting.EntityFrameworkCore.MySql" Version="10.0.10" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="PDFsharp" Version="6.2.4" />
+    <!-- ServiceMantle management audit domain and its EF Core relational mapping. The core
+         contract types (ManagementAuditEvent and friends) arrive transitively; the relational
+         package supplies the service_audit_logs mapping and the staging writer. -->
+    <PackageVersion Include="ServiceMantle.Persistence.Relational" Version="0.2.0" />
     <!-- The native SQLite engine the Sqlite provider loads at runtime. EF Core asks for
          SQLitePCLRaw.bundle_e_sqlite3 2.1.12, which is old enough to matter for a component parsing
          untrusted files, so the bundle is pinned forward. The engine itself used to arrive as

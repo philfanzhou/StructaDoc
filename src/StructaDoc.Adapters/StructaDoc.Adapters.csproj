@@ -18,6 +18,7 @@
     <PackageReference Include="Microting.EntityFrameworkCore.MySql" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="PDFsharp" />
+    <PackageReference Include="ServiceMantle.Persistence.Relational" />
   </ItemGroup>
 
 </Project>

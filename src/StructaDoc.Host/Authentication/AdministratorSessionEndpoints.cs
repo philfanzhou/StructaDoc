@@ -2,8 +2,12 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Logging;
+using ServiceMantle.Audit;
+using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Contracts.Authentication;
+using StructaDoc.Host.Auditing;
 
 namespace StructaDoc.Host.Authentication;
 
@@ -48,6 +52,8 @@ public static class AdministratorSessionEndpoints
             HttpContext context,
             IAntiforgery antiforgery,
             IAdministratorAuthenticationService authenticationService,
+            StructaDocManagementAuditRecorder auditRecorder,
+            ILogger<ManagementAuditRecordPoints> logger,
             TimeProvider timeProvider,
             CancellationToken cancellationToken)
         {
@@ -65,6 +71,17 @@ public static class AdministratorSessionEndpoints
 
             if (administrator is null)
             {
+                await RecordLoginAuditAsync(
+                    auditRecorder,
+                    logger,
+                    // A failed sign-in has no established identity, so the event is attributed to
+                    // the username that was submitted.
+                    StructaDocManagementAudit.LoginAttemptOperator(request.Username),
+                    succeeded: false,
+                    request.Username,
+                    timeProvider,
+                    HostManagementAudit.ClientAddress(context),
+                    cancellationToken);
                 return Results.Problem(
                     statusCode: StatusCodes.Status401Unauthorized,
                     title: "Authentication failed",
@@ -81,8 +98,50 @@ public static class AdministratorSessionEndpoints
                     ExpiresUtc = timeProvider.GetUtcNow().Add(sessionLifetime),
                 });
 
+            await RecordLoginAuditAsync(
+                auditRecorder,
+                logger,
+                StructaDocManagementAudit.AdministratorOperator(
+                    administrator.Id.ToString("D"),
+                    administrator.Username),
+                succeeded: true,
+                administrator.Id.ToString("D"),
+                timeProvider,
+                HostManagementAudit.ClientAddress(context),
+                cancellationToken);
+
             return Results.Ok(ToResponse(administrator));
         }
+    }
+
+    private static async Task RecordLoginAuditAsync(
+        StructaDocManagementAuditRecorder auditRecorder,
+        ILogger logger,
+        ManagementAuditOperator operatorInfo,
+        bool succeeded,
+        string targetId,
+        TimeProvider timeProvider,
+        string? clientIp,
+        CancellationToken cancellationToken)
+    {
+        var auditEvent = ManagementAuditEvent.Create(
+            operatorInfo,
+            succeeded
+                ? WellKnownManagementAuditActions.AdminLoginSucceeded
+                : WellKnownManagementAuditActions.AdminLoginFailed,
+            ManagementAuditTarget.Create(
+                WellKnownManagementAuditTargetTypes.AdminSession,
+                targetId),
+            succeeded ? ManagementAuditOutcome.Success : ManagementAuditOutcome.Failure,
+            clientIp: clientIp,
+            timeProvider: timeProvider);
+
+        await HostManagementAudit.RecordAsync(
+            auditRecorder,
+            logger,
+            auditEvent,
+            "administrator login",
+            cancellationToken);
     }
 
     private static IResult GetCurrentSession(ClaimsPrincipal user)

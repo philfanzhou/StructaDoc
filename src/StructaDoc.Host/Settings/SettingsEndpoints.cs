@@ -51,7 +51,9 @@ public static class SettingsEndpoints
         var result = await settings.SetAsync(
             request.Key,
             request.Value,
-            user.FindFirstValue(StructaDocClaimTypes.Username) ?? "unknown",
+            new SettingActor(
+                user.FindFirstValue(ClaimTypes.NameIdentifier)!,
+                user.FindFirstValue(StructaDocClaimTypes.Username) ?? "unknown"),
             timeProvider.GetUtcNow().UtcDateTime,
             cancellationToken);
 

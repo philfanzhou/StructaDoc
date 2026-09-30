@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ServiceMantle.Audit;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.ControlPlane.Entities;
 using StructaDoc.Application.Settings;
@@ -10,6 +11,7 @@ public sealed class SettingsService(
     ControlPlaneDbContext dbContext,
     StructaDocSettingsConfiguration configuration,
     ISettingSecretProtector secretProtector,
+    StructaDocManagementAuditRecorder auditRecorder,
     IEnumerable<ISettingChangeListener> listeners) : ISettingsService
 {
     public async Task<IReadOnlyList<SettingState>> ListAsync(
@@ -72,7 +74,7 @@ public sealed class SettingsService(
     public async Task<SettingWriteResult> SetAsync(
         string key,
         string? value,
-        string updatedBy,
+        SettingActor actor,
         DateTime nowUtc,
         CancellationToken cancellationToken = default)
     {
@@ -84,6 +86,13 @@ public sealed class SettingsService(
         var definition = SettingCatalog.Find(key);
         if (definition is null)
         {
+            await RecordRejectedWriteAsync(
+                actor,
+                key,
+                ManagementAuditOutcome.Failure,
+                "The write named a key this service does not publish.",
+                nowUtc,
+                cancellationToken);
             return new SettingWriteResult(SettingWriteStatus.UnknownKey);
         }
 
@@ -91,6 +100,13 @@ public sealed class SettingsService(
         // which reads as a change that did not happen.
         if (configuration.IsManagedExternally(definition.Key))
         {
+            await RecordRejectedWriteAsync(
+                actor,
+                key,
+                ManagementAuditOutcome.Denied,
+                "The key is pinned by the deployment, so a browser write cannot change it.",
+                nowUtc,
+                cancellationToken);
             return new SettingWriteResult(SettingWriteStatus.ManagedExternally);
         }
 
@@ -103,6 +119,15 @@ public sealed class SettingsService(
             if (existing is not null)
             {
                 dbContext.Settings.Remove(existing);
+                // The audit row joins the row removal's save: one unit of work, so a setting is
+                // never cleared without its audit trail, and an audit failure fails the clear.
+                await StageWriteAuditAsync(
+                    actor,
+                    definition.Key,
+                    ManagementAuditOutcome.Success,
+                    "A stored setting was cleared, restoring its default.",
+                    nowUtc,
+                    cancellationToken);
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
@@ -114,6 +139,13 @@ public sealed class SettingsService(
         var normalized = SettingCatalog.Normalize(definition, value);
         if (normalized is null)
         {
+            await RecordRejectedWriteAsync(
+                actor,
+                key,
+                ManagementAuditOutcome.Failure,
+                "The submitted value is not one the key accepts.",
+                nowUtc,
+                cancellationToken);
             return new SettingWriteResult(SettingWriteStatus.InvalidValue);
         }
 
@@ -130,18 +162,80 @@ public sealed class SettingsService(
                 Key = definition.Key,
                 Value = persisted,
                 UpdatedAtUtc = nowUtc,
-                UpdatedBy = updatedBy,
+                UpdatedBy = actor.Username,
             });
         }
         else
         {
             existing.Value = persisted;
             existing.UpdatedAtUtc = nowUtc;
-            existing.UpdatedBy = updatedBy;
+            existing.UpdatedBy = actor.Username;
         }
+
+        // The audit row joins the setting row's save. The value never enters the audit event: the
+        // key name is the target, and the outcome is the result.
+        await StageWriteAuditAsync(
+            actor,
+            definition.Key,
+            ManagementAuditOutcome.Success,
+            "A stored setting was written.",
+            nowUtc,
+            cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return await ApplyAsync(definition, normalized, cancellationToken);
+    }
+
+    /// <summary>
+    /// Stages the settings record point on the same control-plane context the write uses, so the
+    /// audit row and the setting row commit and roll back together. A rejected construction fails
+    /// the write rather than letting a setting change land without its audit trail.
+    /// </summary>
+    private async ValueTask StageWriteAuditAsync(
+        SettingActor actor,
+        string key,
+        ManagementAuditOutcome outcome,
+        string? securityDescription,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        await auditRecorder.StageAsync(
+            CreateWriteAuditEvent(actor, key, outcome, securityDescription, nowUtc),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Records a write that was rejected before anything was staged, as its own audit-only row.
+    /// The actor, the key name, and the rejection are the whole record.
+    /// </summary>
+    private async Task RecordRejectedWriteAsync(
+        SettingActor actor,
+        string key,
+        ManagementAuditOutcome outcome,
+        string? securityDescription,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var auditEvent = CreateWriteAuditEvent(actor, key, outcome, securityDescription, nowUtc);
+        await auditRecorder.RecordAsync(auditEvent, cancellationToken);
+    }
+
+    private static ManagementAuditEvent CreateWriteAuditEvent(
+        SettingActor actor,
+        string key,
+        ManagementAuditOutcome outcome,
+        string? securityDescription,
+        DateTime nowUtc)
+    {
+        return ManagementAuditEvent.Create(
+            StructaDocManagementAudit.AdministratorOperator(
+                actor.AdministratorId,
+                actor.Username),
+            WellKnownManagementAuditActions.ConfigurationChanged,
+            ManagementAuditTarget.Create(WellKnownManagementAuditTargetTypes.Configuration, key),
+            outcome,
+            occurredAtUtc: new DateTimeOffset(nowUtc),
+            securityDescription: securityDescription);
     }
 
     /// <summary>
