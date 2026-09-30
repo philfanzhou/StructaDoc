@@ -12,7 +12,8 @@ public static class OidcSettingsEndpoints
     public static IEndpointRouteBuilder MapOidcSettingsEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/admin/settings/oidc")
-            .RequireAuthorization(AuthorizationPolicies.Administrator);
+            .RequireAuthorization(AuthorizationPolicies.Administrator)
+            .RequireServiceMantleSecurityResponseHeaders();
 
         group.MapGet("", GetStatus).Produces<OidcStatusResponse>();
         group.MapPost("/test", TestAsync)

@@ -1,11 +1,10 @@
 using System.Security.Claims;
-using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
+using ServiceMantle.Web;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Providers;
@@ -18,12 +17,14 @@ public static class HostAuthenticationServiceCollectionExtensions
         this IServiceCollection services,
         StructaDocAuthenticationOptions options,
         OidcAuthenticationOptions oidcOptions,
-        IDataProtectionProvider keyRing)
+        IDataProtectionProvider keyRing,
+        ServiceMantleBuilder serviceMantle)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(oidcOptions);
         ArgumentNullException.ThrowIfNull(keyRing);
+        ArgumentNullException.ThrowIfNull(serviceMantle);
         options.Validate();
         oidcOptions.Validate();
 
@@ -44,21 +45,26 @@ public static class HostAuthenticationServiceCollectionExtensions
             antiforgery.Cookie.SameSite = SameSiteMode.Strict;
             antiforgery.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         });
-        services.AddRateLimiter(rateLimiter =>
-        {
-            rateLimiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            rateLimiter.AddPolicy(
-                AuthorizationPolicies.AdministratorLoginRateLimit,
-                context => RateLimitPartition.GetFixedWindowLimiter(
-                    context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                    _ => new FixedWindowRateLimiterOptions
-                    {
-                        AutoReplenishment = true,
-                        PermitLimit = options.LoginPermitLimit,
-                        QueueLimit = 0,
-                        Window = options.LoginRateLimitWindow,
-                    }));
-        });
+        // Rate limiting comes from ServiceMantle's two isolated named policies rather than a local
+        // one. `servicemantle.setup` (first-run claim) and `servicemantle.management` (administrator
+        // sign-in) partition independently — an attacker exhausting one never consumes the other's
+        // quota — and both read the same existing keys, so `Authentication:LoginPermitLimit` and
+        // `Authentication:LoginRateLimitWindow` stay the only knobs. Three behaviors change by
+        // adopting the library policies, all of them intentional tightenings: the window is sliding
+        // rather than fixed, a rejected request is answered with the library's safe
+        // `application/problem+json` body (`rate_limit.exceeded`, `Retry-After`, `correlationId`)
+        // rather than an empty 429, and the shared keys must now satisfy the narrower of the two
+        // policies — PermitLimit 1–60 and a 10 s–10 min window — or the host refuses to start,
+        // instead of the previous 1–1000 / 1 s–1 h that only the local policy enforced.
+        serviceMantle
+            .AddRateLimiting(rateLimiting =>
+            {
+                rateLimiting.Setup.PermitLimit = options.LoginPermitLimit;
+                rateLimiting.Setup.Window = options.LoginRateLimitWindow;
+                rateLimiting.Management.PermitLimit = options.LoginPermitLimit;
+                rateLimiting.Management.Window = options.LoginRateLimitWindow;
+            })
+            .AddSecurityResponseHeaders();
 
         services.AddScoped<AdministratorCookieEvents>();
         var authentication = services

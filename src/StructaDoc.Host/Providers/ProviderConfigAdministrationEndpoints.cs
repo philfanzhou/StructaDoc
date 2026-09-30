@@ -24,7 +24,8 @@ public static class ProviderConfigAdministrationEndpoints
             .Produces<IReadOnlyList<ProviderTypeResponse>>();
 
         var group = endpoints.MapGroup("/api/v1/admin/provider-configs")
-            .RequireAuthorization(AuthorizationPolicies.Administrator);
+            .RequireAuthorization(AuthorizationPolicies.Administrator)
+            .RequireServiceMantleSecurityResponseHeaders();
 
         group.MapGet("", ListAsync).Produces<IReadOnlyList<ProviderConfigResponse>>();
         group.MapPost("", CreateAsync)

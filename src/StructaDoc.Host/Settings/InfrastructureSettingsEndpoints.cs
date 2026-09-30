@@ -21,7 +21,8 @@ public static class InfrastructureSettingsEndpoints
         this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/admin/settings")
-            .RequireAuthorization(AuthorizationPolicies.Administrator);
+            .RequireAuthorization(AuthorizationPolicies.Administrator)
+            .RequireServiceMantleSecurityResponseHeaders();
 
         group.MapGet("/storage", GetStorageStatus).Produces<StorageStatusResponse>();
         group.MapPost("/storage/test", TestStorageAsync)

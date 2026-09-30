@@ -10,7 +10,8 @@ public static class ManagementAuditQueryEndpoints
         this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/admin/audit")
-            .RequireAuthorization(AuthorizationPolicies.Administrator);
+            .RequireAuthorization(AuthorizationPolicies.Administrator)
+            .RequireServiceMantleSecurityResponseHeaders();
 
         // Read-only: no antiforgery, like every other administration GET.
         group.MapGet("", QueryAsync)

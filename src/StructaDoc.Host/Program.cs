@@ -207,7 +207,7 @@ builder.Services.AddStructaDocParseProviders();
 builder.Services.AddStructaDocProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
-builder.Services.AddStructaDocHostAuthentication(authenticationOptions, oidcOptions, keyRing);
+builder.Services.AddStructaDocHostAuthentication(authenticationOptions, oidcOptions, keyRing, serviceMantle);
 builder.Services.AddStructaDocApiDescription();
 builder.Services.AddSingleton(oidcOptions);
 builder.Services.AddSingleton(workerOptions);
@@ -319,7 +319,20 @@ app.UseServiceMantleCorrelationId();
 // same safe body: there is no development-details switch, so local diagnostics start from the log.
 app.UseServiceMantleProblemDetails();
 
-app.UseRateLimiter();
+// Setup and administration endpoints are marked with `RequireServiceMantleSecurityResponseHeaders`,
+// and this middleware is what turns that mark into the six-header baseline (`Cache-Control:
+// no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+// `Referrer-Policy: no-referrer`, and a `default-src 'none'` CSP) on everything they answer:
+// success, validation failure, 401/403, the 429 from the rate limiter below, and unhandled
+// exceptions. It sits after routing — the endpoint and its metadata are what decide — and before
+// every component below that can produce one of those responses. The unhandled-exception case is
+// answered one middleware up, by the Problem Details fallback writing its 500 on this very response,
+// and the headers ride an on-starting callback registered here on that response, so they are on it
+// when it starts: the baseline holds although the fallback body is produced outside this middleware
+// (held by Unhandled_exception_fallback_of_marked_endpoints_carries_the_baseline). Unmarked routes,
+// the SPA, and static content keep exactly the headers they had.
+app.UseServiceMantleSecurityResponseHeaders();
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 // Before authentication because the page carries no credential of its own, and before the endpoint
@@ -327,6 +340,11 @@ app.UseStaticFiles();
 // every path under it.
 app.UseStructaDocApiDescriptionPage();
 app.UseAuthentication();
+// After authentication and before authorization, because the `servicemantle.management` policy
+// partitions an authenticated caller by its management identity and falls back to the caller's
+// address otherwise; the resolver needs the principal that authentication has just produced. The
+// sign-in endpoint itself is anonymous, so its partition is the address either way.
+app.UseRateLimiter();
 app.UseAuthorization();
 
 // The workspace and administration areas are client-side routes of one SPA, so the Host answers

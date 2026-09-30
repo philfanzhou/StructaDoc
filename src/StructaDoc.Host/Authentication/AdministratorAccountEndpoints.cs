@@ -17,7 +17,8 @@ public static class AdministratorAccountEndpoints
         TimeSpan sessionLifetime)
     {
         var group = endpoints.MapGroup("/api/v1/admin/administrators")
-            .RequireAuthorization(AuthorizationPolicies.Administrator);
+            .RequireAuthorization(AuthorizationPolicies.Administrator)
+            .RequireServiceMantleSecurityResponseHeaders();
 
         group.MapGet("", ListAsync)
             .Produces<IReadOnlyList<AdministratorAccountResponse>>();
