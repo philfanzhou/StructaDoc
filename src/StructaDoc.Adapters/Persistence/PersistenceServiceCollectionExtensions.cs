@@ -33,11 +33,6 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IResourceDeletionService, EfCoreResourceDeletionService>();
         services.AddScoped<IProviderConfigAdministrationService, EfCoreProviderConfigAdministrationService>();
         services.AddScoped<IParseProviderResolver, ParseProviderResolver>();
-        services
-            .AddHealthChecks()
-            .AddDbContextCheck<StructaDocDbContext>(
-                "database",
-                tags: ["ready"]);
 
         return services;
     }

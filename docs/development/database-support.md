@@ -60,7 +60,9 @@ database, the legacy administrator import runs after preflight and before any bu
 migration that can remove `admin_users`. Preflight, legacy import, and business
 migration are inside the same configuration-source failure boundary: browser-stored
 configuration records a startup fault, keeps `/admin` available, and makes readiness
-unhealthy, while deployment-fixed configuration continues to stop startup.
+unhealthy — `/health/ready` answers `503` with `migrationStatus: failed` and the
+stable error code `structadoc.database.startup_fault` — while deployment-fixed
+configuration continues to stop startup.
 
 ### SQLite encoding requirement
 
