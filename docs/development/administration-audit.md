@@ -80,10 +80,33 @@ values (assignments like `password=`, connection-string shapes, bearer tokens, J
 are redacted from descriptions and metadata values before an event exists. Direct SQL or imports
 bypassing the writer are outside the write guarantee; query-side validation re-checks legacy rows.
 
+## Query API
+
+The trail is read through `GET /api/v1/admin/audit`, a read-only administration endpoint (v1,
+additive) behind the administrator authorization policy — an API client credential is refused, and
+a GET carries no antiforgery requirement, like every other administration read.
+
+Filters: `action`, `targetType`, `operator` (the operator identifier), and a UTC time range
+`from`/`to` of at most 366 days. Entries are returned newest first. Pagination is cursor-based:
+`pageSize` defaults to 50 and accepts 1 through 200; the first page is `page=1` without a cursor,
+and each response's `continuationCursor` is passed back unchanged with the same filters, the same
+page size, and `page` set to the returned page plus one. The cursor is opaque and bound to the
+filters, the page size, and the next page, so reusing it with a different query is refused with a
+stable error code rather than silently reinterpreted. `totalCount` is the count observed while the
+query executed, not a snapshot: rows written concurrently may make it drift between pages, and a
+backfilled row whose ordering position lies after the cursor can still appear on a later page.
+
+The response entries carry the record identifier, the action, the target type and identifier, the
+operator source and identifier, the outcome, the UTC timestamp, and the bounded description —
+nothing else. The query boundary re-validates every page, so a legacy row with over-limit text
+fails that page whole with `audit.entity_invalid` rather than being returned partially. A query an
+administrator composed wrongly — an unknown action or target type, an out-of-range page or page
+size, an impossible time range, or a cursor that does not belong to this query — is refused with
+`400` and the library's stable error code in the body.
+
 ## Explicit Non-Guarantees and Retention
 
-- No query API or UI exists yet; the trail is read from the database directly until a later issue
-  adds one.
+- There is no query UI yet; the trail is read through the API until a later issue adds one.
 - There is no automatic retention or cleanup: the `service_audit_logs` table grows with management
   activity, and the operator owns that growth. A deployment with many logins and settings changes
   should include the control-plane database in capacity monitoring.
