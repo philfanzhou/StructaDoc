@@ -147,6 +147,19 @@ against the same server business database, with the deployment-pinned configurat
 identically on every container. Administration performed through the published instance
 administers that instance and the shared business database, not the replicas' local state.
 
+The shared Data Protection key ring that this topology needs is part of the business database, not
+a shared volume: set `Authentication__DataProtectionKeyPersistence=Database`
+([ADR-0011](../adr/0011-settings-and-secret-foundation.md)) and the ring persists in the business
+database's `service_data_protection_keys` table, each row an authenticated envelope under a root
+key injected identically on every container (`Authentication__DataProtectionRootKey`, from the
+deployment's secret mechanism). The form requires exactly what this section already demands —
+`Database__*` pinned on every container — because the key ring must exist before stored settings
+are decrypted: a host that finds a browser-stored `Database` section together with the database
+key ring refuses to start rather than decrypting its own key-ring location. With it, cookies and
+Provider credentials minted by one instance are valid on every instance pointing at that database
+with that root key; the control plane remains per-instance, so administrator accounts still do not
+roam. The file key ring (`/data/keys`) remains the single-container default and is unchanged.
+
 A shared control plane — administration state in a server database — would be a new architecture
 decision, not a configuration of the current one; the settings and secret foundation evaluation
 tracked by [#107](https://github.com/philfanzhou/StructaDoc/issues/107) is where that question is
@@ -217,7 +230,10 @@ storage, bootstrap an administrator, or seed a Provider.
 
 Before an exclusive schema upgrade, stop every StructaDoc instance that can write the
 database and back up the business database, control plane, storage, and key ring as one
-recovery set. Start the new application version only after this command from the new
+recovery set. With the database key ring in use the ring is part of the business database
+backup, and the recovery set gains one item: the injected root key, without which the
+backed-up key material cannot be opened. Start the new application version only after this
+command from the new
 image exits `0`. This same entry point is verified against SQLite, PostgreSQL, MySQL,
 and MariaDB; MySQL and MariaDB rejection is verified before an absent database can be
 created under an unsupported InnoDB default row format.

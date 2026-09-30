@@ -201,9 +201,29 @@ Sign-in through an identity provider is configured under `/admin` as well. Until
 
 The image's `/data` layout is a configuration file inside the image, `appsettings.Container.json`, rather than environment variables. The difference matters: an environment variable pins a setting, so the web interface reports it as unchangeable and refuses to write it. Storage and the business database are meant to be moved from the browser, so they ship as defaults a stored setting can be layered over.
 
-Setting `Storage__*` or `Database__*` on `docker run` still works and still pins them, which is what an operator managing configuration from outside the container wants. What is genuinely fixed by the image stays an environment variable: the control-plane database path, the Data Protection key ring, and whether migrations are applied at startup are not settable from a browser at all.
+Setting `Storage__*` or `Database__*` on `docker run` still works and still pins them, which is what an operator managing configuration from outside the container wants. What is genuinely fixed by the image stays an environment variable: the control-plane database path, the Data Protection key ring — its path, its form, and its root key — and whether migrations are applied at startup are not settable from a browser at all.
 
 Moving either is a migration, not a switch. A new database is created empty at the next start and a new storage location starts empty; nothing copies existing documents, objects, or Parse Runs across. Test the new location with the button beside it first — the storage test writes and removes a probe object, and the database test connects and reads migration history without creating anything.
+
+## Sharing the Key Ring Across Instances
+
+One container keeps its key ring at `/data/keys` and nothing else is needed. A deployment running several containers against one server business database — the multi-instance form described in [Database Support](../development/database-support.md#multi-instance-deployments-and-the-control-plane) — needs every instance to read one key ring, and a shared directory is not a supported way to do it. Instead, persist the ring in the business database itself:
+
+```bash
+docker run ... \
+  --env Authentication__DataProtectionKeyPersistence=Database \
+  --env Authentication__DataProtectionRootKey='the-same-long-random-value-on-every-container' \
+  ...
+```
+
+Every key and revocation record then lands in the business database's `service_data_protection_keys` table, wrapped in an authenticated envelope under that root key. Instances pointing at the same database with the same root key decrypt each other's cookies and Provider credentials; instances with a different root key fail closed on startup's first read, without the key appearing in any diagnostic.
+
+Two prerequisites come with the form, and both are enforced by a stable startup failure rather than deferred:
+
+- Pin `Database__*` on every container. The key ring must exist before stored settings are decrypted, so the database that holds it cannot be located by a connection string that itself needs decrypting: a host that finds a browser-stored `Database` section together with this form refuses to start. This is the same per-container pinning the multi-instance topology already requires.
+- Inject the same root key on every container, from the deployment platform's secret mechanism — never shell history, never a browser-stored setting, and never the same secret as the database credentials. Losing it makes the key-ring rows unreadable, so it belongs in the backup recovery set alongside the database.
+
+Switching forms is one-way until you move the material deliberately: `/data/keys` holds keys the database form does not see, and the database rows are envelopes the file form cannot read. A deployment that switches while sessions or Provider credentials are live invalidates them, exactly as losing a key ring does. The single-container default — file ring, no root key, no extra environment variable — is unchanged.
 
 ## Behind a Reverse Proxy
 
@@ -260,7 +280,11 @@ as one consistent recovery set. When the business database is PostgreSQL, MySQL,
 MariaDB outside `/data`, match its snapshot with `/data/control.db`, `/data/storage`,
 and `/data/keys`. Restoring the business database without its objects breaks resource
 references; restoring encrypted Provider data without its key ring makes it
-unreadable. After the actor transition in
+unreadable. A deployment using the database key ring (see
+[Sharing the Key Ring Across Instances](#sharing-the-key-ring-across-instances)) backs
+the ring up with the business database itself, and its recovery set gains one item:
+the injected root key, without which the backed-up key material cannot be opened.
+After the actor transition in
 [ADR-0009](../adr/0009-canonical-persisted-actor-identity.md), restoring a different
 control-plane database also prevents canonical local-administrator audit subjects
 from resolving to accounts even though the stored audit bytes remain intact.
@@ -272,7 +296,7 @@ rolling mixed-version deployment is not supported for this schema change. The
 one-shot command below applies the coordinated Document, access-grant, and Parse Run
 replacements after the shared database preflight succeeds.
 
-That cuts the other way too, and the service says so at every start: `No XML encryptor configured. Key … may be persisted to storage in unencrypted form.` The key ring under `/data/keys` is written in the clear, because a single container on Linux has nothing to encrypt it with that would not itself have to be stored somewhere — and it is the key that makes stored Provider tokens readable. Anyone holding a copy of `/data` holds those tokens. Treat the directory, and every backup and snapshot of it, as a secret: restrict it to the `APP_UID`, keep backups encrypted, and rotate a Provider credential that was in a copy which left the host. A deployment that needs the key ring itself encrypted at rest needs a master key held outside `/data`, which this image does not yet support.
+That cuts the other way too, and the service says so at every start: `No XML encryptor configured. Key … may be persisted to storage in unencrypted form.` The key ring under `/data/keys` is written in the clear, because a single container on Linux has nothing to encrypt it with that would not itself have to be stored somewhere — and it is the key that makes stored Provider tokens readable. Anyone holding a copy of `/data` holds those tokens. Treat the directory, and every backup and snapshot of it, as a secret: restrict it to the `APP_UID`, keep backups encrypted, and rotate a Provider credential that was in a copy which left the host. A deployment that needs the key ring itself encrypted at rest has a supported answer: the database key ring form below wraps every key-ring row in an authenticated envelope under a root key held outside `/data`.
 
 ## Runtime Limits
 
@@ -318,7 +342,8 @@ For an upgrade that requires exclusive schema access:
 
 1. stop every old StructaDoc container or Worker that can write the database;
 2. take a consistent backup of the business database, `/data/control.db`, storage,
-   and `/data/keys`;
+   and `/data/keys` — plus the injected root key when the database key ring is in
+   use;
 3. run the command from the target image with the target deployment's volume and
    database secrets;
 4. start the target application version only after the command exits `0`.
