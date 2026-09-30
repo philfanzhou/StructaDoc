@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
 using ServiceMantle;
 using ServiceMantle.Health;
@@ -105,7 +106,39 @@ reverseProxyOptions.Validate();
 // so an unusable value fails startup rather than becoming a proxy that silently does nothing.
 serviceMantle.AddStructaDocForwardedHeaders(reverseProxyOptions);
 
-var keyRing = StructaDocKeyRing.Create(authenticationOptions);
+// The key ring has to exist before the stored settings below are decrypted. In the database form
+// it lives in the business database itself, which only works when that database's location does
+// not depend on the ring: the connection string must be pinned by the deployment. A stored
+// Database section together with the database key ring is that cycle, so it fails here with a
+// stable error rather than surfacing later as a decryption failure nobody can place.
+IDataProtectionProvider keyRing;
+if (authenticationOptions.DataProtectionKeyPersistence == DataProtectionKeyPersistence.Database)
+{
+    if (StructaDocSettingsConfiguration.HasStoredSection(
+            controlPlaneOptions,
+            SettingCatalog.DatabaseSection,
+            args))
+    {
+        throw new InvalidOperationException(
+            "Authentication:DataProtectionKeyPersistence is Database, but the Database section carries a stored value. "
+                + "Pin the business database (Database__*) on every container before enabling the database key ring: "
+                + "a connection string the key ring has to decrypt cannot be what locates the key ring.");
+    }
+
+    // Nothing is stored in the Database section here, so the deployment configuration alone
+    // decides where the business database is, and the options the key ring binds are the options
+    // the rest of the startup binds later.
+    var pinnedDatabaseOptions = builder.Configuration
+        .GetSection(DatabaseOptions.SectionName)
+        .Get<DatabaseOptions>() ?? new DatabaseOptions();
+    pinnedDatabaseOptions.Validate();
+    keyRing = StructaDocKeyRing.CreateDatabase(authenticationOptions, pinnedDatabaseOptions);
+}
+else
+{
+    keyRing = StructaDocKeyRing.Create(authenticationOptions);
+}
+
 var settingSecretProtector = new DataProtectionSettingSecretProtector(keyRing);
 var settingsStartupFault = new SettingsStartupFault();
 
@@ -275,14 +308,29 @@ app.UseStructaDocReverseProxy(reverseProxyOptions, app.Logger);
 // fields, so events written while handling a request carry the ID that was returned to the caller.
 app.UseServiceMantleCorrelationId();
 
+// Uncaught exceptions from anything below — endpoints, authentication, the works — are answered with
+// one environment-independent RFC 7807 body instead of an empty 500 or a dropped connection: the
+// fixed `type`, `title`, `status`, `correlationId`, and `errorCode` fields, and nothing else. The
+// middleware never inspects or writes the exception message, stack, inner exceptions, or `Data`, so
+// diagnostics live in the logs linked by that correlation ID. It sits inside the correlation
+// middleware so the fallback body carries the same value the response header and log scope do, and
+// outside everything else so the whole downstream surface is covered. Responses an endpoint produces
+// itself — every existing Results.Problem path — never reach this handler. Development keeps the
+// same safe body: there is no development-details switch, so local diagnostics start from the log.
+app.UseServiceMantleProblemDetails();
+
 // Setup and administration endpoints are marked with `RequireServiceMantleSecurityResponseHeaders`,
 // and this middleware is what turns that mark into the six-header baseline (`Cache-Control:
 // no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
 // `Referrer-Policy: no-referrer`, and a `default-src 'none'` CSP) on everything they answer:
 // success, validation failure, 401/403, the 429 from the rate limiter below, and unhandled
 // exceptions. It sits after routing — the endpoint and its metadata are what decide — and before
-// every component that can produce one of those responses. Unmarked routes, the SPA, and static
-// content keep exactly the headers they had.
+// every component below that can produce one of those responses. The unhandled-exception case is
+// answered one middleware up, by the Problem Details fallback writing its 500 on this very response,
+// and the headers ride an on-starting callback registered here on that response, so they are on it
+// when it starts: the baseline holds although the fallback body is produced outside this middleware
+// (held by Unhandled_exception_fallback_of_marked_endpoints_carries_the_baseline). Unmarked routes,
+// the SPA, and static content keep exactly the headers they had.
 app.UseServiceMantleSecurityResponseHeaders();
 
 app.UseDefaultFiles();

@@ -82,7 +82,7 @@ An address is stored without its trailing slash. An authority written with one a
 
 ## Secrets
 
-A secret is encrypted with the Data Protection key ring in `/data/keys`, the same one that already protects Provider credentials. The control-plane database sits beside the rest of a deployment's data and travels with every backup, so a client secret written there in the clear would travel with it.
+A secret is encrypted with the Data Protection key ring — `/data/keys` in the default file form, or the business database's `service_data_protection_keys` table when the deployment uses the database form — the same ring that already protects Provider credentials. The control-plane database sits beside the rest of a deployment's data and travels with every backup, so a client secret written there in the clear would travel with it.
 
 The read API reports only whether a secret is set. Its value never reaches a browser, so an administration session that is read cannot give up a credential the reader did not write. Clearing it deletes the row, as for any other setting.
 

@@ -53,7 +53,15 @@ public static class PersistenceServiceCollectionExtensions
 
         services.AddSingleton(databaseOptions);
         services.AddSingleton<IBusinessDatabaseMigrationPreflight, InnoDbMigrationPreflight>();
+        // The options are deliberately singleton-lifetime: the Data Protection key ring's database
+        // form resolves IDbContextFactory<StructaDocDbContext> as a singleton, and a scoped options
+        // registration cannot feed one. The factory's contexts create and commit independently of
+        // any caller's unit of work, so it never joins a scoped context's transaction.
         services.AddDbContext<StructaDocDbContext>(
+            options => ConfigureDatabase(options, databaseOptions),
+            contextLifetime: ServiceLifetime.Scoped,
+            optionsLifetime: ServiceLifetime.Singleton);
+        services.AddDbContextFactory<StructaDocDbContext>(
             options => ConfigureDatabase(options, databaseOptions));
         // The executor logs through the standard logging abstraction, and the migration command's
         // builder already provides it. Registering it here keeps the composition usable on a bare

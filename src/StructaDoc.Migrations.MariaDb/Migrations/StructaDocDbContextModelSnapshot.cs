@@ -22,6 +22,28 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
+            modelBuilder.Entity("ServiceMantle.Persistence.Relational.DataProtection.DataProtectionKeyEntity", b =>
+                {
+                    b.Property<string>("ServiceId")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("service_id");
+
+                    b.Property<string>("KeyId")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("key_id");
+
+                    b.Property<string>("EncryptedXml")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("encrypted_xml");
+
+                    b.HasKey("ServiceId", "KeyId");
+
+                    b.ToTable("service_data_protection_keys", (string)null);
+                });
+
             modelBuilder.Entity("StructaDoc.Adapters.Persistence.Entities.ApiClientEntity", b =>
                 {
                     b.Property<Guid>("Id")

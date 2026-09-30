@@ -1,8 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using ServiceMantle;
 using ServiceMantle.Web.RateLimiting;
 using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.Setup;
@@ -13,10 +18,10 @@ namespace StructaDoc.Host.Tests;
 // and every `/api/v1/setup` and `/api/v1/admin` endpoint group is marked with the six-header
 // security baseline. These tests hold the published contract: the 429 refusal is a safe
 // problem+json body that names no client address, partition key, or credential; the two buckets
-// are isolated in both directions; the baseline covers success, validation, authentication, and
-// refusal responses of marked endpoints and nothing on unmarked ones; the shared keys outside the
-// narrower policy range stop the host at startup; and a signed-in StructaDoc principal still
-// shares the address-partitioned management bucket.
+// are isolated in both directions; the baseline covers success, validation, authentication,
+// refusal, and unhandled-exception fallback responses of marked endpoints and nothing on unmarked
+// ones; the shared keys outside the narrower policy range stop the host at startup; and a
+// signed-in StructaDoc principal still shares the address-partitioned management bucket.
 public sealed class ServiceMantleRateLimitingSecurityHeadersTests(StructaDocWebApplicationFactory factory)
     : IClassFixture<StructaDocWebApplicationFactory>
 {
@@ -185,6 +190,49 @@ public sealed class ServiceMantleRateLimitingSecurityHeadersTests(StructaDocWebA
         AssertBaseline(rejected);
     }
 
+    // The baseline's hardest case is the response the endpoint never writes itself: an unhandled
+    // exception. The 500 Problem Details fallback is produced one middleware outside the security
+    // response-header one, so what holds the guarantee is not nesting but the on-starting callback
+    // the header middleware registers on the response: the fallback writes its body on that same
+    // response, and the callback fires when the response starts. The probe host below composes the
+    // Host's own merged order — correlation, Problem Details, security response headers — around a
+    // marked endpoint that fails, mirroring ProblemDetailsTests; an unmarked twin holds the other
+    // side, that the fallback alone does not spread the baseline to unmarked routes.
+    [Fact]
+    public async Task Unhandled_exception_fallback_of_marked_endpoints_carries_the_baseline()
+    {
+        using var host = await StartExceptionProbeHostAsync();
+        using var client = host.GetTestClient();
+
+        using var marked = await client.GetAsync(
+            "/security-headers-probe/marked/unhandled",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.InternalServerError, marked.StatusCode);
+        Assert.Equal("application/problem+json", marked.Content.Headers.ContentType?.MediaType);
+        AssertBaseline(marked);
+        using var body = JsonDocument.Parse(
+            await marked.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(
+            "urn:servicemantle:error:http.internal_server_error",
+            body.RootElement.GetProperty("type").GetString());
+        Assert.Equal("An unexpected error occurred.", body.RootElement.GetProperty("title").GetString());
+        Assert.Equal(500, body.RootElement.GetProperty("status").GetInt32());
+        Assert.Equal(
+            "http.internal_server_error",
+            body.RootElement.GetProperty("errorCode").GetString());
+        var correlationId = body.RootElement.GetProperty("correlationId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(correlationId));
+        Assert.Equal(
+            marked.Headers.GetValues("x-correlation-id").Single(),
+            correlationId);
+
+        using var unmarked = await client.GetAsync(
+            "/security-headers-probe/unmarked/unhandled",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.InternalServerError, unmarked.StatusCode);
+        AssertBaselineAbsent(unmarked);
+    }
+
     // The setup group is marked like the administration one, and its claim response is the one
     // shape that carries a session cookie: 204, `Set-Cookie`, and `Cache-Control: no-store` at the
     // same time. The session must survive that combination, which this test holds by using it.
@@ -308,6 +356,46 @@ public sealed class ServiceMantleRateLimitingSecurityHeadersTests(StructaDocWebA
                 response.Headers.TryGetValues(name, out var values),
                 $"the response carries a {name} header it must not have");
         }
+    }
+
+    /// <summary>
+    /// A web host with the Host's merged middleware order — correlation, Problem Details, security
+    /// response headers — around one marked and one unmarked endpoint that fail with the same
+    /// unhandled exception. The environment is pinned to Production so the 500 is the shipped
+    /// fallback body, not a developer exception page.
+    /// </summary>
+    private static async Task<WebApplication> StartExceptionProbeHostAsync()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Environment.EnvironmentName = Environments.Production;
+        builder.Services
+            .AddServiceMantle(
+                ServiceId.Parse("structadoc"),
+                InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"))
+            .AddSecurityResponseHeaders();
+        builder.WebHost.UseTestServer();
+
+        var app = builder.Build();
+        app.UseServiceMantleCorrelationId();
+        app.UseServiceMantleProblemDetails();
+        app.UseServiceMantleSecurityResponseHeaders();
+        app.MapGet(
+                "/security-headers-probe/marked/unhandled",
+                () =>
+                {
+                    throw new InvalidOperationException(
+                        "Security headers probe: deliberate unhandled failure with unique text QX9-SECHEAD-30817");
+                })
+            .RequireServiceMantleSecurityResponseHeaders();
+        app.MapGet(
+            "/security-headers-probe/unmarked/unhandled",
+            () =>
+            {
+                throw new InvalidOperationException(
+                    "Security headers probe: deliberate unhandled failure with unique text QX9-SECHEAD-30817");
+            });
+        await app.StartAsync(TestContext.Current.CancellationToken);
+        return app;
     }
 
     private sealed class UnclaimedFactory : WebApplicationFactory<Program>

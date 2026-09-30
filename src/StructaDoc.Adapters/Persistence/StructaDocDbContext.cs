@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ServiceMantle.Persistence.Relational.DataProtection;
 using StructaDoc.Adapters.Persistence.Entities;
 
 namespace StructaDoc.Adapters.Persistence;
@@ -54,6 +55,10 @@ public sealed class StructaDocDbContext(DbContextOptions<StructaDocDbContext> op
             type => type.Namespace?.StartsWith(
                 "StructaDoc.Adapters.ControlPlane",
                 StringComparison.Ordinal) is not true);
+        // The Data Protection key ring's database form persists under the service's own identity:
+        // key and revocation XML in the `sm:v1:` envelope, one row per (service, key id). The table
+        // is business-schema state like any other, so it migrates with the assembly's own history.
+        modelBuilder.AddServiceMantleDataProtectionKeys();
         ConfigureParseRunIdempotencyCollation(modelBuilder);
         UtcDateTimeConventions.Apply(modelBuilder);
     }

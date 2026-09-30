@@ -254,7 +254,7 @@ Configuration uses standard ASP.NET Core keys; environment variables replace `:`
 | Storage | `Storage__Provider`, `Storage__RootPath`, S3 endpoint, bucket, prefix, region, and credential settings |
 | Documents | `Documents__UploadApiEnabled`, `Documents__MaxUploadBytes` |
 | OIDC | `Oidc__Enabled`, `Oidc__Authority`, `Oidc__ClientId`, `Oidc__ClientSecret`, scopes and role mapping; all but scopes and the callback paths are also settable under `/admin` |
-| Local administration | bootstrap credentials, session lifetime, login limits, and Data Protection key path under `Authentication__*` |
+| Local administration | bootstrap credentials, session lifetime, login limits, and Data Protection key path, persistence form, and root key under `Authentication__*` |
 | Conversion | executable, concurrency, timeout, and byte/disk limits under `LibreOffice__*` |
 | Provider results | archive, entry, expansion, compression-ratio, and normalization limits |
 
