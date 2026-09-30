@@ -42,8 +42,9 @@ builder.Configuration.AddContainerDefaults(args);
 // the stable "structadoc" service id and an instance id regenerated on every host start. No
 // bootstrap file path is passed, so the bootstrap store stays a lazy singleton and this wiring
 // performs no disk writes. No serviceVersion is passed: it resolves from the entry assembly
-// informational version, the assembly version, then "unknown".
-builder.Services.AddServiceMantle(
+// informational version, the assembly version, then "unknown". The builder it returns is kept
+// because the reverse-proxy trust registers on it below, once the options it needs are read.
+var serviceMantle = builder.Services.AddServiceMantle(
     ServiceId.Parse("structadoc"),
     InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"));
 
@@ -86,6 +87,10 @@ var reverseProxyOptions = builder.Configuration
     .GetSection(ReverseProxyOptions.SectionName)
     .Get<ReverseProxyOptions>() ?? new ReverseProxyOptions();
 reverseProxyOptions.Validate();
+// The trust registration is validated with the host, not at composition: ServiceMantle parses the
+// named peers, the published hosts, and the forward limit into one snapshot when the host starts,
+// so an unusable value fails startup rather than becoming a proxy that silently does nothing.
+serviceMantle.AddStructaDocForwardedHeaders(reverseProxyOptions);
 
 var keyRing = StructaDocKeyRing.Create(authenticationOptions);
 var settingSecretProtector = new DataProtectionSettingSecretProtector(keyRing);
