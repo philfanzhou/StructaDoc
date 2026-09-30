@@ -1,7 +1,7 @@
 # Service Settings
 
 - Status: Implementation note
-- Last updated: 2026-08-10
+- Last updated: 2026-09-30
 
 ## Purpose
 
@@ -23,6 +23,21 @@ Precedence is decided explicitly rather than by where a configuration source lan
 Level 3 is decided the same way, and had to be: `appsettings.Container.json` first tried to take its place by source position, and the web host — which reads environment variables both before and after `appsettings.json` and then chains its host configuration on at the end — has no position that is above the repository's defaults and below the deployment's at once. The file landed under `appsettings.json`, and the image started against a read-only `/app/data`. It is now applied key by key, skipping every key an environment variable or argument supplied. See [Single Container](../deployment/single-container.md) for what the image puts there.
 
 A pinned setting is reported as managed externally and cannot be written through the API, which answers `409`. Storing a value the service would never read would report a change that did not happen.
+
+## What a Stored Setting Reaches
+
+A stored setting reaches the instance whose control plane holds it, and it takes effect at that
+instance's startup — settings are read into configuration before anything binds options from it,
+which is why every entry in the table above says Restart.
+
+In the shipped single-instance deployment, one instance is the whole service, so one control plane
+is the whole audience. A multi-instance deployment — several containers against one server
+business database — does not widen that audience: a value written through `/admin` is stored by the
+instance that served the write and read by that instance alone; the other instances' control planes
+never see the row. A value that has to apply to every instance is a deployment pin (an environment
+variable or command-line argument, supplied identically on each container), not a stored setting.
+See [Database Support](./database-support.md) for the multi-instance control-plane boundary as a
+whole.
 
 ## Settable Keys
 

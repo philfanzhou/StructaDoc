@@ -1,7 +1,7 @@
 # Database Support
 
 - Status: Implementation note
-- Last updated: 2026-08-31
+- Last updated: 2026-09-30
 
 ## Purpose
 
@@ -106,6 +106,49 @@ Changing the database does not move anything into it. A new database is migrated
 Keep SQLite on a local persistent volume. Multiple containers must not share the file, and it must not live on a network filesystem.
 
 A connection or migration failure prevents readiness. Whether it also prevents startup depends on where the configuration came from. A database the deployment pinned still stops the service, because whoever set it has a command line and is better served by failing at once. One an administrator chose in the browser does not: the service starts, records the fault, and reports it under `/admin`, which is the only place that mistake can be corrected from. Administrator accounts and settings live in the separate control-plane database, so signing in and fixing the connection string both keep working while the business database is unreachable.
+
+## Multi-Instance Deployments and the Control Plane
+
+A multi-instance deployment is several StructaDoc containers pointed at one server business
+database. That is the supported form: the business database — PostgreSQL, MySQL, or MariaDB — is
+the shared, authoritative state, and the durable-job semantics above (atomic claims, leases,
+recovery) are what make competing instances safe. SQLite remains one instance, full stop.
+
+The control plane does not follow the business database, and that boundary is a property of the
+design, not an accident of it: `ControlPlane:DatabasePath` is always a local SQLite file with
+deliberately no provider switch, because the control plane has to work before anything an
+administrator configures is reachable — including the business database itself. Administrator
+accounts, the setup claim, and browser-stored settings all live there, and the management audit
+trail lands in the same database as that work arrives. In a multi-instance deployment this means:
+
+- Each instance has its own control plane. Mounting one `/data` — or one control-plane file —
+  across containers is not a supported configuration: SQLite permits a single writer, and the rule
+  that multiple containers must not share a database file applies to the control plane just as it
+  does to a SQLite business database. Give every container its own `/data` volume.
+- Administrator accounts are per-instance. An account created through `/setup` or `/admin` on one
+  instance does not exist on any other, and an administrator session does not roam: cookie
+  validation consults the issuing instance's control plane, so even a shared Data Protection key
+  ring (ADR-0005) does not make one instance's administrator valid on another.
+- A stored setting reaches exactly one instance: the one whose `/admin` wrote it, at that
+  instance's next start. Every other instance keeps reading its own deployment pins and shipped
+  defaults — its control plane has no such row to read. A value that must apply to every instance
+  is a deployment pin (`Database__*`, `Storage__*`) set identically on each container, not a
+  browser-stored setting.
+- An instance whose control plane holds no administrator exposes `/setup` to its first visitor.
+  In a multi-instance deployment, pin `Authentication:BootstrapAdministrator*` on every instance,
+  or claim setup on each replica deliberately: an unclaimed replica is an open first-administrator
+  window no matter what the other instances' state is.
+
+The supported topology, then, is: one instance serves the browser and the administration area —
+the address the reverse proxy publishes — while the other instances run as API and Worker replicas
+against the same server business database, with the deployment-pinned configuration repeated
+identically on every container. Administration performed through the published instance
+administers that instance and the shared business database, not the replicas' local state.
+
+A shared control plane — administration state in a server database — would be a new architecture
+decision, not a configuration of the current one; the settings and secret foundation evaluation
+tracked by [#107](https://github.com/philfanzhou/StructaDoc/issues/107) is where that question is
+being weighed.
 
 ## Durable Job Stores
 

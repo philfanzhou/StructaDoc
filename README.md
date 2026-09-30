@@ -176,7 +176,7 @@ flowchart LR
     Cleanup --> Storage
 ```
 
-The Worker uses the configured relational database as the authoritative queue. It does not rely on an in-process queue, so work can resume from stored leases and checkpoints after a restart. SQLite supports one StructaDoc instance; server databases support multiple competing Worker instances.
+The Worker uses the configured relational database as the authoritative queue. It does not rely on an in-process queue, so work can resume from stored leases and checkpoints after a restart. SQLite supports one StructaDoc instance; server databases support multiple competing Worker instances. The administration control plane stays per-instance in every form — administrator accounts, setup, and browser-stored settings are local to each container and not shared — so a multi-instance deployment pins its shared configuration rather than administering it from one browser session. See [Database Support](./docs/development/database-support.md#multi-instance-deployments-and-the-control-plane).
 
 ## Identity and Authorization
 
