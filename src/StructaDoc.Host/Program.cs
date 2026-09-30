@@ -43,9 +43,16 @@ builder.Configuration.AddContainerDefaults(args);
 // bootstrap file path is passed, so the bootstrap store stays a lazy singleton and this wiring
 // performs no disk writes. No serviceVersion is passed: it resolves from the entry assembly
 // informational version, the assembly version, then "unknown".
+//
+// The same registration opts into the core OpenTelemetry instrumentation: ASP.NET Core and
+// HttpClient tracing plus .NET runtime metrics, with no exporter registered. Trace and metric data
+// stays in the process; there is no telemetry network destination of any kind by default. The
+// OTel resource is exactly service.name, service.version, and service.instance.id, taken from the
+// same identity the log pipeline uses.
 builder.Services.AddServiceMantle(
-    ServiceId.Parse("structadoc"),
-    InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"));
+        ServiceId.Parse("structadoc"),
+        InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"))
+    .AddOpenTelemetryInstrumentation();
 
 // Console logging runs through the ServiceMantle Serilog pipeline: structured properties are
 // sanitized by the library before they reach the sink, and the default MEL console providers are
