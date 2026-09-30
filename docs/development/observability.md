@@ -80,6 +80,32 @@ transport-level errors, aborted connections, responses already started before it
 guaranteed to carry the header. Consumers should treat it as the key for matching a report to a
 request in the service logs.
 
+## Uncaught Exceptions
+
+The ServiceMantle Problem Details middleware (`UseServiceMantleProblemDetails`) sits inside the
+correlation middleware and outside every other downstream component, so an exception nothing else
+handles is answered with one deterministic RFC 7807 body — `type`
+`urn:servicemantle:error:http.internal_server_error`, the fixed `title`, `status` `500`,
+`errorCode` `http.internal_server_error`, and `correlationId` — while the correlation middleware
+puts the same value in the `x-correlation-id` response header and the request's log scope. The
+body is identical in every environment, because the library has no development-details switch:
+the framework developer exception page is replaced by the safe body in Development too, and local
+diagnostics start from the logs.
+
+The fallback's own log entry is the diagnostics surface for such a request. The middleware writes
+one error event — `A ServiceMantle request failed with {ErrorCode}; CorrelationId {CorrelationId}.`
+— and nothing else about the exception: no message, stack, inner exceptions, or `Data`, neither in
+the body nor in the middleware's log. An operator reading the entry can take the Correlation ID
+from a consumer report and find the exact request; the exception detail itself is not published to
+either surface.
+
+Cancellation keeps its own rules. A cancellation the caller requested — the request aborted while
+the response had not started — propagates unchanged and produces no 500 body: for the client it is
+the cancellation it caused. An `OperationCanceledException` thrown independently, which no caller
+is waiting for, is treated like any other unmapped exception and answered with the fixed body.
+When the response has already started, an exception below changes nothing that was sent; the
+middleware logs the failure and leaves the transmitted bytes alone.
+
 ## OpenTelemetry Instrumentation
 
 The Host opts into the ServiceMantle core OpenTelemetry instrumentation
