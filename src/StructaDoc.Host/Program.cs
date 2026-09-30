@@ -1,7 +1,8 @@
-using System.Reflection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using ServiceMantle;
+using ServiceMantle.Web.Logging;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.Conversion;
@@ -36,6 +37,32 @@ if (BusinessDatabaseMigrationCommand.TryExtractArguments(args, out var migration
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddContainerDefaults(args);
+
+// ServiceMantle fixes the service identity every log event and /api/v1/system/info answer with:
+// the stable "structadoc" service id and an instance id regenerated on every host start. No
+// bootstrap file path is passed, so the bootstrap store stays a lazy singleton and this wiring
+// performs no disk writes. No serviceVersion is passed: it resolves from the entry assembly
+// informational version, the assembly version, then "unknown".
+builder.Services.AddServiceMantle(
+    ServiceId.Parse("structadoc"),
+    InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"));
+
+// Console logging runs through the ServiceMantle Serilog pipeline: structured properties are
+// sanitized by the library before they reach the sink, and the default MEL console providers are
+// removed so no event can bypass that boundary. Registered before builder.Build() so startup
+// logging, including the stored-setting fault warnings below, goes through the same pipeline.
+// The two override categories keep the shipped appsettings filtering: their Information events
+// stay off the console. Grafana Loki stays off; there is no remote log transport in this wiring.
+builder.AddServiceMantleSerilog(options =>
+{
+    options.MinimumLevel = LogLevel.Information;
+    options.MinimumLevelOverrides = new Dictionary<string, LogLevel>
+    {
+        ["Microsoft.AspNetCore"] = LogLevel.Warning,
+        ["Microsoft.EntityFrameworkCore.Database.Command"] = LogLevel.Warning,
+    };
+    options.IncludeScopes = true;
+});
 
 var controlPlaneOptions = builder.Configuration
     .GetSection(ControlPlaneOptions.SectionName)
@@ -273,16 +300,13 @@ app.Use(async (context, next) =>
     await next(context);
 });
 
-var serviceVersion = Assembly
-    .GetExecutingAssembly()
-    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-    .InformationalVersion ?? "unknown";
+var serviceLogContext = app.Services.GetRequiredService<ServiceLogContext>();
 
 app.MapStructaDocApiDescription();
 
 app.MapGet(
         "/api/v1/system/info",
-        () => new ServiceInfoResponse("StructaDoc", serviceVersion))
+        () => new ServiceInfoResponse("StructaDoc", serviceLogContext.ServiceVersion))
     .WithName("GetServiceInfo");
 
 if (ingestionOptions.UploadApiEnabled)
