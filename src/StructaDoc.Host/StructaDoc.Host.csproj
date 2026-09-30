@@ -19,6 +19,7 @@
     <PackageReference Include="Markdig" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="ServiceMantle.Diagnostics" />
     <PackageReference Include="ServiceMantle.Logging" />
     <PackageReference Include="ServiceMantle.Web" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" />
