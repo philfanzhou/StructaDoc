@@ -70,8 +70,13 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
         // those same tests depend on. Execution is added back by the classes it is the subject of.
         builder.ConfigureServices(services =>
         {
+            // Singleton options lifetime, matching the application's registration: the key ring's
+            // DbContextFactory is a singleton consumer of the options, and a scoped registration
+            // from this layer would make the container refuse to build them.
             services.AddDbContext<StructaDocDbContext>(
-                options => options.AddInterceptors(DatabaseCommandCounter));
+                options => options.AddInterceptors(DatabaseCommandCounter),
+                contextLifetime: ServiceLifetime.Scoped,
+                optionsLifetime: ServiceLifetime.Singleton);
 
             foreach (var descriptor in services
                 .Where(service => service.ServiceType == typeof(IHostedService)

@@ -186,9 +186,17 @@ unowned and remain administrator-only, which is what they already were.
 
 ## Data Protection
 
-`Authentication:DataProtectionKeysPath` defaults to `./data/keys`. The key ring protects Cookies, antiforgery tokens, Provider credentials, and submission checkpoints. It must be persistent, permission-restricted, and backed up with the database. Losing it invalidates sessions and can make encrypted Provider state unrecoverable.
+The key ring protects Cookies, antiforgery tokens, Provider credentials, and submission checkpoints. It must be persistent, permission-restricted, and backed up with the database. Losing it invalidates sessions and can make encrypted Provider state unrecoverable. The ring has two forms, selected by `Authentication:DataProtectionKeyPersistence`:
 
-Multiple Host instances must share the same key ring. The current implementation uses filesystem persistence; deployments that cannot share it safely do not yet support multi-instance browser sessions. API keys are not affected by this limitation.
+- **File** (default, the single-container form): `Authentication:DataProtectionKeysPath` defaults to `./data/keys`, the keys are plain XML on the container's own volume, and nothing else moves. This form's behavior is unchanged.
+- **Database**: keys and revocation records persist in the business database's `service_data_protection_keys` table, each row wrapped in ServiceMantle's authenticated `sm:v1:` envelope under `Authentication:DataProtectionRootKey`. Every instance pointing at that database with the same root key decrypts what any instance encrypted, which is what makes cookies and Provider credentials valid across instances.
+
+The database form has two hard prerequisites, both fail-closed at startup:
+
+- The business database must be pinned by the deployment. The key ring has to exist before stored settings are decrypted, and a connection string that itself needs decrypting cannot be what locates the key ring: a host started with the database form and a browser-stored `Database` section refuses to start with a stable error, rather than surfacing the cycle later as a decryption failure nobody can place. See [Database Support](./database-support.md#multi-instance-deployments-and-the-control-plane).
+- `Authentication:DataProtectionRootKey` must be present, injected through an environment variable or the deployment's secret mechanism on every container, identically. It is deliberately not a stored setting — an administrator reaching the service through a browser cannot be the custodian of the key that protects the store the browser writes to — and it never appears in logs or diagnostics. An instance started with a different or wrong root key fails closed when it reads the stored envelopes, without either key in the error.
+
+Key lifecycle — creation, activation, and revocation — stays with ASP.NET Core Data Protection in both forms; only the storage location changes. API keys are not affected by the key ring in either form.
 
 Provider bearer tokens remain separate from every user credential. Adapters decrypt a token only from the immutable configuration version used by a leased Parse Run and attach it only to the configured Provider API origin. Signed upload and result-CDN requests never receive that token.
 
@@ -196,5 +204,4 @@ Provider bearer tokens remain separate from every user credential. Adapters decr
 
 - configurable failed-login lockout and persistent authentication audit;
 - rate limiting on the password-change endpoint, which currently shares nothing with the sign-in limiter;
-- redirecting HTTP to HTTPS and emitting HSTS, which is left to the proxy that terminates TLS;
-- an external Data Protection key-ring option for multi-instance platforms. The key ring now also encrypts stored settings, so replacing it costs a stored client secret as well as every live session; see [Service Settings](./service-settings.md).
+- redirecting HTTP to HTTPS and emitting HSTS, which is left to the proxy that terminates TLS.

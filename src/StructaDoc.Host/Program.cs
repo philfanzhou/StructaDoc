@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
 using ServiceMantle;
 using ServiceMantle.Health;
@@ -105,7 +106,39 @@ reverseProxyOptions.Validate();
 // so an unusable value fails startup rather than becoming a proxy that silently does nothing.
 serviceMantle.AddStructaDocForwardedHeaders(reverseProxyOptions);
 
-var keyRing = StructaDocKeyRing.Create(authenticationOptions);
+// The key ring has to exist before the stored settings below are decrypted. In the database form
+// it lives in the business database itself, which only works when that database's location does
+// not depend on the ring: the connection string must be pinned by the deployment. A stored
+// Database section together with the database key ring is that cycle, so it fails here with a
+// stable error rather than surfacing later as a decryption failure nobody can place.
+IDataProtectionProvider keyRing;
+if (authenticationOptions.DataProtectionKeyPersistence == DataProtectionKeyPersistence.Database)
+{
+    if (StructaDocSettingsConfiguration.HasStoredSection(
+            controlPlaneOptions,
+            SettingCatalog.DatabaseSection,
+            args))
+    {
+        throw new InvalidOperationException(
+            "Authentication:DataProtectionKeyPersistence is Database, but the Database section carries a stored value. "
+                + "Pin the business database (Database__*) on every container before enabling the database key ring: "
+                + "a connection string the key ring has to decrypt cannot be what locates the key ring.");
+    }
+
+    // Nothing is stored in the Database section here, so the deployment configuration alone
+    // decides where the business database is, and the options the key ring binds are the options
+    // the rest of the startup binds later.
+    var pinnedDatabaseOptions = builder.Configuration
+        .GetSection(DatabaseOptions.SectionName)
+        .Get<DatabaseOptions>() ?? new DatabaseOptions();
+    pinnedDatabaseOptions.Validate();
+    keyRing = StructaDocKeyRing.CreateDatabase(authenticationOptions, pinnedDatabaseOptions);
+}
+else
+{
+    keyRing = StructaDocKeyRing.Create(authenticationOptions);
+}
+
 var settingSecretProtector = new DataProtectionSettingSecretProtector(keyRing);
 var settingsStartupFault = new SettingsStartupFault();
 

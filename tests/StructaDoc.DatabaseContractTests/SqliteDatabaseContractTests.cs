@@ -26,6 +26,9 @@ public sealed class SqliteDatabaseContractTests
             await ParseRunLeaseContract.AssertAsync(
                 DatabaseProvider.Sqlite,
                 connectionString);
+            await DataProtectionKeyRingContract.AssertAsync(
+                DatabaseProvider.Sqlite,
+                connectionString);
         }
         finally
         {

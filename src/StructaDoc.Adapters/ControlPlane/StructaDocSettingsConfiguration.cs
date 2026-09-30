@@ -144,6 +144,63 @@ public sealed class StructaDocSettingsConfiguration
             .Build();
     }
 
+    /// <summary>
+    /// True when the settings store holds a value in this section that the deployment has not
+    /// pinned over, read without decrypting anything. The key ring's database form needs this
+    /// before the key ring exists: a stored value in the <c>Database</c> section could itself be
+    /// material the key ring decrypts, and a key ring located by a connection string that needs
+    /// decrypting is a cycle rather than a configuration.
+    /// </summary>
+    public static bool HasStoredSection(
+        ControlPlaneOptions options,
+        string section,
+        string[] commandLineArguments)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(options?.ConnectionString);
+        ArgumentException.ThrowIfNullOrWhiteSpace(section);
+
+        if (!File.Exists(options.DatabasePath))
+        {
+            return false;
+        }
+
+        using var connection = new SqliteConnection(options.ConnectionString);
+        connection.Open();
+
+        using (var probe = connection.CreateCommand())
+        {
+            probe.CommandText =
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings'";
+            if (probe.ExecuteScalar() is null)
+            {
+                return false;
+            }
+        }
+
+        var deployment = new ConfigurationBuilder()
+            .AddEnvironmentVariables()
+            .AddCommandLine(commandLineArguments ?? [])
+            .Build();
+
+        var prefix = section + ":";
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT key FROM settings WHERE key LIKE @prefix";
+        command.Parameters.AddWithValue("@prefix", prefix + "%");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var key = reader.GetString(0);
+            // The same two exclusions the loader applies: a key the catalog no longer publishes is
+            // not steering the service, and a key the deployment pins over never reaches it.
+            if (SettingCatalog.Find(key) is not null && deployment[key] is null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static IEnumerable<KeyValuePair<string, string?>> Load(
         ControlPlaneOptions options,
         ISettingSecretProtector secretProtector,
