@@ -1,11 +1,47 @@
 using System.Collections.Concurrent;
-using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
+using ServiceMantle.Web;
+using ServiceMantle.Web.Http;
 
 namespace StructaDoc.Host.Settings;
 
 public static class ReverseProxyExtensions
 {
+    /// <summary>
+    /// Registers the trusted-proxy configuration with ServiceMantle, which runs the forwarded
+    /// headers through an explicit trust snapshot: the named addresses and ranges, the published
+    /// hosts, and the forward limit are validated when the host starts — an unusable value fails
+    /// startup rather than becoming a proxy that silently does nothing.
+    ///
+    /// A deployment that names no proxy registers nothing at all, and is left exactly as it was:
+    /// no header is read, and a service published directly cannot be told by a caller that it is
+    /// somewhere else.
+    /// </summary>
+    public static ServiceMantleBuilder AddStructaDocForwardedHeaders(
+        this ServiceMantleBuilder serviceMantle,
+        ReverseProxyOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(serviceMantle);
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (!options.IsEnabled)
+        {
+            return serviceMantle;
+        }
+
+        return serviceMantle.AddForwardedHeaders(forwarded =>
+        {
+            // The library parses, deduplicates, and normalizes these into its own snapshot; what it
+            // hands the framework is its own ForwardedHeadersOptions with the implicit loopback
+            // trust removed. Host trust stays conditional on PublicHosts, exactly as before.
+            forwarded.KnownProxies = options.ProxyAddresses.Select(address => address.ToString());
+            forwarded.KnownIPNetworks = options.ProxyNetworks.Select(network => network.ToString());
+            forwarded.AllowedHosts = options.HostNames;
+            forwarded.ForwardLimit = options.ForwardLimit;
+        });
+    }
+
     /// <summary>
     /// The peers named in <see cref="ReverseProxyOptions.TrustedProxies"/> get to say what the
     /// browser asked for. This has to run before anything reads the scheme, the host, or the caller's
@@ -32,38 +68,7 @@ public static class ReverseProxyExtensions
             return app;
         }
 
-        var forwarded = new ForwardedHeadersOptions
-        {
-            ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-            ForwardLimit = options.ForwardLimit,
-        };
-
-        // The framework trusts loopback out of the box. That is a reasonable default for a service
-        // started by hand and the wrong one here: in a container, loopback is the container itself,
-        // so the only effect would be to believe anything that reached it from inside.
-        forwarded.KnownIPNetworks.Clear();
-        forwarded.KnownProxies.Clear();
-
-        foreach (var address in options.ProxyAddresses)
-        {
-            forwarded.KnownProxies.Add(address);
-        }
-
-        foreach (var network in options.ProxyNetworks)
-        {
-            forwarded.KnownIPNetworks.Add(network);
-        }
-
-        if (options.HostNames.Count > 0)
-        {
-            forwarded.ForwardedHeaders |= ForwardedHeaders.XForwardedHost;
-            foreach (var host in options.HostNames)
-            {
-                forwarded.AllowedHosts.Add(host);
-            }
-        }
-
-        return app.UseForwardedHeaders(forwarded);
+        return app.UseServiceMantleForwardedHeaders();
     }
 
     /// <summary>

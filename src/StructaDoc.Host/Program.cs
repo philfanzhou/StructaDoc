@@ -42,14 +42,15 @@ builder.Configuration.AddContainerDefaults(args);
 // the stable "structadoc" service id and an instance id regenerated on every host start. No
 // bootstrap file path is passed, so the bootstrap store stays a lazy singleton and this wiring
 // performs no disk writes. No serviceVersion is passed: it resolves from the entry assembly
-// informational version, the assembly version, then "unknown".
+// informational version, the assembly version, then "unknown". The builder it returns is kept
+// because the reverse-proxy trust registers on it below, once the options it needs are read.
 //
 // The same registration opts into the core OpenTelemetry instrumentation: ASP.NET Core and
 // HttpClient tracing plus .NET runtime metrics, with no exporter registered. Trace and metric data
 // stays in the process; there is no telemetry network destination of any kind by default. The
 // OTel resource is exactly service.name, service.version, and service.instance.id, taken from the
 // same identity the log pipeline uses.
-builder.Services.AddServiceMantle(
+var serviceMantle = builder.Services.AddServiceMantle(
         ServiceId.Parse("structadoc"),
         InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"))
     .AddOpenTelemetryInstrumentation();
@@ -93,6 +94,10 @@ var reverseProxyOptions = builder.Configuration
     .GetSection(ReverseProxyOptions.SectionName)
     .Get<ReverseProxyOptions>() ?? new ReverseProxyOptions();
 reverseProxyOptions.Validate();
+// The trust registration is validated with the host, not at composition: ServiceMantle parses the
+// named peers, the published hosts, and the forward limit into one snapshot when the host starts,
+// so an unusable value fails startup rather than becoming a proxy that silently does nothing.
+serviceMantle.AddStructaDocForwardedHeaders(reverseProxyOptions);
 
 var keyRing = StructaDocKeyRing.Create(authenticationOptions);
 var settingSecretProtector = new DataProtectionSettingSecretProtector(keyRing);

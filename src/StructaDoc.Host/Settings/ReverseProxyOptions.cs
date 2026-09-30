@@ -55,7 +55,8 @@ public sealed class ReverseProxyOptions
     /// <summary>
     /// How many proxies stand in front of the service. Each consumes one entry of each forwarded
     /// header, so a service behind a CDN and an ingress needs 2, and a value larger than the number
-    /// of proxies lets the client supply the entry the last one did not.
+    /// of proxies lets the client supply the entry the last one did not. The service refuses a
+    /// value above 10 at startup, which is the trust implementation's hard limit.
     /// </summary>
     public int ForwardLimit { get; init; } = 1;
 
@@ -115,10 +116,10 @@ public sealed class ReverseProxyOptions
                 $"{SectionName}:{nameof(PublicHosts)} is set without {SectionName}:{nameof(TrustedProxies)}, so no forwarded header would be read at all.");
         }
 
-        if (ForwardLimit is < 1 or > 16)
+        if (ForwardLimit is < 1 or > 10)
         {
             throw new InvalidOperationException(
-                $"{SectionName}:{nameof(ForwardLimit)} must be between 1 and 16.");
+                $"{SectionName}:{nameof(ForwardLimit)} must be between 1 and 10.");
         }
 
         ProxyAddresses = addresses;
