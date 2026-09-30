@@ -45,14 +45,21 @@ builder.Configuration.AddContainerDefaults(args);
 // bootstrap file path is passed, so the bootstrap store stays a lazy singleton and this wiring
 // performs no disk writes. No serviceVersion is passed: it resolves from the entry assembly
 // informational version, the assembly version, then "unknown". The builder it returns is kept
-// because the reverse-proxy trust registers on it below, once the options it needs are read. The
-// same registration maps the health endpoints: /health/live is always 200, and /health/ready with
+// because the reverse-proxy trust registers on it below, once the options it needs are read.
+// The same registration maps the health endpoints: /health/live is always 200, and /health/ready with
 // its /health alias answer 200 only for the Completed + Succeeded + Reachable snapshot the
 // StructaDocHealthSnapshotSource composes from the control plane and the business database.
+//
+// The same registration opts into the core OpenTelemetry instrumentation: ASP.NET Core and
+// HttpClient tracing plus .NET runtime metrics, with no exporter registered. Trace and metric data
+// stays in the process; there is no telemetry network destination of any kind by default. The
+// OTel resource is exactly service.name, service.version, and service.instance.id, taken from
+// the same identity the log pipeline uses.
 var serviceMantle = builder.Services.AddServiceMantle(
         ServiceId.Parse("structadoc"),
         InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"))
-    .AddServiceMantleHealthEndpoints();
+    .AddServiceMantleHealthEndpoints()
+    .AddOpenTelemetryInstrumentation();
 
 // Console logging runs through the ServiceMantle Serilog pipeline: structured properties are
 // sanitized by the library before they reach the sink, and the default MEL console providers are
