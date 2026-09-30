@@ -28,6 +28,8 @@
          SQLitePCLRaw.lib.e_sqlite3; SQLitePCLRaw 3.x renamed that package to SQLite, so pinning the
          retired name constrains nothing. Naming it here is what keeps the engine version decided in
          this file rather than by whatever the bundle happens to depend on. -->
+    <PackageVersion Include="ServiceMantle.Logging" Version="0.2.1-rc.1" />
+    <PackageVersion Include="ServiceMantle.Web" Version="0.2.0" />
     <PackageVersion Include="SQLite" Version="3.53.4" />
     <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <!-- The browsable page for the OpenAPI document, and nothing else from Swashbuckle: the

@@ -44,6 +44,7 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | [Document Reading](./development/document-reading.md) | Listing, detail, download, caching, and Range semantics |
 | [File Storage](./development/file-storage.md) | Local/S3 persistence, upload validation, and conflict-safe writes |
 | [MinerU HTTP Providers](./development/mineru-http-providers.md) | Cloud signed upload, Local multipart, polling, result streaming, and SSRF boundaries |
+| [Observability](./development/observability.md) | Service identity, the sanitizing Serilog console pipeline, and their guarantees |
 | [Office Conversion](./development/office-conversion.md) | Constrained LibreOffice execution, snapshots, and recovery |
 | [Provider Config and Parse Runs](./development/provider-config-and-parse-runs.md) | Immutable Provider configuration, browser administration, and Parse Run creation |
 | [Provider Execution](./development/provider-execution.md) | Provider capabilities, execution snapshots, heartbeats, and resumable orchestration |
