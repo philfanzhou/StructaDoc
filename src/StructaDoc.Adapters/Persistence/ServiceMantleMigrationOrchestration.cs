@@ -70,12 +70,17 @@ public static class ServiceMantleMigrationOrchestration
         DatabaseProviderIdResolver.Empty);
 
     /// <summary>
-    /// The deployment capability declarations consulted before any migration side effect. Only
-    /// SQLite declares one: it is single-instance only, so a multi-instance request fails closed
-    /// before anything touches the filesystem.
+    /// The deployment capability declarations consulted before any migration side effect.
+    /// SQLite is single-instance only; server databases declare multi-instance support and
+    /// always use their real provider lease. These declarations perform no target preparation.
     /// </summary>
     public static DatabaseDeploymentCapabilityRegistry CreateDeploymentCapabilityRegistry() => new(
-        [new SqliteDatabaseTargetPreparationProvider()],
+        [
+            new SqliteDatabaseTargetPreparationProvider(),
+            new ServerMigrationCapability(WellKnownDatabaseProviderIds.PostgreSql),
+            new ServerMigrationCapability(WellKnownDatabaseProviderIds.MySql),
+            new ServerMigrationCapability(WellKnownDatabaseProviderIds.MariaDb),
+        ],
         DatabaseProviderIdResolver.Empty);
 
     /// <summary>
@@ -96,8 +101,8 @@ public static class ServiceMantleMigrationOrchestration
     /// <see cref="DefaultLockAcquireTimeout"/>.
     /// </param>
     /// <param name="cancellationToken">Propagates caller cancellation into every stage.</param>
-    /// <returns>The orchestration result, whose failure codes and messages are safe to log.</returns>
-    public static async Task<MigrationExecutionResult> OrchestrateStructaDocMigrationsAsync(
+    /// <returns>The orchestration result, whose failure codes are safe to log.</returns>
+    public static async Task<StartupDatabaseGateResult> OrchestrateStructaDocMigrationsAsync(
         this IServiceProvider serviceProvider,
         DatabaseOptions databaseOptions,
         DatabaseDeploymentMode deploymentMode,
@@ -107,61 +112,43 @@ public static class ServiceMantleMigrationOrchestration
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(databaseOptions);
 
-        var bootstrap = ToBootstrapDatabaseConfiguration(databaseOptions);
-        var timeout = lockAcquireTimeout ?? DefaultLockAcquireTimeout;
-        await using var scope = serviceProvider.CreateAsyncScope();
-
-        if (databaseOptions.Provider != DatabaseProvider.Sqlite)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (databaseOptions.Provider == DatabaseProvider.Sqlite)
         {
-            // The provider lease is a session in the target database, so it can only be taken when
-            // the database is there to hold it. A target that cannot be opened at all is left to
-            // the Entity Framework migration path, exactly as before orchestration: EF Core creates
-            // a missing database while migrating and reports an unreachable one with its own
-            // diagnostics, and database target preparation is deliberately out of scope for
-            // StructaDoc today.
-            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
-            if (!await dbContext.Database.CanConnectAsync(cancellationToken))
+            // Directory preparation is the only local policy the shared gate cannot perform.
+            // Validate first so an unsupported deployment cannot create any filesystem entry.
+            var capabilities = serviceProvider
+                .GetRequiredService<DatabaseDeploymentCapabilityRegistry>();
+            var validation = new DatabaseDeploymentValidator(capabilities)
+                .Validate(WellKnownDatabaseProviderIds.Sqlite, deploymentMode);
+            if (!validation.IsSupported)
             {
-                var executor = scope.ServiceProvider
-                    .GetRequiredService<IDatabaseMigrationExecutor>();
-                await executor.ExecuteAsync(cancellationToken);
-                return MigrationExecutionResult.Success(executorWasCalled: true);
+                return StartupDatabaseGateResult.Failure(
+                    validation.MigrationErrorCode ?? WellKnownMigrationErrorCodes.LockNotSupported);
             }
-
-            var serverOrchestrator = scope.ServiceProvider
-                .GetRequiredService<DatabaseMigrationOrchestrator>();
-            return await serverOrchestrator.OrchestrateMigrationAsync(
-                MigrationServiceId,
-                bootstrap,
-                timeout,
-                cancellationToken);
         }
 
-        // The deployment request is validated before anything touches the filesystem: a
-        // multi-instance request against the single-instance-only SQLite capability must fail with
-        // no side effect at all, which the directory creation below would otherwise violate.
-        var capabilities = scope.ServiceProvider
-            .GetRequiredService<DatabaseDeploymentCapabilityRegistry>();
-        var validation = new DatabaseDeploymentValidator(capabilities)
-            .Validate(WellKnownDatabaseProviderIds.Sqlite, deploymentMode);
-        if (!validation.IsSupported)
-        {
-            return MigrationExecutionResult.Failure(
-                validation.MigrationErrorCode ?? WellKnownMigrationErrorCodes.LockNotSupported,
-                "The SQLite business database supports only a single-instance deployment.");
-        }
-
-        // SQLite opens its file lazily from the parent directory, and the single-instance target
-        // identity resolution fails on a missing parent, so the directory must exist first. The
-        // validation above already accepted this deployment mode.
-        EnsureSqliteDirectoryExists(databaseOptions.ConnectionString);
-
-        var orchestrator = scope.ServiceProvider.GetRequiredService<DatabaseMigrationOrchestrator>();
-        return await orchestrator.OrchestrateMigrationAsync(
-            MigrationServiceId,
+        var bootstrap = ToBootstrapDatabaseConfiguration(databaseOptions);
+        var options = new StartupDatabaseGateOptions(
             bootstrap,
-            deploymentMode,
-            timeout,
+            databaseOptions.Provider == DatabaseProvider.Sqlite
+                ? deploymentMode
+                : DatabaseDeploymentMode.MultiInstance,
+            lockAcquireTimeout ?? DefaultLockAcquireTimeout,
+            enableTargetPreparation: false,
+            allowTargetCreation: false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (databaseOptions.Provider == DatabaseProvider.Sqlite)
+        {
+            EnsureSqliteDirectoryExists(bootstrap.ConnectionString);
+        }
+
+        // Every call owns a fresh receipt; it is neither persisted nor a readiness source.
+        // Server targets must already exist: there is no unleased EF fallback or preparation.
+        return await serviceProvider.GetRequiredService<StartupDatabaseGate>().RunAsync(
+            options,
+            new StartupDatabaseReceipt(),
+            MigrationServiceId,
             cancellationToken);
     }
 
@@ -187,17 +174,28 @@ public static class ServiceMantleMigrationOrchestration
     /// </summary>
     private static string ResolveSqliteBootstrapConnectionString(string connectionString)
     {
-        var builder = new SqliteConnectionStringBuilder(connectionString);
-        var dataSource = builder.DataSource;
-        if (string.IsNullOrWhiteSpace(dataSource)
-            || string.Equals(dataSource, ":memory:", StringComparison.OrdinalIgnoreCase)
-            || dataSource.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            return connectionString;
-        }
+            var resolved = SqliteDataSource.ResolveConnectionString(
+                connectionString,
+                Path.GetFullPath(Directory.GetCurrentDirectory()));
+            var builder = new SqliteConnectionStringBuilder(resolved);
+            if (string.Equals(builder.DataSource, ":memory:", StringComparison.OrdinalIgnoreCase)
+                || builder.DataSource.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+            {
+                return resolved;
+            }
 
-        builder.DataSource = ResolvePhysicalPath(dataSource);
-        return builder.ConnectionString;
+            // The shared resolver anchors paths but intentionally does not resolve links.
+            builder.DataSource = ResolvePhysicalPath(builder.DataSource);
+            return builder.ConnectionString;
+        }
+        catch (Exception error) when (error is ArgumentException or FormatException
+            or NotSupportedException or PathTooLongException)
+        {
+            // Do not expose parser inner exceptions, which can contain submitted secrets.
+            throw new ArgumentException("The SQLite business database path is invalid.");
+        }
     }
 
     /// <summary>
@@ -236,7 +234,7 @@ public static class ServiceMantleMigrationOrchestration
             {
                 if (entry.ResolveLinkTarget(returnFinalTarget: true) is { } target)
                 {
-                    candidate = target.FullName;
+                    candidate = ResolvePhysicalPath(target.FullName);
                 }
             }
             catch (IOException)
@@ -249,6 +247,19 @@ public static class ServiceMantleMigrationOrchestration
         }
 
         return current;
+    }
+
+    // The shared server packages supply leases but no deployment declarations. StructaDoc's
+    // server path always selects MultiInstance, so no process-local target identity is needed.
+    private sealed class ServerMigrationCapability(string providerId) : IDatabaseDeploymentCapabilityProvider
+    {
+        public DatabaseDeploymentCapability Capability { get; } = new(
+            providerId, DatabaseDeploymentSupport.SingleAndMultiInstance);
+
+        public ValueTask<string> GetCanonicalTargetIdentityAsync(
+            BootstrapDatabaseConfiguration target,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Server migrations require a provider lease.");
     }
 
     private static void EnsureSqliteDirectoryExists(string connectionString)

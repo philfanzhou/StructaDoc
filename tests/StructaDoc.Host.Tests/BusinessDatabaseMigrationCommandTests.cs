@@ -99,6 +99,23 @@ public sealed class BusinessDatabaseMigrationCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Relative_sqlite_source_uses_working_directory_when_content_root_differs()
+    {
+        var contentRoot = Path.Combine(directory, "content-root");
+        Directory.CreateDirectory(contentRoot);
+        var result = await RunAsync(
+            $"--contentRoot={contentRoot}",
+            $"--ControlPlane:DatabasePath={Path.Combine(directory, "relative-control.db")}",
+            "--Database:ConnectionString=Data Source=nested/relative-business.db;Pooling=False",
+            "--Database:ApplyMigrationsOnStartup=false");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(await HasMigrationsAsync(Path.Combine(directory, "nested", "relative-business.db")));
+        Assert.False(Directory.Exists(Path.Combine(contentRoot, "nested")));
+        Assert.DoesNotContain("Now listening", result.Output, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Business_configuration_failure_is_nonzero_sanitized_and_follows_control_plane_migration()
     {
         var controlPlanePath = Path.Combine(directory, "failure-control.db");

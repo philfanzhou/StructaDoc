@@ -1,7 +1,7 @@
 # Database Support
 
 - Status: Implementation note
-- Last updated: 2026-09-30
+- Last updated: 2026-10-02
 
 ## Purpose
 
@@ -36,10 +36,11 @@ The reusable service, database-existence result, pending-migration decision, and
 affected migration/table/index registry are implemented by
 [#43](https://github.com/philfanzhou/StructaDoc/issues/43). Both normal startup and
 the one-shot external migration command call that same service; neither duplicates
-the SQL or registry. For an absent database the service uses a
+the SQL or registry. The reusable preflight can inspect an absent database using a
 server connection with no default database selected to validate
-`innodb_page_size >= 16384` and
-`innodb_default_row_format = DYNAMIC` before EF Core creates the database. For an
+`innodb_page_size >= 16384` and `innodb_default_row_format = DYNAMIC` before DDL.
+The application-managed migration gate requires the target database to exist first; it
+never invokes the executor or preflight for a missing server target. For an
 existing database it validates the global page size and the actual `ROW_FORMAT`
 of each affected existing table from `information_schema`, consulting the server
 default only for a table that does not exist yet. With no relevant pending migration,
@@ -53,12 +54,10 @@ covers the existing migration that creates the 2080-byte
 replacement migrations, including the final Parse Run index rebuild from #36.
 
 Application startup migrates the control plane before touching the business database.
-It then performs preflight through the unqualified server connection. An absent
-database has no legacy administrator table, so that read is skipped and EF Core is
-allowed to create and migrate it only after preflight succeeds. For an existing
-database, the legacy administrator import runs after preflight and before any business
-migration that can remove `admin_users`. Preflight, legacy import, and business
-migration are inside the same configuration-source failure boundary: browser-stored
+It then acquires the business database's migration lease or SQLite process-local turn
+before inspecting or executing migrations. For an existing database, the legacy administrator import runs after
+preflight and before any business migration that can remove `admin_users`. Preflight,
+legacy import, and business migration are inside the same configuration-source failure boundary: browser-stored
 configuration records a startup fault, keeps `/admin` available, and makes readiness
 unhealthy — `/health/ready` answers `503` with `migrationStatus: failed` and the
 stable error code `structadoc.database.startup_fault` — while deployment-fixed
@@ -235,8 +234,8 @@ backup, and the recovery set gains one item: the injected root key, without whic
 backed-up key material cannot be opened. Start the new application version only after this
 command from the new
 image exits `0`. This same entry point is verified against SQLite, PostgreSQL, MySQL,
-and MariaDB; MySQL and MariaDB rejection is verified before an absent database can be
-created under an unsupported InnoDB default row format.
+and MariaDB. Server targets must be pre-created; direct MySQL and MariaDB preflight
+contracts additionally verify rejection of an unsupported InnoDB default on absent targets.
 
 The Document, access-grant, and Parse Run replacements in #49, #51, and #36 use the
 exclusive actor-identity cutover defined by
@@ -251,11 +250,14 @@ resulting table format.
 
 ## Migration Orchestration
 
-Business-database migration runs through the ServiceMantle `DatabaseMigrationOrchestrator`. Both
-application startup and the one-shot migration command call the same orchestration entry, which is
-what keeps the "one entry verified on four databases" promise. The three-step workflow — InnoDB
-preflight, legacy administrator import, applying the selected migration assembly — is the
-orchestrator's single executor; no step is split, duplicated, or reordered.
+Business-database migration directly invokes ServiceMantle 0.3.0 `StartupDatabaseGate`. Both
+application startup and the one-shot migration command call the same entry with a fresh,
+in-memory `StartupDatabaseReceipt` for each session. The receipt is neither persisted nor used as
+the existing health snapshot source. No hosted gate is registered: that would execute again and
+bypass the Host's browser-stored configuration recovery boundary. Target preparation and target
+creation are disabled for all four providers; no maintenance connection string is supplied.
+The three-step workflow — InnoDB preflight, legacy administrator import, applying the selected
+migration assembly — is the gate's single executor; no step is split, duplicated, or reordered.
 
 ### Lease matrix
 
@@ -274,19 +276,35 @@ and a database whose `__EFMigrationsHistory` contains migrations this build does
 closed with `migration.version_too_new` before the executor runs. Caller cancellation keeps its
 original `OperationCanceledException` semantics; lease loss fails closed with `migration.lock_failed`.
 
-A target that cannot be opened at all — a database that does not exist yet, or is unreachable —
-never reaches the lease. It is left to the Entity Framework migration path, exactly as before
-orchestration: EF Core creates a missing server database while migrating, database target
-preparation is out of scope, and the preflight's server-connection checks still gate an absent
-MySQL or MariaDB database before EF Core can create it under an unsupported InnoDB default.
+### Server target provisioning
+
+PostgreSQL, MySQL, and MariaDB targets must be created by the deployment operator before startup
+or the one-shot migration command. A missing target, unreachable server, or authentication failure
+fails the shared lease path with `migration.lock_failed`; the executor is never called and no
+server database is implicitly created. There is no unleased Entity Framework fallback. The
+operator must create the intended empty target with the existing migration permissions (and the
+InnoDB requirements above), correct connectivity or credentials where needed, and then rerun
+`--migrate-business-database` or restart. Browser-stored failures preserve `/admin` for correction;
+deployment-pinned failures stop startup.
+
+This changes the older build's implicit server-database creation behavior. SQLite still creates a
+new file. No schema or data transformation is introduced by this gate adoption: an unchanged
+current schema can be reopened by the previous build without a data conversion. This does not
+relax the exclusive upgrade and backup requirements for actual schema migrations, and reverting
+to an older build is not the new build's missing-target recovery procedure.
 
 SQLite is single-instance: the orchestration validates the single-instance deployment capability
 before touching the filesystem, so a multi-instance request for SQLite fails with
 `migration.lock_not_supported` and no side effect. The process-local turn is not a cross-process
 lock; two processes pointed at one SQLite file remain outside the supported boundary, as before.
-The single-instance target identity is the physical database file — the bootstrap copy of a
-relative `Data Source` is resolved against the working directory and symbolic links are resolved
-to the physical location, while the connection string the deployment supplied is unchanged.
+After deployment validation, StructaDoc creates a missing parent directory before directly
+calling the shared gate, which validates again. The single-instance target identity is the
+physical database file: `SqliteDataSource.ResolveConnectionString` explicitly anchors relative
+`Data Source` values to the process working directory, even when ContentRoot differs, then a
+minimal local adapter resolves symbolic links to the physical location. Other connection
+parameters and the deployment-supplied EF connection string are preserved. The resolver performs
+no I/O or preparation; `:memory:` and `file:` inputs retain their existing unsupported migration
+identity boundary.
 
 ### Orchestration error codes
 
@@ -323,7 +341,9 @@ sessions apply the schema exactly once (the waiting session skips), the lease ti
 `migration.lock_timeout` while another session holds it, and a future `__EFMigrationsHistory` row
 fails closed with `migration.version_too_new` before the executor runs. SQLite orchestration tests
 run without a container and cover process-local serialization, the multi-instance rejection, and
-relative data sources. The suite also upgrades
+relative data sources, independent receipts, cancellation, and disabled preparation. Real server
+contracts verify missing targets remain absent and unreachable/invalid-credential targets never
+invoke the executor. The suite also upgrades
 the previous Document, access-grant, and Parse Run schemas and verifies legacy UTF-8
 bytes, exact replay, collation narrowing, canonical runtime writes, raw binary identity
 storage, state constraints, index shape, authorization isolation, SQLite preflight

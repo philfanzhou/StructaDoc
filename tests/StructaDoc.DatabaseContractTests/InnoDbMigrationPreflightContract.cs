@@ -113,9 +113,8 @@ internal static class InnoDbMigrationPreflightContract
                 defaultError.Message,
                 StringComparison.OrdinalIgnoreCase);
 
-            // The published operation uses this same preflight and must stop before EF Core creates
-            // an absent database. ApplyMigrationsOnStartup=false is supplied by the shared command
-            // contract, proving that only the preflight rejection—not the startup switch—stops it.
+            // The published operation refuses the absent target at the shared lease boundary.
+            // The direct preflight assertion above independently preserves its DDL guarantee.
             Assert.Equal(
                 1,
                 await BusinessDatabaseMigrationCommandContract.ExecuteAsync(
@@ -130,7 +129,9 @@ internal static class InnoDbMigrationPreflightContract
         }
 
         // Leave the container's configured database current for the ordinary database contract that
-        // runs after this preflight contract in the same container.
+        // runs after this preflight contract in the same container. Target creation is fixture
+        // administration; the command no longer creates server databases implicitly.
+        await CreateDatabaseAsync(connectionBuilder, databaseName);
         await BusinessDatabaseMigrationCommandContract.AssertAsync(
             provider,
             connectionString,

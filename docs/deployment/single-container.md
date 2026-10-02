@@ -1,6 +1,6 @@
 # Single-Container Deployment
 
-- Last updated: 2026-09-30
+- Last updated: 2026-10-02
 
 This document describes the current single-container entry point with a SQLite volume. The image boundary follows [ADR-0003](../adr/0003-technology-and-single-image-deployment.md). PostgreSQL, MySQL, and MariaDB run as external services rather than inside the StructaDoc image.
 
@@ -330,6 +330,21 @@ deployment-managed `Database__Provider`, `Database__ConnectionString`, and, for 
 or MariaDB, `Database__ServerVersion` values that the service will use. Do not put a
 credential directly in shell history; inject it through the deployment's secret
 mechanism. No port needs to be published.
+
+For PostgreSQL, MySQL, and MariaDB, create the target database through the deployment's
+administration tools before this command or normal startup. The shared startup gate does not
+prepare or create server targets. A missing database, unreachable server, or rejected credential
+fails the lease path with `migration.lock_failed` and exits nonzero without calling the migration
+executor. Create the intended target with the existing migration permissions and InnoDB storage
+requirements, then rerun the command or restart. SQLite still creates a new file automatically.
+A browser-stored failure keeps `/admin` available with readiness `503`; a deployment-pinned
+failure stops startup. See [server target provisioning](../development/database-support.md#server-target-provisioning).
+
+Older builds could implicitly create a missing server database; this build requires provisioning.
+The gate change adds no migration or data transformation, so an unchanged current schema can be
+opened by the previous build without converting data. Actual schema upgrades still require the
+exclusive cutover and backup below; the supported recovery for a missing target is provisioning
+and retrying the new build.
 
 The operation uses deployment configuration for `ControlPlane` and `Database` only.
 It deliberately ignores database settings saved through `/admin`, so an external

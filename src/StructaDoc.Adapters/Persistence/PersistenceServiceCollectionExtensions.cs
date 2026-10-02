@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ServiceMantle.Bootstrap;
 using ServiceMantle.Migration;
 using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Adapters.Persistence.Providers;
@@ -68,15 +69,18 @@ public static class PersistenceServiceCollectionExtensions
         // service collection as well; AddLogging is idempotent in a host.
         services.AddLogging();
         // ServiceMantle orchestration: the executor carries the three-step migration workflow, the
-        // registries carry the provider leases and deployment declarations, and the orchestrator
-        // joins them. Everything is resolved per orchestration session so one session's lease never
-        // outlives it.
+        // registries carry provider leases and deployment declarations. The direct gate creates
+        // an executor scope for each session, so a session's context and lease never outlive it.
         services.AddSingleton(_ =>
             ServiceMantleMigrationOrchestration.CreateMigrationLockProviderRegistry());
         services.AddSingleton(_ =>
             ServiceMantleMigrationOrchestration.CreateDeploymentCapabilityRegistry());
         services.AddScoped<IDatabaseMigrationExecutor, StructaDocMigrationExecutor>();
-        services.AddScoped<DatabaseMigrationOrchestrator>();
+        services.AddSingleton(new DatabaseTargetPreparationProviderRegistry(
+            [], DatabaseProviderIdResolver.Empty));
+        // Direct invocation preserves the Host's stored-settings recovery boundary. Do not
+        // register the hosted gate, which would run a second session during host startup.
+        services.AddSingleton<StartupDatabaseGate>();
 
         return services;
     }

@@ -44,6 +44,7 @@ internal static class MigrationOrchestrationContract
             deployment,
             databaseOptions,
             cancellationToken);
+        await MissingServerDatabaseContract.AssertAsync(databaseOptions);
     }
 
     private static async Task AssertConcurrentSessionsApplyExactlyOnceAsync(
@@ -249,7 +250,7 @@ internal static class MigrationOrchestrationContract
         public async Task MigrateControlPlaneAsync(CancellationToken cancellationToken) =>
             await serviceProvider.ApplyStructaDocControlPlaneMigrationsAsync(cancellationToken);
 
-        public Task<MigrationExecutionResult> OrchestrateAsync(
+        public Task<StartupDatabaseGateResult> OrchestrateAsync(
             DatabaseOptions databaseOptions,
             TimeSpan lockAcquireTimeout,
             CancellationToken cancellationToken) =>
