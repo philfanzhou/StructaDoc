@@ -23,30 +23,30 @@
     <PackageVersion Include="PDFsharp" Version="6.2.4" />
     <!-- ServiceMantle migration orchestration: the core contract types, plus one package per
          supported business database for its provider-specific migration lease. The core and
-         database packages are stable 0.2.1; the split lets the Adapters layer host the orchestration
+         database packages are stable 0.3.0; the split lets the Adapters layer host the orchestration
          without the Host's logging or web wiring. -->
-    <PackageVersion Include="ServiceMantle" Version="0.2.1" />
-    <PackageVersion Include="ServiceMantle.Database.MariaDb" Version="0.2.1" />
-    <PackageVersion Include="ServiceMantle.Database.MySql" Version="0.2.1" />
-    <PackageVersion Include="ServiceMantle.Database.PostgreSql" Version="0.2.1" />
-    <PackageVersion Include="ServiceMantle.Database.Sqlite" Version="0.2.1" />
+    <PackageVersion Include="ServiceMantle" Version="0.3.0" />
+    <PackageVersion Include="ServiceMantle.Database.MariaDb" Version="0.3.0" />
+    <PackageVersion Include="ServiceMantle.Database.MySql" Version="0.3.0" />
+    <PackageVersion Include="ServiceMantle.Database.PostgreSql" Version="0.3.0" />
+    <PackageVersion Include="ServiceMantle.Database.Sqlite" Version="0.3.0" />
     <!-- ServiceMantle management audit domain and its EF Core relational mapping. The core
          contract types (ManagementAuditEvent and friends) arrive transitively; the relational
          package supplies the service_audit_logs mapping and the staging writer. -->
-    <PackageVersion Include="ServiceMantle.Persistence.Relational" Version="0.2.1" />
+    <PackageVersion Include="ServiceMantle.Persistence.Relational" Version="0.3.0" />
     <!-- ServiceMantle core OpenTelemetry instrumentation: ASP.NET Core and HttpClient tracing plus
          .NET runtime metrics, with no exporter of any kind. The trace and metric data never leaves
          the process unless a later decision registers one; the package is what keeps that a
          deliberate choice rather than a build default. -->
-    <PackageVersion Include="ServiceMantle.Diagnostics" Version="0.2.1" />
+    <PackageVersion Include="ServiceMantle.Diagnostics" Version="0.3.0" />
     <!-- The native SQLite engine the Sqlite provider loads at runtime. EF Core asks for
          SQLitePCLRaw.bundle_e_sqlite3 2.1.12, which is old enough to matter for a component parsing
          untrusted files, so the bundle is pinned forward. The engine itself used to arrive as
          SQLitePCLRaw.lib.e_sqlite3; SQLitePCLRaw 3.x renamed that package to SQLite, so pinning the
          retired name constrains nothing. Naming it here is what keeps the engine version decided in
          this file rather than by whatever the bundle happens to depend on. -->
-    <PackageVersion Include="ServiceMantle.Logging" Version="0.2.1" />
-    <PackageVersion Include="ServiceMantle.Web" Version="0.2.1" />
+    <PackageVersion Include="ServiceMantle.Logging" Version="0.3.0" />
+    <PackageVersion Include="ServiceMantle.Web" Version="0.3.0" />
     <PackageVersion Include="SQLite" Version="3.53.4" />
     <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <!-- The browsable page for the OpenAPI document, and nothing else from Swashbuckle: the

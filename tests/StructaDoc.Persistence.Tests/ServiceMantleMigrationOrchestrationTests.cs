@@ -22,7 +22,6 @@ public sealed class ServiceMantleMigrationOrchestrationTests
             Path.GetTempPath(),
             "structadoc-orchestration-tests",
             Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
 
         try
         {
@@ -33,7 +32,7 @@ public sealed class ServiceMantleMigrationOrchestrationTests
                 ApplyMigrationsOnStartup = true,
             };
             using var deployment = new OrchestrationDeployment(
-                Path.Combine(directory, "control.db"),
+                Path.Combine(Path.GetTempPath(), $"control-{Guid.NewGuid():N}.db"),
                 databaseOptions);
             await deployment.MigrateControlPlaneAsync(TestContext.Current.CancellationToken);
 
@@ -134,6 +133,44 @@ public sealed class ServiceMantleMigrationOrchestrationTests
         }
     }
 
+    [Fact]
+    public async Task Symbolic_link_directory_and_connection_parameters_target_the_same_physical_file()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var directory = Path.Combine(Path.GetTempPath(), $"structadoc-link-{Guid.NewGuid():N}");
+        var physical = Path.Combine(directory, "physical");
+        var alias = Path.Combine(directory, "alias");
+        Directory.CreateDirectory(physical);
+        Directory.CreateSymbolicLink(alias, physical);
+        var options = new DatabaseOptions
+        {
+            ConnectionString = $"Data Source={alias}/business.db;Pooling=False;Default Timeout=7",
+        };
+        try
+        {
+            var bootstrap = ServiceMantleMigrationOrchestration.ToBootstrapDatabaseConfiguration(options);
+            var parsed = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(bootstrap.ConnectionString);
+            Assert.False(parsed.Pooling);
+            Assert.Equal(7, parsed.DefaultTimeout);
+            Assert.DoesNotContain("/alias/", parsed.DataSource, StringComparison.Ordinal);
+            using var deployment = new OrchestrationDeployment(Path.Combine(directory, "control.db"), options);
+            await deployment.MigrateControlPlaneAsync(TestContext.Current.CancellationToken);
+            var result = await deployment.OrchestrateAsync(options, TimeSpan.FromSeconds(30),
+                TestContext.Current.CancellationToken);
+            Assert.True(result.Succeeded, result.ToString());
+            Assert.True(File.Exists(Path.Combine(physical, "business.db")));
+            var repeated = await deployment.OrchestrateAsync(options, TimeSpan.FromSeconds(30),
+                TestContext.Current.CancellationToken);
+            Assert.True(repeated.Succeeded);
+            Assert.False(repeated.ExecutorWasCalled);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private sealed class OrchestrationDeployment : IDisposable
     {
         private readonly ServiceProvider serviceProvider;
@@ -155,7 +192,7 @@ public sealed class ServiceMantleMigrationOrchestrationTests
         public async Task MigrateControlPlaneAsync(CancellationToken cancellationToken) =>
             await serviceProvider.ApplyStructaDocControlPlaneMigrationsAsync(cancellationToken);
 
-        public Task<MigrationExecutionResult> OrchestrateAsync(
+        public Task<StartupDatabaseGateResult> OrchestrateAsync(
             DatabaseOptions databaseOptions,
             TimeSpan lockAcquireTimeout,
             CancellationToken cancellationToken) =>
@@ -165,7 +202,7 @@ public sealed class ServiceMantleMigrationOrchestrationTests
                 lockAcquireTimeout,
                 cancellationToken);
 
-        public Task<MigrationExecutionResult> OrchestrateAsync(
+        public Task<StartupDatabaseGateResult> OrchestrateAsync(
             DatabaseOptions databaseOptions,
             DatabaseDeploymentMode mode,
             TimeSpan lockAcquireTimeout,

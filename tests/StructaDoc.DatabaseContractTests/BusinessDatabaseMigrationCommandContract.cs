@@ -58,7 +58,7 @@ internal static class BusinessDatabaseMigrationCommandContract
     public static async Task<int> ExecuteAsync(
         DatabaseProvider provider,
         string connectionString,
-        string serverVersion)
+        string? serverVersion)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var directory = Path.Combine(

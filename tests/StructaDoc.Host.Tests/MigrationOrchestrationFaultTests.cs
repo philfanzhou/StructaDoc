@@ -20,14 +20,20 @@ public sealed class MigrationOrchestrationFaultTests
 {
     private const string TooNewMigrationId = "20990101000000_FromTheFuture";
 
-    [Fact]
-    public async Task A_stored_orchestration_failure_is_recoverable_and_fails_readiness()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_stored_orchestration_failure_is_recoverable_and_fails_readiness(bool unreachableServer)
     {
         using var deployment = new SettingsTestDeployment();
         var futureDatabasePath = Path.Combine(
             Path.GetDirectoryName(deployment.ControlPlanePath)!,
             "future.db");
-        await SeedTooNewHistoryAsync(futureDatabasePath);
+        if (!unreachableServer) await SeedTooNewHistoryAsync(futureDatabasePath);
+        const string secret = "stored-gate-test-secret";
+        var connectionString = unreachableServer
+            ? $"Host=127.0.0.1;Port=1;Database=structadoc;Username=test;Password={secret};Timeout=1"
+            : $"Data Source={futureDatabasePath};Pooling=False";
 
         using (var writer = UnpinnedFactory(deployment))
         using (var client = await SettingsTestDeployment.SignedInClientAsync(writer))
@@ -36,15 +42,21 @@ public sealed class MigrationOrchestrationFaultTests
                 "/api/v1/admin/settings",
                 new SettingUpdateRequest(
                     SettingCatalog.DatabaseConnectionString,
-                    $"Data Source={futureDatabasePath};Pooling=False"),
+                    connectionString),
                 cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, write.StatusCode);
+
         }
 
         // The next start reads what was saved. The orchestration fails closed on the newer
         // history, and refusing to start would take away the only surface the mistake can be
         // corrected from.
-        using var restarted = deployment.CreateFactory(pinBusinessDatabase: false);
+        using var restarted = deployment.CreateFactory(builder =>
+        {
+            // The fixture pins SQLite by default. Select the server provider explicitly while
+            // retaining the browser-stored connection string and its recovery boundary.
+            if (unreachableServer) builder.UseSetting("Database:Provider", "PostgreSql");
+        }, pinBusinessDatabase: false);
         using var administrator = await SettingsTestDeployment.SignedInClientAsync(restarted);
 
         var database = await administrator.GetFromJsonAsync<DatabaseStatusResponse>(
@@ -52,9 +64,11 @@ public sealed class MigrationOrchestrationFaultTests
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(database!.StartupFault);
         Assert.Contains(
-            WellKnownMigrationErrorCodeTokens.VersionTooNew,
+            unreachableServer ? "migration.lock_failed" : WellKnownMigrationErrorCodeTokens.VersionTooNew,
             database.StartupFault,
             StringComparison.Ordinal);
+
+        Assert.DoesNotContain(secret, database.StartupFault, StringComparison.Ordinal);
 
         // Signing in and reading settings both work, because administrators and settings live in
         // the control plane rather than in the database that was rejected.

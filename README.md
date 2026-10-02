@@ -104,6 +104,13 @@ Useful unauthenticated endpoints are:
 - `GET /health/live` — process liveness, always `200` while the process runs;
 - `GET /health/ready` (alias `GET /health`) — control-plane and business-database readiness, as a JSON body; only the status code is the deployment contract.
 
+SQLite creates its database file automatically. PostgreSQL, MySQL, and MariaDB require a
+pre-created target database: startup and `--migrate-business-database` fail safely when the target
+is missing, unreachable, or rejects credentials. Create the target through your deployment's
+database administration tools, then rerun the command or restart the service. See
+[Database Support](./docs/development/database-support.md#server-target-provisioning) for recovery
+and upgrade requirements.
+
 For CI coverage and local reproduction, see [Continuous Integration](./docs/development/continuous-integration.md).
 
 ## Single-Container Start
