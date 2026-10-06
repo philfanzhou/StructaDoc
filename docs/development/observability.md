@@ -1,7 +1,7 @@
 # Observability
 
 - Status: Implementation note
-- Last updated: 2026-09-30
+- Last updated: 2026-10-06
 
 ## Service Identity
 
@@ -10,7 +10,8 @@ else is built:
 
 - `ServiceId` is the stable value `structadoc`. It is the deployment identity shared by every
   instance of this service, not a per-run value.
-- `InstanceId` is `structadoc-<random>` and is regenerated on every host start. It identifies one
+- `InstanceId.CreateRandom(ServiceId.Parse("structadoc"))` generates `structadoc-<Guid:N>` once
+  per Host. The value stays stable within that Host and is regenerated on every host start. It identifies one
   running process, not a persistent deployment, and two restarts are not the same instance.
 - The service version is resolved by the library from the entry assembly informational version,
   then the assembly version, then `unknown`. The Host passes no explicit version. Release builds
@@ -21,6 +22,18 @@ The identity is exposed as a singleton `ServiceLogContext` and `/api/v1/system/i
 `Version` field from `ServiceLogContext.ServiceVersion`, so the HTTP answer and the log identity
 cannot disagree. The response contract is unchanged: `ServiceInfoResponse(Name, Version)` with
 `Name` fixed to `StructaDoc`.
+
+All direct ServiceMantle package pins use the official NuGet `0.3.1-rc.1` release candidate. The
+production outbound-client inventory contains no internal service client: MinerU Cloud/Local
+Provider API and signed transfers are external parsing/transfer protocols; S3 uses the external
+storage SDK; OIDC discovery and token calls use the external identity protocol. None opts into
+outgoing Correlation ID propagation, and no global handler or artificial internal call is added.
+Their destinations, timeouts, retry and authentication boundaries remain unchanged. The synthetic
+identity expressions in isolated tests are fixture values, not production generation sites.
+
+Rollback restores the prior application code and matching package versions. No configuration,
+bootstrap store, database schema, migration, stored identity or credential format changes are
+required; the process identity remains ephemeral.
 
 ## Structured Logging Pipeline
 

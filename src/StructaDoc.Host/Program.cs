@@ -58,7 +58,7 @@ builder.Configuration.AddContainerDefaults(args);
 // the same identity the log pipeline uses.
 var serviceMantle = builder.Services.AddServiceMantle(
         ServiceId.Parse("structadoc"),
-        InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"))
+        InstanceId.CreateRandom(ServiceId.Parse("structadoc")))
     .AddServiceMantleHealthEndpoints()
     .AddOpenTelemetryInstrumentation();
 

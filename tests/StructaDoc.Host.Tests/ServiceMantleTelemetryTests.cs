@@ -18,6 +18,25 @@ public sealed class ServiceMantleTelemetryTests(StructaDocWebApplicationFactory 
     : IClassFixture<StructaDocWebApplicationFactory>
 {
     [Fact]
+    public void Host_identity_is_stable_within_one_host_and_random_between_hosts()
+    {
+        var serviceId = factory.Services.GetRequiredService<ServiceId>();
+        var instanceId = factory.Services.GetRequiredService<InstanceId>();
+        var context = factory.Services.GetRequiredService<ServiceMantle.Web.Logging.ServiceLogContext>();
+
+        Assert.Equal("structadoc", serviceId.ToString());
+        Assert.Matches("^structadoc-[0-9a-f]{32}$", instanceId.ToString());
+        Assert.Equal(instanceId, factory.Services.GetRequiredService<InstanceId>());
+        Assert.Equal(instanceId.ToString(), context.InstanceId);
+
+        using var secondHost = new StructaDocWebApplicationFactory();
+        var secondInstance = secondHost.Services.GetRequiredService<InstanceId>();
+        Assert.Equal(serviceId, secondHost.Services.GetRequiredService<ServiceId>());
+        Assert.Matches("^structadoc-[0-9a-f]{32}$", secondInstance.ToString());
+        Assert.NotEqual(instanceId, secondInstance);
+    }
+
+    [Fact]
     public void Host_startup_registers_and_resolves_both_telemetry_providers()
     {
         // The hosted app runs with the default-options registration, so resolving both providers
