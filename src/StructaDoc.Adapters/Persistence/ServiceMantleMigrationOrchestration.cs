@@ -2,9 +2,6 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using ServiceMantle;
 using ServiceMantle.Bootstrap;
-using ServiceMantle.Database.MariaDb.Migration;
-using ServiceMantle.Database.MySql.Migration;
-using ServiceMantle.Database.PostgreSql.Migration;
 using ServiceMantle.Database.Sqlite;
 using ServiceMantle.Migration;
 
@@ -55,33 +52,6 @@ public static class ServiceMantleMigrationOrchestration
         provider == DatabaseProvider.Sqlite
             ? DatabaseDeploymentMode.SingleInstance
             : DatabaseDeploymentMode.MultiInstance;
-
-    /// <summary>
-    /// The provider-specific migration leases. SQLite is deliberately absent: it has no
-    /// cross-process lease, and its single-instance turn is coordinated through the deployment
-    /// capability registry instead.
-    /// </summary>
-    public static DatabaseMigrationLockProviderRegistry CreateMigrationLockProviderRegistry() => new(
-        [
-            new PostgreSqlMigrationLockProvider(),
-            new MySqlMigrationLockProvider(),
-            new MariaDbMigrationLockProvider(),
-        ],
-        DatabaseProviderIdResolver.Empty);
-
-    /// <summary>
-    /// The deployment capability declarations consulted before any migration side effect.
-    /// SQLite is single-instance only; server databases declare multi-instance support and
-    /// always use their real provider lease. These declarations perform no target preparation.
-    /// </summary>
-    public static DatabaseDeploymentCapabilityRegistry CreateDeploymentCapabilityRegistry() => new(
-        [
-            new SqliteDatabaseTargetPreparationProvider(),
-            new ServerMigrationCapability(WellKnownDatabaseProviderIds.PostgreSql),
-            new ServerMigrationCapability(WellKnownDatabaseProviderIds.MySql),
-            new ServerMigrationCapability(WellKnownDatabaseProviderIds.MariaDb),
-        ],
-        DatabaseProviderIdResolver.Empty);
 
     /// <summary>
     /// Runs one migration orchestration session for the business database through the shared
@@ -247,19 +217,6 @@ public static class ServiceMantleMigrationOrchestration
         }
 
         return current;
-    }
-
-    // The shared server packages supply leases but no deployment declarations. StructaDoc's
-    // server path always selects MultiInstance, so no process-local target identity is needed.
-    private sealed class ServerMigrationCapability(string providerId) : IDatabaseDeploymentCapabilityProvider
-    {
-        public DatabaseDeploymentCapability Capability { get; } = new(
-            providerId, DatabaseDeploymentSupport.SingleAndMultiInstance);
-
-        public ValueTask<string> GetCanonicalTargetIdentityAsync(
-            BootstrapDatabaseConfiguration target,
-            CancellationToken cancellationToken) =>
-            throw new NotSupportedException("Server migrations require a provider lease.");
     }
 
     private static void EnsureSqliteDirectoryExists(string connectionString)

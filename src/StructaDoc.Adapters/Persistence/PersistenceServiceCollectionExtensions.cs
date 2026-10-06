@@ -1,6 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using ServiceMantle.Bootstrap;
+using ServiceMantle.Database.MariaDb.Migration;
+using ServiceMantle.Database.MySql.Migration;
+using ServiceMantle.Database.PostgreSql.Migration;
+using ServiceMantle.Database.Sqlite;
 using ServiceMantle.Migration;
 using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Adapters.Persistence.Providers;
@@ -71,16 +76,21 @@ public static class PersistenceServiceCollectionExtensions
         // ServiceMantle orchestration: the executor carries the three-step migration workflow, the
         // registries carry provider leases and deployment declarations. The direct gate creates
         // an executor scope for each session, so a session's context and lease never outlive it.
-        services.AddSingleton(_ =>
-            ServiceMantleMigrationOrchestration.CreateMigrationLockProviderRegistry());
-        services.AddSingleton(_ =>
-            ServiceMantleMigrationOrchestration.CreateDeploymentCapabilityRegistry());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDatabaseMigrationLockProvider,
+            PostgreSqlMigrationLockProvider>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDatabaseMigrationLockProvider,
+            MySqlMigrationLockProvider>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDatabaseMigrationLockProvider,
+            MariaDbMigrationLockProvider>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDatabaseDeploymentCapabilityProvider,
+            SqliteDatabaseTargetPreparationProvider>());
+        services.AddServiceMantlePostgreSqlDeploymentCapability();
+        services.AddServiceMantleMySqlDeploymentCapability();
+        services.AddServiceMantleMariaDbDeploymentCapability();
         services.AddScoped<IDatabaseMigrationExecutor, StructaDocMigrationExecutor>();
-        services.AddSingleton(new DatabaseTargetPreparationProviderRegistry(
-            [], DatabaseProviderIdResolver.Empty));
-        // Direct invocation preserves the Host's stored-settings recovery boundary. Do not
-        // register the hosted gate, which would run a second session during host startup.
-        services.AddSingleton<StartupDatabaseGate>();
+        // Direct invocation preserves the Host's stored-settings recovery boundary. The
+        // shared entry registers no hosted runner and performs no target preparation.
+        services.AddServiceMantleStartupDatabaseGateServices();
 
         return services;
     }
