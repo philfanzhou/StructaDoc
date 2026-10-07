@@ -23,7 +23,7 @@
     <PackageVersion Include="PDFsharp" Version="6.2.4" />
     <!-- ServiceMantle migration orchestration: the core contract types, plus one package per
          supported business database for its provider-specific migration lease. The core and
-         database packages are stable 0.3.0; the split lets the Adapters layer host the orchestration
+         database packages use official 0.3.1-rc.1; the split lets the Adapters layer host the orchestration
          without the Host's logging or web wiring. -->
     <PackageVersion Include="ServiceMantle" Version="0.3.1-rc.1" />
     <PackageVersion Include="ServiceMantle.Database.MariaDb" Version="0.3.1-rc.1" />
