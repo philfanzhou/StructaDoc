@@ -1,6 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using ServiceMantle;
 using ServiceMantle.Bootstrap;
+using ServiceMantle.Database.MariaDb;
+using ServiceMantle.Database.MariaDb.Migration;
+using ServiceMantle.Database.MySql;
+using ServiceMantle.Database.MySql.Migration;
+using ServiceMantle.Database.PostgreSql;
+using ServiceMantle.Database.PostgreSql.Migration;
+using ServiceMantle.Database.Sqlite;
 using ServiceMantle.Health;
 using ServiceMantle.Migration;
 using StructaDoc.Adapters.Persistence;
@@ -10,6 +18,30 @@ namespace StructaDoc.Persistence.Tests;
 public sealed class StartupDatabaseGateIntegrationTests
 {
     private const string Secret = "gate-test-secret";
+
+    [Fact]
+    public void Shared_direct_composition_registers_four_capabilities_and_three_real_leases()
+    {
+        var services = new ServiceCollection();
+        services.AddStructaDocPersistenceMigrationServices(Options(DatabaseProvider.Sqlite));
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+
+        Assert.Collection(provider.GetServices<IDatabaseDeploymentCapabilityProvider>(),
+            item => Assert.IsType<SqliteDatabaseTargetPreparationProvider>(item),
+            item => Assert.IsType<PostgreSqlDatabaseDeploymentCapabilityProvider>(item),
+            item => Assert.IsType<MySqlDatabaseDeploymentCapabilityProvider>(item),
+            item => Assert.IsType<MariaDbDatabaseDeploymentCapabilityProvider>(item));
+        Assert.Collection(provider.GetServices<IDatabaseMigrationLockProvider>(),
+            item => Assert.IsType<PostgreSqlMigrationLockProvider>(item),
+            item => Assert.IsType<MySqlMigrationLockProvider>(item),
+            item => Assert.IsType<MariaDbMigrationLockProvider>(item));
+        Assert.Empty(provider.GetServices<IDatabaseTargetPreparationProvider>());
+        Assert.Empty(provider.GetServices<IHostedService>());
+        Assert.NotNull(provider.GetRequiredService<StartupDatabaseGate>());
+        Assert.Equal(ServiceMigrationReadinessState.NotStarted,
+            provider.GetRequiredService<StartupDatabaseReceipt>().State);
+        Assert.Equal(TimeSpan.FromSeconds(30), ServiceMantleMigrationOrchestration.DefaultLockAcquireTimeout);
+    }
 
     [Theory]
     [InlineData(DatabaseProvider.Sqlite, WellKnownDatabaseProviderIds.Sqlite)]
