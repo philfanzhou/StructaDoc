@@ -123,7 +123,7 @@ internal static class MigrationOrchestrationContract
         DatabaseOptions databaseOptions,
         CancellationToken cancellationToken)
     {
-        var lockProviderRegistry = ServiceMantleMigrationOrchestration.CreateMigrationLockProviderRegistry();
+        var lockProviderRegistry = deployment.LockProviderRegistry;
         var blocking = new BlockingMigrationExecutor(TimeSpan.FromSeconds(8));
         var holder = new DatabaseMigrationOrchestrator(blocking, lockProviderRegistry);
         var bootstrap = ServiceMantleMigrationOrchestration.ToBootstrapDatabaseConfiguration(databaseOptions);
@@ -246,6 +246,9 @@ internal static class MigrationOrchestrationContract
             services.AddStructaDocPersistenceMigrationServices(databaseOptions);
             serviceProvider = services.BuildServiceProvider();
         }
+
+        public DatabaseMigrationLockProviderRegistry LockProviderRegistry =>
+            serviceProvider.GetRequiredService<DatabaseMigrationLockProviderRegistry>();
 
         public async Task MigrateControlPlaneAsync(CancellationToken cancellationToken) =>
             await serviceProvider.ApplyStructaDocControlPlaneMigrationsAsync(cancellationToken);

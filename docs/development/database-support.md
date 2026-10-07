@@ -250,7 +250,17 @@ resulting table format.
 
 ## Migration Orchestration
 
-Business-database migration directly invokes ServiceMantle 0.3.0 `StartupDatabaseGate`. Both
+The official same-version ServiceMantle packages supply explicit deployment capability providers
+for PostgreSQL, MySQL, and MariaDB. The existing shared SQLite capability remains single-instance
+only. `AddServiceMantleStartupDatabaseGateServices` composes the registries and direct gate without
+a hosted runner, registration-time I/O, or automatic target preparation. Real server lease providers,
+scoped executors, per-call receipts, physical SQLite path resolution, and both invocation paths
+are unchanged. Server single-instance identities now use the shared credential-free target digest
+instead of the former local rejection; StructaDoc always forces the real multi-instance server
+lease, so those identities are unused. Roll back the application and its same-version packages to
+revert this composition; no database migration is required and committed effects remain.
+
+Business-database migration directly invokes ServiceMantle 0.3.1-rc.1 `StartupDatabaseGate`. Both
 application startup and the one-shot migration command call the same entry with a fresh,
 in-memory `StartupDatabaseReceipt` for each session. The receipt is neither persisted nor used as
 the existing health snapshot source. No hosted gate is registered: that would execute again and
