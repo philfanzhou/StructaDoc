@@ -441,7 +441,8 @@ test('large result collections keep layout, resource DOM, and image requests bou
   await expect(assetLinks).toHaveCount(24)
   await expect(assetLinks.first()).toHaveAttribute('href', /large-run-a-asset-24\/content$/)
   await expect(resources.locator('a[href$="large-run-a-asset-0/content"]')).toHaveCount(0)
-  await resources.getByRole('button', { name: '下一页制品' }).click()
+  const artifactPagination = resources.getByRole('navigation', { name: '结果文件分页' })
+  await artifactPagination.getByRole('button', { name: '下一页结果文件' }).click()
   await expect(artifactLinks).toHaveCount(50)
   await expect(artifactLinks.first()).toHaveAttribute('href', /large-run-a-artifact-50\/content$/)
 
@@ -522,7 +523,7 @@ test('result reads ignore stale success, failure, and loading completion', async
 
   await page.getByText('Provider A', { exact: true }).click()
   await aStarted.promise
-  await expect(page.locator('[data-result-loading="document"]')).toBeVisible()
+  await expect(page.locator('[data-result-loading="document"]')).toHaveText('正在加载文档预览…')
 
   await page.getByText('Provider B', { exact: true }).click()
   await bStarted.promise
@@ -666,12 +667,20 @@ test('administrator can use the document workspace and administration area', asy
   await expect(resultTabs.getByRole('button', { name: /结构/ })).toHaveClass(/active/)
   await expect(page.getByText('结果尚未生成或不含内容块。')).toBeVisible()
 
+  await resultTabs.getByRole('button', { name: '文档', exact: true }).click()
+  await expect(page.getByText('这次解析没有生成 Markdown 文件。切到“结构”查看规范化后的内容块。')).toBeVisible()
+  await resultTabs.getByRole('button', { name: /资源/ }).click()
+  await expect(page.getByText('这次解析没有生成图片或结果文件。')).toBeVisible()
+
   await page.screenshot({ path: 'test-results/workspace.png', fullPage: true })
 
   // A failed run is still a record the user has to be able to get rid of, including when it is the
   // only one the Document has. What is left afterwards is the Document, unparsed and parseable
   // again — the cleanup itself is covered against storage by UserWorkspaceFeatureTests.
-  page.once('dialog', dialog => dialog.accept())
+  page.once('dialog', async dialog => {
+    expect(dialog.message()).toBe('确认删除这条解析记录？该次解析的结构化内容、图片和结果文件都会被彻底删除，无法恢复。原始上传文件会保留。')
+    await dialog.accept()
+  })
   await page.locator('.run-list .run-delete').first().click()
   await expect(page.getByText('尚未创建解析任务。')).toBeVisible()
   await expect(page.locator('.document-row.selected .status')).toHaveText('未解析')

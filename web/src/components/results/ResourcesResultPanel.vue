@@ -39,7 +39,7 @@ function artifactUrl(artifactId: string) { return `/api/v1/parse-runs/${props.ru
 
 <template>
   <div class="result-pane" data-result-panel="resources">
-    <p v-if="loading && !loaded" class="muted pane-empty" data-result-loading="resources">正在加载资源与制品…</p>
+    <p v-if="loading && !loaded" class="muted pane-empty" data-result-loading="resources">正在加载图片和结果文件…</p>
     <template v-else-if="loaded">
       <h4 v-if="imageAssets.length">图片资源</h4>
       <div v-if="imageAssets.length" class="asset-grid">
@@ -53,19 +53,19 @@ function artifactUrl(artifactId: string) { return `/api/v1/parse-runs/${props.ru
         <span aria-live="polite">第 {{ assetPageStart + 1 }}–{{ assetPageEnd }} 项，共 {{ imageAssets.length }} 项</span>
         <button type="button" :disabled="assetPage === assetPageCount" @click="assetPage = clampPage(assetPage + 1, assetPageCount)">下一页图片</button>
       </nav>
-      <h4 v-if="artifacts.length">制品</h4>
+      <h4 v-if="artifacts.length">结果文件</h4>
       <div v-if="artifacts.length" class="artifact-list">
         <a v-for="artifact in visibleArtifacts" :key="artifact.id" :href="artifactUrl(artifact.id)">
           <span class="artifact-type">{{ artifact.type }}</span>
           <span class="file-copy"><strong>{{ artifact.name }}</strong><small>{{ artifact.mediaType }} · {{ prettyBytes(artifact.sizeBytes) }}</small></span>
         </a>
       </div>
-      <nav v-if="artifactPageCount > 1" class="local-pagination" aria-label="制品分页">
-        <button type="button" :disabled="artifactPage === 1" @click="artifactPage = clampPage(artifactPage - 1, artifactPageCount)">上一页制品</button>
+      <nav v-if="artifactPageCount > 1" class="local-pagination" aria-label="结果文件分页">
+        <button type="button" :disabled="artifactPage === 1" @click="artifactPage = clampPage(artifactPage - 1, artifactPageCount)">上一页结果文件</button>
         <span aria-live="polite">第 {{ artifactPageStart + 1 }}–{{ artifactPageEnd }} 项，共 {{ artifacts.length }} 项</span>
-        <button type="button" :disabled="artifactPage === artifactPageCount" @click="artifactPage = clampPage(artifactPage + 1, artifactPageCount)">下一页制品</button>
+        <button type="button" :disabled="artifactPage === artifactPageCount" @click="artifactPage = clampPage(artifactPage + 1, artifactPageCount)">下一页结果文件</button>
       </nav>
-      <p v-if="!assets.length && !artifacts.length" class="muted pane-empty">这次解析没有产出资源或制品。</p>
+      <p v-if="!assets.length && !artifacts.length" class="muted pane-empty">这次解析没有生成图片或结果文件。</p>
     </template>
     <p v-else class="muted pane-empty">资源加载失败，重新打开“资源”标签页可重试。</p>
   </div>
