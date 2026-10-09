@@ -7,11 +7,10 @@ namespace StructaDoc.Host.OpenApi;
 
 // The machine-readable description of the service API, and a page that browses it.
 //
-// StructaDoc is integrated with by other systems, and until now the only description of its API was
+// Other systems integrate with StructaDoc through its HTTP API. Previously its description was
 // prose in this repository. Prose cannot be handed to a code generator, cannot be diffed when an
 // endpoint changes, and is not what an integrator has open while writing a request. The document
-// below is generated from the endpoints themselves, so it cannot describe a route that does not
-// exist or miss one that does.
+// below is generated from endpoint metadata, with separate consumer and browser surfaces.
 //
 // The document is produced by the platform's own OpenAPI support. What it cannot know is how a
 // caller authenticates and which scope each endpoint requires, because that lives in authorization

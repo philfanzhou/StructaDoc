@@ -9,8 +9,8 @@ using StructaDoc.Host.Settings;
 namespace StructaDoc.Host.Tests;
 
 /// <summary>
-/// Sign-in through an identity provider is the only way an end user reaches the workspace, so a
-/// deployment that cannot configure it from the browser has no users. What matters here is that
+/// Non-administrator users enter the workspace through an identity provider. Administrators keep
+/// their local sign-in path. What matters here is that
 /// configuring it wrongly stays recoverable from the same browser.
 /// </summary>
 public sealed class OidcSettingsEndpointTests

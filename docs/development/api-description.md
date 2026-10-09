@@ -1,6 +1,6 @@
 # API Description
 
-StructaDoc is integrated with by other systems. Until now the only description of its API was prose in this repository: it could not be handed to a code generator, could not be diffed when an endpoint changed, and was not open in front of anyone writing a request. The service now publishes an OpenAPI 3.1 document and a page that browses it.
+Other systems integrate with StructaDoc through its HTTP API. Until now the only description of its API was prose in this repository: it could not be handed to a code generator, could not be diffed when an endpoint changed, and was not open in front of anyone writing a request. The service now publishes an OpenAPI 3.1 document and a page that browses it.
 
 ## Where It Is
 

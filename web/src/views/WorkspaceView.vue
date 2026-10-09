@@ -21,7 +21,9 @@ const fileNameFilter = ref('')
 const statusFilter = ref('')
 const share = ref({ issuer: '', subject: '', permissions: ['read', 'parse', 'export'] })
 
-const statusText: Record<string, string> = { queued: '排队中', claimed: '已领取', running: '解析中', 'retry-wait': '等待重试', 'cancel-requested': '正在取消', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
+const permissionLabels: Record<string, string> = { read: '查看文档与结果', parse: '开始或取消解析', export: '导出结果', delete: '删除文档与解析记录', share: '管理共享权限' }
+
+const statusText: Record<string, string> = { queued: '排队中', claimed: '正在准备解析', running: '解析中', 'retry-wait': '等待重试', 'cancel-requested': '正在取消', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
 const finalStatuses = ['succeeded', 'failed', 'cancelled']
 const canAdmin = computed(() => session.value?.isAdministrator === true)
 const canCancelRun = computed(() => selectedRun.value !== undefined && !finalStatuses.includes(selectedRun.value.status))
@@ -83,7 +85,7 @@ async function openDocument(document: DocumentItem) {
 async function createParse() {
   if (!selectedDocument.value) return
   busy.value = true
-  try { await mutate(`/api/v1/documents/${selectedDocument.value.id}/parse-runs`, 'POST', { options: {}, maxAttempts: 3 }); message('解析任务已进入可靠队列'); await openDocument(selectedDocument.value); await loadDocuments() }
+  try { await mutate(`/api/v1/documents/${selectedDocument.value.id}/parse-runs`, 'POST', { options: {}, maxAttempts: 3 }); message('解析任务已提交，正在排队'); await openDocument(selectedDocument.value); await loadDocuments() }
   catch (e) { message((e as Error).message, true) } finally { busy.value = false }
 }
 
@@ -384,7 +386,7 @@ async function openLayoutPage(pageNumber: number) {
 }
 
 async function cancelRun(run: ParseRun) {
-  if (!confirm('确认取消这次解析？StructaDoc 会停止本地处理，随后该记录进入“已取消”。')) return
+  if (!confirm('确认取消这次解析？StructaDoc 会停止本地处理，随后该记录进入“已取消”。已提交给外部解析服务的任务可能继续运行。')) return
   busy.value = true
   try {
     await mutate(`/api/v1/parse-runs/${run.id}/cancel`, 'POST')
@@ -408,7 +410,7 @@ async function deleteRun(run: ParseRun) {
   try {
     await mutate(`/api/v1/parse-runs/${run.id}`, 'DELETE')
     if (selectedRun.value?.id === run.id) { selectedRun.value = undefined; clearRunResult() }
-    message('删除请求已进入清理队列')
+    message('删除请求已受理，后台正在删除文件和解析记录')
     await refreshRuns(selectedRun.value?.id)
   }
   catch (e) { message((e as Error).message, true) } finally { busy.value = false }
@@ -476,8 +478,8 @@ watch(hasUnfinishedWork, unfinished => {
 onUnmounted(() => { pollingUnmounted = true; stopPolling() })
 
 async function deleteCurrent() {
-  if (!selectedDocument.value || !confirm(`确认删除“${selectedDocument.value.originalFileName}”？对象与关系数据将由可恢复清理任务处理。`)) return
-  try { await mutate(`/api/v1/documents/${selectedDocument.value.id}`, 'DELETE'); selectedDocument.value = undefined; message('删除请求已进入清理队列'); await loadDocuments() }
+  if (!selectedDocument.value || !confirm(`确认删除“${selectedDocument.value.originalFileName}”？后台会删除原始文件、所有解析记录、结构化内容、图片和结果文件，删除后无法恢复。`)) return
+  try { await mutate(`/api/v1/documents/${selectedDocument.value.id}`, 'DELETE'); selectedDocument.value = undefined; message('删除请求已受理，后台正在删除文件和解析记录'); await loadDocuments() }
   catch (e) { message((e as Error).message, true) }
 }
 
@@ -491,10 +493,10 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
 </script>
 
 <template>
-  <header class="page-header"><div><p class="eyebrow">WORKSPACE</p><h1>你的文档</h1><p>从原始文件到结构化结果，过程和产物都清晰可见。</p></div></header>
+  <header class="page-header"><div><p class="eyebrow">WORKSPACE</p><h1>你的文档</h1><p>上传文档，查看解析进度和结果，下载需要的文件。</p></div></header>
 
   <div v-if="parsingHalted" class="notice-banner">
-    <div>本服务未启用解析 Worker，新建的解析任务会一直停留在“排队中”。这一项由部署方在启动参数中固定（<code>Worker__Enabled</code>），无法在网页上修改。</div>
+    <div>本服务未启用后台解析处理（Worker），新建的解析任务会一直停留在“排队中”。这一项由部署方在启动参数中固定（<code>Worker__Enabled</code>），无法在网页上修改。</div>
   </div>
 
   <div v-if="providerCredentialMissing" class="notice-banner">
@@ -519,7 +521,7 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
       <div class="run-list"><h3>解析记录</h3><div v-for="run in runs" :key="run.id" class="run-row" :class="{ selected: selectedRun?.id === run.id }"><button class="run-open" @click="openRun(run)"><span><strong>{{ run.providerType }}</strong><small>{{ prettyDate(run.createdAt) }} · 第 {{ run.attemptCount }}/{{ run.maxAttempts }} 次尝试</small></span><span class="status" :class="run.status">{{ statusText[run.status] || run.status }}</span></button><button v-if="canDeleteRun(run)" class="danger-link run-delete" :disabled="busy" title="删除这条解析记录及其全部结果" @click="deleteRun(run)">删除</button></div><p v-if="!runs.length" class="muted">尚未创建解析任务。</p></div>
       <template v-if="selectedRun">
         <div v-if="selectedRun.errorMessage" class="inline-error">{{ selectedRun.errorCode }}：{{ selectedRun.errorMessage }}</div>
-        <div v-if="canCancelRun" class="run-actions"><button class="secondary" :disabled="busy" @click="cancelRun(selectedRun)">取消解析</button><span>取消是尽力而为的：StructaDoc 会停止本地处理，但已提交给在线解析提供方的任务可能仍在上游继续消耗资源。</span></div>
+        <div v-if="canCancelRun" class="run-actions"><button class="secondary" :disabled="busy" @click="cancelRun(selectedRun)">取消解析</button><span>StructaDoc 会停止本地处理，但已提交给外部解析服务的任务可能继续运行。</span></div>
         <div class="export-row"><span>导出</span><a v-for="format in ['markdown','html','zip','pdf']" :key="format" :href="`/api/v1/parse-runs/${selectedRun.id}/exports/${format}`">{{ format.toUpperCase() }}</a></div>
 
         <nav class="result-tabs">
@@ -575,9 +577,9 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
           :loading="tabStates.resources.loading"
           :loaded="tabStates.resources.loaded" />
       </template>
-      <details v-if="selectedDocument.ownedByCurrentUser || canAdmin" class="share-box"><summary>共享访问</summary><label>OIDC Issuer<input v-model="share.issuer" placeholder="https://identity.example.com"></label><label>Subject<input v-model="share.subject" placeholder="用户的 sub"></label><fieldset><legend>权限</legend><label v-for="permission in ['read','parse','export','delete','share']" :key="permission"><input v-model="share.permissions" type="checkbox" :value="permission"> {{ permission }}</label></fieldset><button class="secondary" @click="grantAccess">保存授权</button></details>
+      <details v-if="selectedDocument.ownedByCurrentUser || canAdmin" class="share-box"><summary>共享访问</summary><label>身份平台地址（OIDC issuer）<input v-model="share.issuer" placeholder="https://identity.example.com"></label><label>用户标识（subject）<input v-model="share.subject" placeholder="身份平台分配的 sub 值"></label><fieldset><legend>权限</legend><label v-for="permission in ['read','parse','export','delete','share']" :key="permission"><input v-model="share.permissions" type="checkbox" :value="permission"> {{ permissionLabels[permission] }}</label></fieldset><p class="hint">用户身份由平台地址和用户标识共同确定，不能用姓名或邮箱代替。导出权限控制打包导出；有查看权限的人仍可下载原文和结果文件。</p><button class="secondary" @click="grantAccess">保存授权</button></details>
     </section>
-    <section v-else class="panel detail empty-detail"><span class="big-number">01</span><h2>选择一个文档</h2><p>查看解析历史、规范化结果、资源文件和导出选项。</p></section>
+    <section v-else class="panel detail empty-detail"><span class="big-number">01</span><h2>选择一个文档</h2><p>查看解析记录、结构化内容、图片和结果文件，或导出解析结果。</p></section>
   </div>
 </template>
 

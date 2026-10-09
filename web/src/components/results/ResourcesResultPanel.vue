@@ -32,6 +32,18 @@ watch(assetPageCount, pageCount => { assetPage.value = clampPage(assetPage.value
 watch(artifactPageCount, pageCount => { artifactPage.value = clampPage(artifactPage.value, pageCount) })
 watch(() => props.runId, () => { assetPage.value = 1; artifactPage.value = 1 })
 
+const artifactTypeNames: Record<string, string> = {
+  'normalized-pdf': '转换后的 PDF',
+  markdown: 'Markdown 文件',
+  'provider-archive': '解析结果归档',
+  'content-list': '内容清单',
+  layout: '版面信息',
+  'model-output': '模型输出',
+  'provider-raw': '原始解析结果',
+  'source-segment': '拆分的源文件',
+}
+function artifactTypeName(type: string) { return Object.hasOwn(artifactTypeNames, type) ? artifactTypeNames[type] : type }
+
 function prettyBytes(bytes: number) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1048576).toFixed(1)} MB` }
 function assetUrl(assetId: string) { return `/api/v1/parse-runs/${props.runId}/assets/${assetId}/content` }
 function artifactUrl(artifactId: string) { return `/api/v1/parse-runs/${props.runId}/artifacts/${artifactId}/content` }
@@ -56,7 +68,7 @@ function artifactUrl(artifactId: string) { return `/api/v1/parse-runs/${props.ru
       <h4 v-if="artifacts.length">结果文件</h4>
       <div v-if="artifacts.length" class="artifact-list">
         <a v-for="artifact in visibleArtifacts" :key="artifact.id" :href="artifactUrl(artifact.id)">
-          <span class="artifact-type">{{ artifact.type }}</span>
+          <span class="artifact-type">{{ artifactTypeName(artifact.type) }}</span>
           <span class="file-copy"><strong>{{ artifact.name }}</strong><small>{{ artifact.mediaType }} · {{ prettyBytes(artifact.sizeBytes) }}</small></span>
         </a>
       </div>

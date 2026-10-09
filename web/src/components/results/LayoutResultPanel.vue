@@ -134,7 +134,7 @@ const selectedBlock = computed(() => props.blocks.find(block => block.id === pro
         </div>
         <p v-else class="muted pane-empty">选择一页查看它的版面。</p>
       </template>
-      <p v-else class="muted pane-empty">这次解析没有可靠的物理页面，内容块只有全局阅读顺序。</p>
+      <p v-else class="muted pane-empty">这次解析未提供可用的分页信息，请切到“结构”按内容顺序查看。</p>
     </template>
     <p v-else class="muted pane-empty">版面加载失败，重新打开“版面”标签页可重试。</p>
   </div>

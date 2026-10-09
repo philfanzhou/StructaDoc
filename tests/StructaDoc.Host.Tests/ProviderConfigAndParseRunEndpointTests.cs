@@ -53,9 +53,9 @@ public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicat
         Assert.False(local.Model.IsUsed);
     }
 
-    // Configuring a Provider is the whole of what a deployment has to do before its documents are
-    // parsed. Nothing else is switched on afterwards, and this is what would notice a second gate
-    // being reintroduced between an administrator's decision and the Worker acting on it.
+    // Provider configuration selects where requested runs may be processed. The deployment
+    // still controls Worker enablement. This catches an additional execution gate in the
+    // administration page between the configured Provider and the Worker acting on it.
     [Fact]
     public async Task Parse_execution_needs_nothing_beyond_a_configured_provider()
     {

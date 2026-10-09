@@ -14,7 +14,7 @@ public sealed record ManagementAuditRecordPoints;
 
 /// <summary>
 /// The Host-side management audit record points: the operator an authenticated administrator
-/// presents, and the degrading save used by record points whose own operation has already
+/// presents, and the separate audit save used by record points whose own operation has already
 /// succeeded when the audit row is written. An audit failure is never silent — it is logged at
 /// error level — but it does not retroactively fail an operation that committed.
 /// </summary>
