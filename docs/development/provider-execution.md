@@ -52,7 +52,7 @@ If a conversion snapshot exists, recovery reuses its PDF. If an archive exists, 
 
 For a protocol without a durable submission checkpoint, an unknown submission outcome is not automatically resent; it fails with `provider-submission-outcome-unknown`. This deliberately favors avoiding duplicate external jobs over speculative resubmission.
 
-Configuring an enabled default Provider is the whole of what a deployment does before its documents are parsed. There is no second switch after that decision, and there deliberately is not one: a Parse Run can only be created against a Provider an administrator configured and enabled, which is where the consent to send a document outward is actually given. A further default-off flag added nothing to that consent and produced deployments where an upload queued forever while nothing failed and nothing was logged.
+An administrator configures an enabled default Provider; a user then uploads a document and explicitly creates a Parse Run. Uploading alone does not start parsing. The deployment must also run a Worker (`Worker__Enabled` defaults to `true`). There is no additional execution switch in the administration page: the Provider configuration selects where documents may be sent, while the deployment setting controls which Host processes queued runs.
 
 `Worker:Enabled` remains, and is a deployment choice rather than a pause button: it lets a Host serve the API while other Hosts do the parsing. It is not settable from a browser. Pausing parsing is done by disabling the Provider, which stops new runs from being created; runs already queued still carry their own configuration snapshot and will run.
 

@@ -36,8 +36,8 @@ async function claim() {
 <template>
   <AuthShell
     :headline="['初始化这台', 'StructaDoc 实例。']"
-    lead="创建第一个管理员账号。此后所有配置都在管理页面完成，无需再修改配置文件或重新部署。"
-    :trust="['本地账号', '无需外部身份平台', '数据留在本机']">
+    lead="创建第一个管理员账号，然后在管理页设置解析服务和账号。部分设置由部署方控制，网页修改的设置可能需要重启服务。"
+    :trust="['本地账号', '无需外部身份平台', '管理解析与存储']">
     <p class="eyebrow">首次初始化</p><h2>创建管理员</h2>
     <form @submit.prevent="claim">
       <label>用户名<input v-model="username" type="text" name="username" autocomplete="username" minlength="3" maxlength="64" required></label>
@@ -47,6 +47,6 @@ async function claim() {
       <p v-if="mismatch" class="login-note">两次输入的密码不一致。</p>
       <button class="secondary" :disabled="busy || mismatch">{{ busy ? '创建中…' : '创建管理员' }}</button>
     </form>
-    <p class="login-note">用户名由 3–64 个字母、数字、<code>.</code>、<code>_</code>、<code>-</code> 组成，密码至少 8 位。此账号在身份平台故障时仍可登录，请妥善保管。</p>
+    <p class="login-note">用户名由 3–64 个字母、数字、<code>.</code>、<code>_</code>、<code>-</code> 组成，首次创建表单要求密码至少 12 位。此账号在身份平台故障时仍可登录，请妥善保管。</p>
   </AuthShell>
 </template>

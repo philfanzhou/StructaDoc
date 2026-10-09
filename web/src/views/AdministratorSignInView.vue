@@ -29,8 +29,8 @@ async function signIn() {
 <template>
   <AuthShell
     :headline="['管理这台', 'StructaDoc 实例。']"
-    lead="配置解析提供方、签发服务客户端凭据，并保持实例可运维。管理接口的访问控制始终由服务端策略决定，与此页面的地址无关。"
-    :trust="['不可变提供方版本', '一次性凭据', '可审计变更']">
+    lead="设置解析服务、管理账号和 API 密钥，调整存储与数据库配置。管理操作需要管理员权限。"
+    :trust="['保留历史解析配置', '密钥只显示一次', '记录管理操作']">
     <p class="eyebrow">系统管理</p><h2>管理员登录</h2>
     <template v-if="session?.authenticated">
       <p class="login-note">当前账号 {{ session.displayName || session.email || session.subjectId }} 没有管理员权限。请改用管理员账号，或返回<RouterLink to="/">文档工作台</RouterLink>。</p>
@@ -43,7 +43,7 @@ async function signIn() {
         <label>密码<input v-model="password" type="password" autocomplete="current-password" required></label>
         <button class="secondary" :disabled="busy">{{ busy ? '登录中…' : '管理员登录' }}</button>
       </form>
-      <p class="login-note">本地管理员用于引导配置与身份平台故障时的应急访问。普通使用者请前往<RouterLink to="/">文档工作台</RouterLink>。</p>
+      <p class="login-note">本地管理员用于首次配置，也可在身份平台故障时登录。普通使用者请前往<RouterLink to="/">文档工作台</RouterLink>。</p>
     </template>
   </AuthShell>
 </template>

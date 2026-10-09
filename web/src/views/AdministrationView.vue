@@ -9,7 +9,7 @@ const administrators = ref<any[]>([])
 // The service accepts a closed set of Provider types, so this is a choice rather than something to
 // spell. A typed one would only ever come back as an English validation error.
 const providerTypes = [
-  { value: 'mineru-local', label: 'MinerU 本地服务（自建，文档不出网）' },
+  { value: 'mineru-local', label: 'MinerU 自建服务' },
   { value: 'mineru-cloud', label: 'MinerU 云端服务（文档会上传到外部）' },
 ]
 type ProviderDraft = { id?: string; name: string; providerType: string; baseUrl: string; model: string; backend: string; credential: string; clearCredential: boolean; wasEnabled: boolean; isDefault: boolean; hasCredential: boolean }
@@ -49,6 +49,7 @@ const hasDefaultProvider = computed(() => providers.value.some(provider => provi
 // one field short of working, and the parse it would refuse happens on another page.
 function needsCredential(provider: any) { return typeInfo(provider.providerType)?.requiresCredential === true && !provider.hasCredential }
 const defaultProviderNeedingCredential = computed(() => providers.value.find(provider => provider.isDefault && provider.isEnabled && needsCredential(provider)))
+const clientScopeLabels: Record<string, string> = { 'documents:read': '查看文档', 'documents:write': '上传和管理文档', 'parses:read': '查看解析结果', 'parses:write': '开始和管理解析' }
 const newClient = ref({ name: '', scopes: ['documents:read', 'documents:write', 'parses:read', 'parses:write'] })
 const newAdministrator = ref({ username: '', displayName: '', password: '' })
 const ownPassword = ref({ currentPassword: '', newPassword: '', confirmPassword: '' })
@@ -75,13 +76,13 @@ const settingLabels: Record<string, string> = {
   'Documents:UploadApiEnabled': '开放上传接口',
   'Documents:MaxUploadBytes': '单文件上传上限（字节）',
   'Oidc:Enabled': '启用组织账号登录',
-  'Oidc:Authority': '身份提供方地址',
+  'Oidc:Authority': '身份平台地址（issuer）',
   'Oidc:ClientId': '客户端 ID',
   'Oidc:ClientSecret': '客户端密钥',
-  'Oidc:RequireHttpsMetadata': '要求 HTTPS 元数据',
-  'Oidc:NameClaim': '姓名 claim',
-  'Oidc:EmailClaim': '邮箱 claim',
-  'Oidc:RoleClaim': '角色 claim',
+  'Oidc:RequireHttpsMetadata': '要求身份平台和登录配置地址使用 HTTPS',
+  'Oidc:NameClaim': '姓名字段（name claim）',
+  'Oidc:EmailClaim': '邮箱字段（email claim）',
+  'Oidc:RoleClaim': '角色字段（role claim）',
   'Oidc:AdministratorRole': '管理员角色值',
   'Storage:Provider': '存储方式',
   'Storage:RootPath': '本地目录',
@@ -89,9 +90,9 @@ const settingLabels: Record<string, string> = {
   'Storage:Region': '区域',
   'Storage:Bucket': '存储桶',
   'Storage:Prefix': '路径前缀',
-  'Storage:AccessKey': 'Access Key',
-  'Storage:SecretKey': 'Secret Key',
-  'Storage:ForcePathStyle': '强制路径风格',
+  'Storage:AccessKey': '访问密钥标识（Access Key）',
+  'Storage:SecretKey': '访问密钥（Secret Key）',
+  'Storage:ForcePathStyle': '在 S3 地址路径中包含存储桶名称',
   'Database:Provider': '数据库类型',
   'Database:ConnectionString': '连接字符串',
   'Database:ServerVersion': '服务器版本',
@@ -137,7 +138,7 @@ const databaseTestMessages: Record<string, string> = {
   TimedOut: '连接超时',
 }
 
-// The identity provider is the only way an end user reaches the workspace, so it gets a panel of its
+// Non-administrator users sign in through the identity provider, so it gets a panel of its
 // own rather than a row among the service settings.
 type OidcStatus = { enabled: boolean; startupFault: string | null; callbackPath: string; signedOutCallbackPath: string; scopes: string[] }
 const oidcStatus = ref<OidcStatus | null>(null)
@@ -174,15 +175,15 @@ function settingOf(key: string) { return settings.value.find(setting => setting.
 // The service answers with a stable code so it does not have to guess the reader's language, and
 // carries the deployment-specific part separately.
 const oidcTestMessages: Record<string, string> = {
-  Reachable: '连接成功：发现文档可读，issuer 与填写的地址一致',
+  Reachable: '连接成功：登录配置文档可读取，声明的平台地址（issuer）与填写的地址一致',
   InvalidAuthority: '地址无效，需要是以 http:// 或 https:// 开头的完整地址',
-  InsecureAuthority: '当前要求 HTTPS 元数据，该地址不是 https',
+  InsecureAuthority: '当前要求身份平台和登录配置地址使用 HTTPS，该地址不是 https',
   Unreachable: '无法连接到该地址',
   TimedOut: '连接超时',
   HttpError: '该地址返回了错误状态码',
   MalformedDocument: '该地址返回的不是合法 JSON',
-  IncompleteDocument: '返回的文档缺少 OIDC 必需字段，该地址可能不是身份提供方',
-  IssuerMismatch: '该地址的发现文档声明了不同的 issuer，登录时每个令牌都会被拒绝',
+  IncompleteDocument: '返回的文档缺少 OIDC 必需字段，该地址可能不是身份平台',
+  IssuerMismatch: '登录配置文档声明的平台地址（issuer）与填写的地址不同，登录会被拒绝',
 }
 
 // Loaded independently rather than together. Providers and API clients live in the business
@@ -404,7 +405,7 @@ async function writeProvider(provider: any, changes: Record<string, unknown>, no
 }
 
 async function deleteProvider(provider: any) {
-  if (!confirm(`确认删除解析提供方“${provider.name}”？已经用它解析过的文档无法删除它，停用即可阻止新任务使用。`)) return
+  if (!confirm(`确认删除解析提供方“${provider.name}”？已有解析记录引用该配置时，不能删除它，停用即可阻止新任务使用。`)) return
   try { await mutate(`/api/v1/admin/provider-configs/${provider.id}`, 'DELETE'); if (providerDraft.value?.id === provider.id) providerDraft.value = null; await reloadProviders(); message('解析提供方已删除') }
   catch (e) { message((e as Error).message, true) }
 }
@@ -415,7 +416,7 @@ async function createClient() {
 }
 
 async function rotateClient(client: any) {
-  try { const result = await mutate<any>(`/api/v1/admin/api-clients/${client.id}/rotate`, 'POST'); issuedCredential.value = result.credential; message('新凭据仅显示一次，请立即保存') }
+  try { const result = await mutate<any>(`/api/v1/admin/api-clients/${client.id}/rotate`, 'POST'); issuedCredential.value = result.credential; message('新 API 密钥只显示一次，请立即保存；旧密钥已失效') }
   catch (e) { message((e as Error).message, true) }
 }
 
@@ -442,7 +443,7 @@ onMounted(() => load())
 </script>
 
 <template>
-  <header class="page-header"><div><p class="eyebrow">ADMINISTRATION</p><h1>系统管理</h1><p>配置解析提供方、管理员与服务客户端；其余设置不改也能正常运行。</p><p v-if="versionLabel" class="hint">当前运行版本 <code :title="serviceVersion">{{ versionLabel }}</code></p></div></header>
+  <header class="page-header"><div><p class="eyebrow">ADMINISTRATION</p><h1>系统管理</h1><p>管理解析服务、管理员与 API 客户端，按需要配置组织登录、文件存储和业务数据库。</p><p v-if="versionLabel" class="hint">当前运行版本 <code :title="serviceVersion">{{ versionLabel }}</code></p></div></header>
 
   <div v-if="restartPending" class="notice-banner"><div>部分设置需重启服务后才会生效。</div><button :disabled="restarting" @click="restart">{{ restarting ? '正在重启…' : '立即重启' }}</button></div>
 
@@ -451,7 +452,7 @@ onMounted(() => load())
 
     <section class="panel admin-card wide-card">
       <p class="eyebrow">PROVIDERS</p><h2>解析提供方</h2>
-      <p class="hint">工作台的“开始新解析”总是使用默认提供方。选择云端类型意味着文档会被上传到外部服务。配置好并设为默认之后，上传的文档就会被解析，没有另外的开关。</p>
+      <p class="hint">上传后，点击“开始新解析”使用默认解析服务。选择云端类型会把文档上传到外部；自建服务的数据传输范围取决于服务地址与部署网络。后台解析处理由部署配置 Worker__Enabled 控制，默认已启用。</p>
       <div v-if="providers.length && !hasDefaultProvider" class="notice-banner"><div>当前没有启用中的默认提供方，工作台的“开始新解析”会失败。请为其中一个提供方点击“设为默认”。</div></div>
       <div v-if="defaultProviderNeedingCredential" class="notice-banner"><div>默认提供方“{{ defaultProviderNeedingCredential.name }}”还没有填写凭据。服务地址和模型已经配置好，只差这一项：在 <a href="https://mineru.net" target="_blank" rel="noreferrer">mineru.net</a> 申请 API Token，点击该提供方的“编辑”填入“凭据”并保存。在此之前，工作台的“开始新解析”会被拒绝。</div><button @click="editProvider(defaultProviderNeedingCredential)">填写凭据</button></div>
       <div class="admin-list">
@@ -478,7 +479,7 @@ onMounted(() => load())
           <label class="wide">服务地址<input v-model="providerDraft.baseUrl" type="url" :placeholder="typeInfo(providerDraft.providerType)?.suggestedBaseUrl ?? 'http://mineru.internal:8000'"><small v-if="typeInfo(providerDraft.providerType)?.suggestedBaseUrl">官方地址为 {{ typeInfo(providerDraft.providerType)!.suggestedBaseUrl }}</small></label>
           <label v-if="typeInfo(providerDraft.providerType)?.model.isUsed">模型（可选）<input v-model="providerDraft.model" :placeholder="settingHint(typeInfo(providerDraft.providerType)?.model)"><small>{{ settingHint(typeInfo(providerDraft.providerType)?.model) }}</small></label>
           <label v-if="typeInfo(providerDraft.providerType)?.backend.isUsed">后端（可选）<input v-model="providerDraft.backend" :placeholder="settingHint(typeInfo(providerDraft.providerType)?.backend)"><small>{{ settingHint(typeInfo(providerDraft.providerType)?.backend) }}</small></label>
-          <label class="wide">凭据<input v-model="providerDraft.credential" type="password" autocomplete="new-password" :disabled="providerDraft.clearCredential" :placeholder="providerDraft.hasCredential ? '已设置（不回显），留空即保持不变' : '未设置'"></label>
+          <label class="wide">凭据<input v-model="providerDraft.credential" type="password" autocomplete="new-password" :disabled="providerDraft.clearCredential" :placeholder="providerDraft.hasCredential ? '已保存，内容不再显示，留空即保持不变' : '未设置'"></label>
           <label v-if="providerDraft.hasCredential"><input v-model="providerDraft.clearCredential" type="checkbox"> 清除已保存的凭据</label>
           <label><input v-model="providerDraft.isDefault" type="checkbox"> 设为默认</label>
           <p v-if="!providerDraft.wasEnabled" class="hint wide">这个提供方当前是停用状态，保存后会自动启用。不想启用就先不要保存。</p>
@@ -504,24 +505,24 @@ onMounted(() => load())
 
     <section class="panel admin-card wide-card">
       <p class="eyebrow">SINGLE SIGN-ON</p><h2>组织账号登录 <span class="state-chip">{{ oidcStatus?.enabled ? '已启用' : '未启用' }}</span></h2>
-      <p class="hint">终端用户只能通过身份提供方登录；未配置时工作区无人可用，管理员仍可从本地账号进入。</p>
+      <p class="hint">普通用户通过组织身份平台登录；未配置时，管理员仍可用本地账号访问工作台和管理页。</p>
       <details :open="oidcNeedsAttention || oidcStatus?.enabled"><summary>配置组织账号登录</summary>
         <div v-if="oidcStatus?.startupFault" class="notice-banner"><div>已保存的配置在服务启动时被拒绝，当前未生效：{{ oidcStatus.startupFault }}</div></div>
         <div class="form-grid" v-if="settingOf('Oidc:Enabled')">
           <label class="wide"><input type="checkbox" :checked="settingOf('Oidc:Enabled')!.value === 'true'" :disabled="settingOf('Oidc:Enabled')!.isManagedExternally" @change="saveSettingByKey('Oidc:Enabled', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 启用组织账号登录<small>当前运行状态：{{ oidcStatus?.enabled ? '已启用' : '未启用' }}</small></label>
-          <label class="wide">身份提供方地址<input v-model="oidcAuthorityDraft" type="url" placeholder="https://id.example.com/realms/main" :disabled="settingOf('Oidc:Authority')!.isManagedExternally" @change="saveSettingByKey('Oidc:Authority', oidcAuthorityDraft)"><small>末尾斜杠会被去掉，保存后应与发现文档中的 issuer 完全一致</small></label>
+          <label class="wide">身份平台地址（issuer）<input v-model="oidcAuthorityDraft" type="url" placeholder="https://id.example.com/realms/main" :disabled="settingOf('Oidc:Authority')!.isManagedExternally" @change="saveSettingByKey('Oidc:Authority', oidcAuthorityDraft)"><small>末尾斜杠会被去掉，保存后的地址应与登录配置文档声明的平台地址（issuer）完全一致</small></label>
           <label>客户端 ID<input :value="settingOf('Oidc:ClientId')!.value" :disabled="settingOf('Oidc:ClientId')!.isManagedExternally" @change="saveSettingByKey('Oidc:ClientId', ($event.target as HTMLInputElement).value)"></label>
-          <label>客户端密钥<input v-model="oidcSecretDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Oidc:ClientSecret')!.isStored ? '已设置（不回显）' : '未设置'" :disabled="settingOf('Oidc:ClientSecret')!.isManagedExternally"></label>
+          <label>客户端密钥<input v-model="oidcSecretDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Oidc:ClientSecret')!.isStored ? '已保存，内容不再显示' : '未设置'" :disabled="settingOf('Oidc:ClientSecret')!.isManagedExternally"></label>
           <span class="row-actions wide"><button :disabled="!oidcSecretDraft" @click="saveOidcSecret">保存密钥</button><button v-if="settingOf('Oidc:ClientSecret')!.isStored" class="danger-link" @click="saveSettingByKey('Oidc:ClientSecret', '')">清除密钥</button><button :disabled="oidcTesting" @click="testOidc">{{ oidcTesting ? '正在测试…' : '测试连接' }}</button></span>
           <p v-if="oidcTestResult" class="hint wide">{{ oidcTestResult }}</p>
-          <label class="wide"><input type="checkbox" :checked="settingOf('Oidc:RequireHttpsMetadata')!.value === 'true'" :disabled="settingOf('Oidc:RequireHttpsMetadata')!.isManagedExternally" @change="saveSettingByKey('Oidc:RequireHttpsMetadata', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 要求 HTTPS 元数据<small>仅在内网 http 身份提供方下关闭</small></label>
+          <label class="wide"><input type="checkbox" :checked="settingOf('Oidc:RequireHttpsMetadata')!.value === 'true'" :disabled="settingOf('Oidc:RequireHttpsMetadata')!.isManagedExternally" @change="saveSettingByKey('Oidc:RequireHttpsMetadata', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 要求身份平台和登录配置地址使用 HTTPS<small>启用后，身份平台地址和读取登录配置的地址都必须使用 HTTPS；仅在隔离的开发环境中考虑关闭</small></label>
           <label v-for="key in oidcClaimKeys" :key="key">{{ settingLabels[key] }}<input :value="settingOf(key)!.value" :disabled="settingOf(key)!.isManagedExternally" @change="saveSettingByKey(key, ($event.target as HTMLInputElement).value)"></label>
-          <p class="hint wide">在身份提供方处需登记回调地址 <code>{{ oidcRedirectUri }}</code>，注销回调 <code>{{ oidcSignedOutUri }}</code>。请求的 scope 为 <code>{{ oidcStatus?.scopes.join(' ') }}</code>，此项与回调路径不可在此修改。</p>
+          <p class="hint wide">在身份平台处需登记登录回调地址 <code>{{ oidcRedirectUri }}</code>，注销回调 <code>{{ oidcSignedOutUri }}</code>。登录请求的权限范围（scope）为 <code>{{ oidcStatus?.scopes.join(' ') }}</code>，此项与回调路径不可在此修改。姓名、邮箱和角色字段填写身份平台返回这些信息的字段名（claim）；管理员角色值填写用于授予管理员权限的角色名称。</p>
         </div>
       </details>
     </section>
 
-    <section class="panel admin-card wide-card"><p class="eyebrow">API CLIENTS</p><h2>服务客户端 <span class="state-chip">{{ clients.length ? `${clients.length} 个` : '无' }}</span></h2><p class="hint">供其他系统直接调用 API；只用网页的部署不需要配置。</p><details><summary>管理服务客户端</summary><div class="admin-list"><div v-for="client in clients" :key="client.id"><span><strong>{{ client.name }}</strong><small>{{ client.scopes.join(' · ') }}</small></span><span class="row-actions"><span class="status" :class="client.isActive ? 'succeeded' : 'failed'">{{ client.isActive ? '有效' : '已吊销' }}</span><button v-if="client.isActive" @click="rotateClient(client)">轮换</button><button v-if="client.isActive" class="danger-link" @click="revokeClient(client)">吊销</button></span></div></div><div class="form-grid"><label class="wide">名称<input v-model="newClient.name"></label><button class="primary" @click="createClient">创建并签发凭据</button><div v-if="issuedCredential" class="credential wide"><strong>仅显示一次</strong><code>{{ issuedCredential }}</code></div></div></details></section>
+    <section class="panel admin-card wide-card"><p class="eyebrow">API CLIENTS</p><h2>服务客户端 <span class="state-chip">{{ clients.length ? `${clients.length} 个` : '无' }}</span></h2><p class="hint">供其他系统直接调用 API；只用网页的部署不需要配置。更换密钥成功后，旧密钥立即失效，新密钥只在生成时显示，需要自行保存。</p><details><summary>管理服务客户端</summary><div class="admin-list"><div v-for="client in clients" :key="client.id"><span><strong>{{ client.name }}</strong><small>{{ client.scopes.map((scope: string) => `${clientScopeLabels[scope] ?? scope}（${scope}）`).join(' · ') }}</small></span><span class="row-actions"><span class="status" :class="client.isActive ? 'succeeded' : 'failed'">{{ client.isActive ? '有效' : '已吊销' }}</span><button v-if="client.isActive" @click="rotateClient(client)">更换 API 密钥</button><button v-if="client.isActive" class="danger-link" @click="revokeClient(client)">吊销</button></span></div></div><div class="form-grid"><label class="wide">名称<input v-model="newClient.name"></label><button class="primary" @click="createClient">创建并生成 API 密钥</button><div v-if="issuedCredential" class="credential wide"><strong>仅显示一次</strong><code>{{ issuedCredential }}</code></div></div></details></section>
 
     <div class="section-band wide-card"><span class="band-label">可选配置</span><p>镜像自带可用的默认值，不改也能跑。只有换存储、换数据库或需要调参时才展开。</p></div>
 
@@ -538,9 +539,9 @@ onMounted(() => load())
           <label>存储桶<input :value="settingOf('Storage:Bucket')!.value" :disabled="settingOf('Storage:Bucket')!.isManagedExternally" @change="saveSettingByKey('Storage:Bucket', ($event.target as HTMLInputElement).value)"></label>
           <label>区域<input :value="settingOf('Storage:Region')!.value" placeholder="us-east-1" :disabled="settingOf('Storage:Region')!.isManagedExternally" @change="saveSettingByKey('Storage:Region', ($event.target as HTMLInputElement).value)"></label>
           <label>路径前缀<input :value="settingOf('Storage:Prefix')!.value" :disabled="settingOf('Storage:Prefix')!.isManagedExternally" @change="saveSettingByKey('Storage:Prefix', ($event.target as HTMLInputElement).value)"></label>
-          <label><input type="checkbox" :checked="settingOf('Storage:ForcePathStyle')!.value === 'true'" :disabled="settingOf('Storage:ForcePathStyle')!.isManagedExternally" @change="saveSettingByKey('Storage:ForcePathStyle', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 强制路径风格<small>MinIO 等自建服务通常需要开启</small></label>
-          <label>Access Key<input v-model="storageAccessKeyDraft" type="password" autocomplete="off" :placeholder="settingOf('Storage:AccessKey')!.isStored ? '已设置（不回显）' : '未设置'" :disabled="settingOf('Storage:AccessKey')!.isManagedExternally"></label>
-          <label>Secret Key<input v-model="storageSecretKeyDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Storage:SecretKey')!.isStored ? '已设置（不回显）' : '未设置'" :disabled="settingOf('Storage:SecretKey')!.isManagedExternally"></label>
+          <label><input type="checkbox" :checked="settingOf('Storage:ForcePathStyle')!.value === 'true'" :disabled="settingOf('Storage:ForcePathStyle')!.isManagedExternally" @change="saveSettingByKey('Storage:ForcePathStyle', ($event.target as HTMLInputElement).checked ? 'true' : 'false')"> 在 S3 地址路径中包含存储桶名称<small>地址格式如 https://s3.example.com/存储桶/文件；MinIO 等自建服务通常需要开启</small></label>
+          <label>访问密钥标识（Access Key）<input v-model="storageAccessKeyDraft" type="password" autocomplete="off" :placeholder="settingOf('Storage:AccessKey')!.isStored ? '已保存，内容不再显示' : '未设置'" :disabled="settingOf('Storage:AccessKey')!.isManagedExternally"></label>
+          <label>访问密钥（Secret Key）<input v-model="storageSecretKeyDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Storage:SecretKey')!.isStored ? '已保存，内容不再显示' : '未设置'" :disabled="settingOf('Storage:SecretKey')!.isManagedExternally"></label>
           <span class="row-actions wide"><button :disabled="!storageAccessKeyDraft && !storageSecretKeyDraft" @click="saveStorageCredential">保存凭据</button><button v-if="settingOf('Storage:AccessKey')!.isStored" class="danger-link" @click="clearStorageCredential">清除凭据</button></span>
         </template>
         <span class="row-actions wide"><button :disabled="storageTesting" @click="testStorage">{{ storageTesting ? '正在测试…' : '测试写入' }}</button></span>
@@ -551,17 +552,17 @@ onMounted(() => load())
 
     <section class="panel admin-card" v-if="settingOf('Database:Provider')">
       <p class="eyebrow">DATABASE</p><h2>业务数据库 <span class="state-chip">{{ databaseSummary }}</span></h2>
-      <p class="hint">文档元数据、解析记录与结构化结果的存放位置。管理员账号与本页设置存放在独立的控制库中，因此这里配置错误时本页仍可用。</p>
+      <p class="hint">文档元数据、解析记录与结构化结果的存放位置。管理员账号与本页设置保存在另一个本地数据库中，因此这里配置错误时本页仍可用。</p>
       <div v-if="databaseStatus?.startupFault" class="notice-banner"><div>{{ databaseStatus.startupFault }}</div></div>
       <div v-else-if="databaseStatus && !databaseStatus.isReachable" class="notice-banner"><div>当前数据库无法连接，上传与解析都不可用。</div></div>
       <details :open="databaseNeedsAttention"><summary>更改业务数据库</summary>
       <div class="form-grid">
         <label class="wide">数据库类型<select :value="settingOf('Database:Provider')!.value" :disabled="settingOf('Database:Provider')!.isManagedExternally" @change="saveSettingByKey('Database:Provider', ($event.target as HTMLSelectElement).value)"><option v-for="allowed in settingOf('Database:Provider')!.allowedValues" :key="allowed" :value="allowed">{{ databaseProviderLabels[allowed] || allowed }}</option></select><small>当前运行中：{{ databaseProviderLabels[databaseStatus?.provider || ''] || databaseStatus?.provider }}<template v-if="databaseStatus?.isReachable"> · 可连接</template><template v-if="databaseStatus?.hasPendingMigrations"> · 重启后会补齐表结构</template></small></label>
-        <label class="wide">连接字符串<input v-model="databaseConnectionDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Database:ConnectionString')!.isStored ? '已设置（不回显）' : '使用镜像自带的 SQLite 默认值'" :disabled="settingOf('Database:ConnectionString')!.isManagedExternally"><small>其中通常包含密码，因此保存后不会再回显</small></label>
+        <label class="wide">连接字符串<input v-model="databaseConnectionDraft" type="password" autocomplete="new-password" :placeholder="settingOf('Database:ConnectionString')!.isStored ? '已保存，内容不再显示' : '使用镜像自带的 SQLite 默认值'" :disabled="settingOf('Database:ConnectionString')!.isManagedExternally"><small>其中通常包含密码，因此保存后不再显示内容</small></label>
         <label v-if="needsServerVersion" class="wide">服务器版本<input :value="settingOf('Database:ServerVersion')!.value" placeholder="8.4.0" :disabled="settingOf('Database:ServerVersion')!.isManagedExternally" @change="saveSettingByKey('Database:ServerVersion', ($event.target as HTMLInputElement).value)"><small>MySQL 与 MariaDB 必填，服务不会通过连接去猜测</small></label>
         <span class="row-actions wide"><button :disabled="databaseTesting" @click="testDatabase">{{ databaseTesting ? '正在测试…' : '测试连接' }}</button><button class="primary" :disabled="!databaseConnectionDraft" @click="saveDatabaseConnection">保存连接字符串</button><button v-if="settingOf('Database:ConnectionString')!.isStored" class="danger-link" @click="saveSettingByKey('Database:ConnectionString', '')">恢复默认</button></span>
         <p v-if="databaseTestResult" class="hint wide">{{ databaseTestResult }}</p>
-        <p class="hint wide">切换数据库不会迁移已有数据。新库会在重启时自动建表，原有文档与解析记录仍留在旧库中。</p>
+        <p class="hint wide">切换数据库不会迁移已有数据。服务端数据库需由部署方先创建；服务重启时会按部署配置应用表结构，原有文档与解析记录仍留在旧库中。</p>
       </div>
       </details>
     </section>

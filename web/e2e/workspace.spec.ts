@@ -668,7 +668,7 @@ test('administrator can use the document workspace and administration area', asy
   await expect(page.getByText('结果尚未生成或不含内容块。')).toBeVisible()
 
   await resultTabs.getByRole('button', { name: '文档', exact: true }).click()
-  await expect(page.getByText('这次解析没有生成 Markdown 文件。切到“结构”查看规范化后的内容块。')).toBeVisible()
+  await expect(page.getByText('这次解析没有生成 Markdown 文件。切到“结构”查看解析后的结构化内容。')).toBeVisible()
   await resultTabs.getByRole('button', { name: /资源/ }).click()
   await expect(page.getByText('这次解析没有生成图片或结果文件。')).toBeVisible()
 
@@ -715,4 +715,95 @@ test('administrator can use the document workspace and administration area', asy
   await expect(editor.getByText('保存后会自动启用')).toBeVisible()
   await editor.getByRole('button', { name: '保存' }).click()
   await expect(correctedRow.getByText('启用', { exact: true })).toBeVisible()
+})
+
+
+test('file names, permissions, and lifecycle messages remain readable without changing requests', async ({ page }) => {
+  const document = documentItem('wording-document', 'wording.pdf')
+  const run = parseRun('wording-run', document.id, 'Wording provider')
+  const fileTypes = [
+    ['normalized-pdf', '转换后的 PDF'], ['markdown', 'Markdown 文件'],
+    ['provider-archive', '解析结果归档'], ['content-list', '内容清单'],
+    ['layout', '版面信息'], ['model-output', '模型输出'],
+    ['provider-raw', '原始解析结果'], ['source-segment', '拆分的源文件'],
+    ['future-result', 'future-result'], ['constructor', 'constructor'],
+  ]
+  const permissionNames = ['查看文档与结果', '开始或取消解析', '导出结果', '删除文档与解析记录', '管理共享权限']
+  let shared: unknown
+  let cancelled = false
+  let deleted = false
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/admin/antiforgery') return fulfillJson(route, { requestToken: 'test-token', headerName: 'X-CSRF-TOKEN' })
+    if (path === '/api/v1/parse-execution') return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    if (path === `/api/v1/documents/${document.id}` && route.request().method() === 'DELETE') {
+      deleted = true; return fulfillJson(route, {}, 202)
+    }
+    if (path === '/api/v1/documents') return fulfillJson(route, { items: deleted ? [] : [document] })
+    if (path === `/api/v1/documents/${document.id}/access-grants`) {
+      shared = route.request().postDataJSON(); return fulfillJson(route, {}, 201)
+    }
+    if (path === `/api/v1/documents/${document.id}/parse-runs`) {
+      return fulfillJson(route, [run, { ...parseRun('running-run', document.id, 'Running provider'), status: cancelled ? 'cancelled' : 'claimed' }])
+    }
+    if (path === '/api/v1/parse-runs/running-run/cancel') {
+      cancelled = true; return fulfillJson(route, {}, 202)
+    }
+    if (path.endsWith('/artifacts')) return fulfillJson(route, fileTypes.map(([type], index) => ({
+      id: `file-${index}`, type, name: `result-${index}.bin`, mediaType: 'application/octet-stream',
+      sizeBytes: 100, sha256: 'artifact-sha', createdAt: run.createdAt,
+    })))
+    if (path.endsWith('/blocks')) return fulfillJson(route, { items: [] })
+    if (path.endsWith('/assets') || path.endsWith('/pages')) return fulfillJson(route, [])
+    if (path.endsWith('/markdown/preview')) return route.fulfill({ contentType: 'text/html', body: '<p>Result</p>' })
+    if (path.includes('/artifacts/') && path.endsWith('/content')) return route.fulfill({ contentType: 'application/octet-stream', body: 'future content' })
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+  await page.goto('/')
+  await page.getByText(document.originalFileName, { exact: true }).click()
+  await expect(page.locator('.run-row .status').last()).toHaveText('正在准备解析')
+  await page.getByText(run.providerType, { exact: true }).click()
+  await page.locator('.result-tabs').getByRole('button', { name: /资源/ }).click()
+  const files = page.locator('.artifact-list > a')
+  await expect(files).toHaveCount(fileTypes.length)
+  for (const [index, [, label]] of fileTypes.entries()) {
+    await expect(files.nth(index).locator('.artifact-type')).toHaveText(label)
+    await expect(files.nth(index)).toHaveAttribute('href', `/api/v1/parse-runs/${run.id}/artifacts/file-${index}/content`)
+  }
+  const downloadEvent = page.waitForEvent('download')
+  await files.last().click()
+  const download = await downloadEvent
+  expect(await download.failure()).toBeNull()
+
+  await page.locator('.result-tabs').getByRole('button', { name: /版面/ }).click()
+  await expect(page.getByText('这次解析未提供可用的分页信息，请切到“结构”按内容顺序查看。')).toBeVisible()
+  await page.getByText('共享访问', { exact: true }).click()
+  await page.getByLabel('身份平台地址（OIDC issuer）').fill('https://identity.example.test')
+  await page.getByLabel('用户标识（subject）').fill('user-to-share')
+  for (const name of permissionNames) await page.getByRole('checkbox', { name, exact: true }).check()
+  await expect(page.getByText('导出权限控制打包导出', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: '保存授权' }).click()
+  await expect.poll(() => shared).toEqual({
+    issuer: 'https://identity.example.test', subject: 'user-to-share',
+    permissions: ['read', 'parse', 'export', 'delete', 'share'],
+  })
+
+  await page.getByText('Running provider', { exact: true }).click()
+  await expect(page.getByText('StructaDoc 会停止本地处理，但已提交给外部解析服务的任务可能继续运行。', { exact: true })).toBeVisible()
+  page.once('dialog', async dialog => {
+    expect(dialog.message()).toContain('停止本地处理')
+    expect(dialog.message()).toContain('外部解析服务的任务可能继续运行')
+    await dialog.accept()
+  })
+  await page.getByRole('button', { name: '取消解析' }).click()
+  await expect.poll(() => cancelled).toBe(true)
+  page.once('dialog', async dialog => {
+    expect(dialog.message()).toContain('原始文件、所有解析记录、结构化内容、图片和结果文件')
+    expect(dialog.message()).toContain('删除后无法恢复')
+    await dialog.accept()
+  })
+  await page.locator('.detail-head').getByRole('button', { name: '删除', exact: true }).click()
+  await expect.poll(() => deleted).toBe(true)
+  await expect(page.getByText(document.originalFileName, { exact: true })).toHaveCount(0)
 })

@@ -19,7 +19,7 @@ const previewUrl = computed(() => `/api/v1/parse-runs/${props.runId}/markdown/pr
     <!-- Rendered by the service and shown in a sandboxed frame: the Markdown comes from a
          Provider archive, so it is never given the workspace's own origin to run in. -->
     <iframe v-else-if="loaded && hasMarkdown" class="document-frame" sandbox="" :src="previewUrl" title="解析结果预览"></iframe>
-    <p v-else-if="loaded" class="muted pane-empty">这次解析没有生成 Markdown 文件。切到“结构”查看规范化后的内容块。</p>
+    <p v-else-if="loaded" class="muted pane-empty">这次解析没有生成 Markdown 文件。切到“结构”查看解析后的结构化内容。</p>
     <p v-else class="muted pane-empty">文档预览加载失败，重新打开“文档”标签页可重试。</p>
   </div>
 </template>

@@ -170,7 +170,7 @@ public sealed class OidcDiscoveryProbe : IDisposable
             if (total > MaximumDocumentBytes)
             {
                 throw new InvalidOperationException(
-                    "The discovery document exceeded the size a discovery document may have.");
+                    "The OIDC discovery document exceeded the maximum allowed size.");
             }
 
             await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);

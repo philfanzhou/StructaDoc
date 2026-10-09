@@ -168,9 +168,9 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
         Assert.Throws<InvalidOperationException>(options.Validate);
     }
 
-    // Configuring a Provider is the whole of what a deployment does before its documents are parsed.
-    // There was once a second switch after that decision, defaulting to off, and what it produced was
-    // an upload that queued forever while nothing failed and nothing was logged. This is what would
+    // Provider configuration selects where a requested Parse Run is processed.
+    // There was once another execution switch in the administration page, defaulting to off,
+    // which left requested runs queued without a failure. This is what would
     // notice one coming back: shipped options that run Workers, and a settings catalog with nothing
     // in it that stands between an administrator's decision and the Worker acting on it.
     [Fact]

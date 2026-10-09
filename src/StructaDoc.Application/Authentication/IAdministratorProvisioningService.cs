@@ -41,7 +41,7 @@ public interface IAdministratorProvisioningService
 
     /// <summary>
     /// The recorded claim while an administrator has not yet confirmed that it was them. Drives the
-    /// warning shown to every signed-in user, which is the compensating control for an open claim.
+    /// warning shown to signed-in administrators, which is the compensating control for an open claim.
     /// </summary>
     Task<SetupClaimRecord?> GetUnacknowledgedClaimAsync(
         CancellationToken cancellationToken = default);

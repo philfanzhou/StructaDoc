@@ -5,7 +5,7 @@
 
 ## Purpose
 
-A deployment is expected to be operated entirely from the browser. Settings that would otherwise require editing an environment variable and recreating the container are stored in the control plane and changed under `/admin` instead. Configuration files and environment variables remain the way a deployment pins a value; they are not the only way to set one.
+Administrators can manage the settings listed below under `/admin`, with their values stored in the control-plane database. Other options, including Worker enablement and Data Protection key configuration, remain deployment settings. Configuration files and environment variables can supply defaults or pin values that the browser cannot change.
 
 ## Where Settings Live
 
@@ -104,7 +104,7 @@ The administration page loads its panels independently rather than together for 
 
 ## Taking Effect
 
-Options are bound once at startup, so a stored value reaches the running service only through a change listener. No setting currently has one: `Worker:ExecutionEnabled` was the only such setting and was removed, because a switch that stood between an administrator configuring a Provider and the Worker acting on it added nothing to that decision while producing deployments where an upload queued forever with nothing failing and nothing logged. `ISettingChangeListener` remains the mechanism, and what depends on it is the reporting below rather than any particular key.
+Options are bound once at startup, so a stored value reaches the running service only through a change listener. No setting currently has one: `Worker:ExecutionEnabled` was the only such setting and was removed, because a switch that stood between an administrator configuring a Provider and the Worker acting on it added nothing to that decision while producing deployments where a requested Parse Run queued forever with nothing failing and nothing logged. `ISettingChangeListener` remains the mechanism, and what depends on it is the reporting below rather than any particular key.
 
 Everything else needs a restart, and the API reports that from what actually happened rather than from the catalog flag, so a setting that lost its listener says a restart is needed instead of claiming an effect it did not have. `GET /api/v1/admin/settings` reports `isPendingRestart` for a stored value the running process has not picked up.
 

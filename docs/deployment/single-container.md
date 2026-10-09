@@ -18,7 +18,7 @@ Ubuntu 24.04 Noble is explicit because the official .NET 10 image does not provi
 
 ## Published Image
 
-CI publishes the image to GitHub Container Registry for every `v*` tag and every push to `main`, and only after all four test jobs pass, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
+CI publishes the image to GitHub Container Registry for every `v*` tag and every push to `main`, and only after all six check jobs pass, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
 
 ```bash
 docker pull ghcr.io/philfanzhou/structadoc:latest
@@ -166,11 +166,11 @@ The examples are placeholders, not default credentials. Production environments 
 
 The default mapping is `http://localhost:8080`, and readiness is `/health/ready`. One container serves the document workspace at `/`, the administration area at `/admin`, and the API under `/api/v1`, so a deployment needs one published port, one certificate, and one reverse-proxy upstream. See [User Workspace and OIDC](../development/user-workspace-oidc.md).
 
-Supplying a parsing Provider credential under `/admin` is the one thing a new deployment must do, and it is the only thing standing between an upload and an execution attempt. A deployment with no Provider at all configures the official MinerU endpoint on startup — hosted type, published address, model `vlm`, enabled and marked default — so what is left is its API token. The token belongs to the deployment's own MinerU account and cannot ship in an image, so Parse Runs are refused with that reason until an administrator enters it, and both the administration area and the workspace say so.
+Before requesting parsing, an administrator must configure an enabled default Provider and any credential it requires. Users upload a document and then click **开始新解析**; uploading alone does not create a Parse Run. A Worker must also be enabled in the deployment (the default). A deployment with no Provider at all configures the official MinerU endpoint on startup — hosted type, published address, model `vlm`, enabled and marked default — so what is left is its API token. The token belongs to the deployment's own MinerU account and cannot ship in an image, so Parse Runs are refused with that reason until an administrator enters it, and both the administration area and the workspace say so.
 
 Everything about that configuration is editable, and a deployment that would rather use a self-hosted MinerU adds its own Provider and marks it default instead. One Provider has to be enabled and marked default either way: the workspace starts a parse without naming a Provider, so a deployment with configuration but no enabled default has a button that can only fail. The administration area says so when that is the case, and puts Providers at the top of the page under **必须配置** for the same reason.
 
-There is no separate switch to turn parsing on afterwards. Supplying a Provider's credential and leaving it enabled is the point at which a deployment says its documents may be sent there — a cloud Provider means they leave the machine — and a further default-off flag added nothing to that decision while producing deployments where an upload queued forever with nothing failing and nothing logged. To pause parsing, disable the Provider; that stops new runs from being created, though runs already queued carry their own configuration snapshot and will still run.
+There is no additional parsing switch in the administration page. An enabled Provider determines where documents may be sent: cloud parsing sends them to an external service, while a self-hosted Provider's transfer boundary depends on its address and network deployment. To pause parsing, disable the Provider; that stops new runs from being created, though runs already queued carry their own configuration snapshot and will still run.
 
 `Worker__Enabled=false` stops this Host running Workers at all. That is for splitting a deployment — one Host serving the API, others parsing — not for pausing: it is not settable from a browser, and a Host with it off still accepts Parse Runs and leaves them queued. The workspace says so when it is off, and `GET /api/v1/parse-execution` answers the same question for anything that is not a browser.
 
@@ -187,7 +187,7 @@ The response body is JSON with a fixed field set — `status`, `phase`, `migrati
 
 `phase` is always `completed` once the host is running. Readiness deliberately does not depend on setup state: a container whose administrator has not been created yet would otherwise fail its `HEALTHCHECK` on `/health/ready` and be restarted by its `--restart` policy in a loop, when it is in fact waiting for its first visitor to complete `/setup`. `migrationStatus` is `failed` exactly when a stored business-database configuration could not be prepared at startup (deployment-pinned configuration failure stops the host instead, so it never appears here), and `databaseStatus` is `unreachable` when either database no longer answers. Each failure form carries one stable error code — `structadoc.database.startup_fault`, `structadoc.control_plane.unreachable`, or `structadoc.database.unreachable` — and a snapshot source that fails outright answers `503` with `health.probe_failed`. No body or code contains connection strings, paths, or exception text.
 
-Readiness covers the two databases only. Storage liveness is probed from the administration settings page instead, so a deployment with an unreachable storage backend routes no traffic but keeps its administration surface to fix it from.
+Readiness covers the two databases only. It can remain healthy while storage is unreachable. Administrators can test storage writes from the settings page and correct its configuration; a successful readiness response alone does not confirm that uploads or result downloads can access storage.
 
 ## Multiple Containers
 
