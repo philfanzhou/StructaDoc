@@ -403,7 +403,7 @@ async function cancelRun(run: ParseRun) {
 function canDeleteRun(run: ParseRun) { return finalStatuses.includes(run.status) }
 
 async function deleteRun(run: ParseRun) {
-  if (!confirm('确认删除这条解析记录？该次解析的结构化内容、图片、制品和原始结果归档都会被彻底清理，无法恢复。')) return
+  if (!confirm('确认删除这条解析记录？该次解析的结构化内容、图片和结果文件都会被彻底删除，无法恢复。原始上传文件会保留。')) return
   busy.value = true
   try {
     await mutate(`/api/v1/parse-runs/${run.id}`, 'DELETE')
