@@ -674,17 +674,6 @@ test('administrator can use the document workspace and administration area', asy
 
   await page.screenshot({ path: 'test-results/workspace.png', fullPage: true })
 
-  // A failed run is still a record the user has to be able to get rid of, including when it is the
-  // only one the Document has. What is left afterwards is the Document, unparsed and parseable
-  // again — the cleanup itself is covered against storage by UserWorkspaceFeatureTests.
-  page.once('dialog', async dialog => {
-    expect(dialog.message()).toBe('确认删除这条解析记录？该次解析的结构化内容、图片和结果文件都会被彻底删除，无法恢复。原始上传文件会保留。')
-    await dialog.accept()
-  })
-  await page.locator('.run-list .run-delete').first().click()
-  await expect(page.getByText('尚未创建解析任务。')).toBeVisible()
-  await expect(page.locator('.document-row.selected .status')).toHaveText('未解析')
-
   // A deep administration link survives a full reload, so the Host serves the SPA shell for
   // client-side routes rather than only for `/`.
   await page.goto('/admin')
@@ -715,6 +704,21 @@ test('administrator can use the document workspace and administration area', asy
   await expect(editor.getByText('保存后会自动启用')).toBeVisible()
   await editor.getByRole('button', { name: '保存' }).click()
   await expect(correctedRow.getByText('启用', { exact: true })).toBeVisible()
+
+  // Keep the Parse Run until the Provider-history refusal above has been checked. Deleting it
+  // first would let the cleanup Worker remove the reference before that assertion.
+  await page.getByRole('link', { name: '文档工作台' }).click()
+  await page.getByText(fileName, { exact: true }).click()
+  // A failed run is still a record the user has to be able to get rid of, including when it is the
+  // only one the Document has. What is left afterwards is the Document, unparsed and parseable
+  // again — the cleanup itself is covered against storage by UserWorkspaceFeatureTests.
+  page.once('dialog', async dialog => {
+    expect(dialog.message()).toBe('确认删除这条解析记录？该次解析的结构化内容、图片和结果文件都会被彻底删除，无法恢复。原始上传文件会保留。')
+    await dialog.accept()
+  })
+  await page.locator('.run-list .run-delete').first().click()
+  await expect(page.getByText('尚未创建解析任务。')).toBeVisible()
+  await expect(page.locator('.document-row.selected .status')).toHaveText('未解析')
 })
 
 
