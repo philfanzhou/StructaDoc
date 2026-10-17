@@ -124,6 +124,9 @@ const settingLabels: Record<string, string> = {
   'Database:Provider': '数据库类型',
   'Database:ConnectionString': '连接字符串',
   'Database:ServerVersion': '服务器版本',
+  'Logging:LogLevel:Default': '默认日志级别（改动即时生效）',
+  'Logging:LogLevel:Microsoft.AspNetCore': 'ASP.NET Core 框架日志级别（改动即时生效）',
+  'Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command': '数据库命令日志级别（改动即时生效）',
 }
 
 // Where documents are kept and where business data lives get panels of their own rather than rows
@@ -189,6 +192,7 @@ const settingAreas: SettingArea[] = [
   { id: 'provider-results', label: '解析结果接收', prefixes: ['ProviderResults:'], description: '解析结果压缩包的接收上限：总大小、条目数量与解压后占用，防止异常结果占满磁盘。' },
   { id: 'normalization', label: '结果规范化', prefixes: ['ProviderResultNormalization:'], description: '规范化阶段保留的 Markdown、JSON 与图片资源的大小上限。' },
   { id: 'libreoffice', label: 'Office 转 PDF（LibreOffice）', prefixes: ['LibreOffice:'], description: '镜像内 LibreOffice 的转换开关、并发与资源上限，在解析提供方需要 PDF 时使用。' },
+  { id: 'logging', label: '日志级别', prefixes: ['Logging:LogLevel:'], description: '控制台日志的过滤级别：默认级别与两个固定框架类别。改动即时生效，无需重启；被部署环境变量钉住的键在此只读。' },
   { id: 'oidc', label: '组织账号登录（OIDC）', prefixes: ['Oidc:'], ownPanel: true, description: '' },
   { id: 'storage', label: '文件存储', prefixes: ['Storage:'], ownPanel: true, description: '' },
   { id: 'database', label: '业务数据库', prefixes: ['Database:'], ownPanel: true, description: '' },

@@ -238,6 +238,23 @@ public sealed class SettingCatalogContractTests
     }
 
     [Fact]
+    public void Log_level_keys_list_exactly_the_levels_the_console_pipeline_accepts()
+    {
+        // The closed set is the standard Microsoft.Extensions.Logging spelling, which is what the
+        // Logging:LogLevel configuration section has always used: a stored value, a pinned value,
+        // and an appsettings.json value all name a level the same way. The defaults restate the
+        // shipped appsettings.json values — Information for the root, Warning for the two override
+        // categories — so the page reports what the console is doing before anything is written.
+        string[] levels = ["Trace", "Debug", "Information", "Warning", "Error", "Critical"];
+        Assert.Equal(levels, Definition(SettingCatalog.LoggingDefaultLevel).AllowedValues);
+        Assert.Equal(levels, Definition(SettingCatalog.LoggingAspNetCoreLevel).AllowedValues);
+        Assert.Equal(levels, Definition(SettingCatalog.LoggingEfCoreDatabaseCommandLevel).AllowedValues);
+        Assert.Equal("Information", Definition(SettingCatalog.LoggingDefaultLevel).Default);
+        Assert.Equal("Warning", Definition(SettingCatalog.LoggingAspNetCoreLevel).Default);
+        Assert.Equal("Warning", Definition(SettingCatalog.LoggingEfCoreDatabaseCommandLevel).Default);
+    }
+
+    [Fact]
     public void Keys_are_unique_so_a_lookup_cannot_be_ambiguous()
     {
         var keys = SettingCatalog.All.Select(definition => definition.Key).ToArray();

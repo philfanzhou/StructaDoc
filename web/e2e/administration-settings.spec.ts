@@ -25,6 +25,7 @@ const areas: Record<string, string[]> = {
   'provider-results': ['ProviderResults:'],
   normalization: ['ProviderResultNormalization:'],
   libreoffice: ['LibreOffice:'],
+  logging: ['Logging:'],
   oidc: ['Oidc:'],
   storage: ['Storage:'],
   database: ['Database:'],

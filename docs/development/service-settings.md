@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Administrators can manage the settings listed below under `/admin`, with their values stored in the control-plane database. The settable keys now cover the service's tuning as well as its connections: Worker lease, heartbeat, retry, and polling rhythm; the bounds on Provider result intake and normalization; the LibreOffice conversion limits; and the local administration session lifetime and login throttling, alongside storage, the business database, sign-in through an identity provider, and the upload limits. Other options remain deployment settings (see [Deployment-Minimum Keys](#deployment-minimum-keys)). Configuration files and environment variables can supply defaults or pin values that the browser cannot change.
+Administrators can manage the settings listed below under `/admin`, with their values stored in the control-plane database. The settable keys now cover the service's tuning as well as its connections: Worker lease, heartbeat, retry, and polling rhythm; the bounds on Provider result intake and normalization; the LibreOffice conversion limits; the local administration session lifetime and login throttling; and the console log levels, alongside storage, the business database, sign-in through an identity provider, and the upload limits. Other options remain deployment settings (see [Deployment-Minimum Keys](#deployment-minimum-keys)). Configuration files and environment variables can supply defaults or pin values that the browser cannot change.
 
 ## Where Settings Live
 
@@ -30,18 +30,21 @@ A stored setting reaches the instance whose control plane holds it. Most setting
 configuration before anything binds options from them, so they take effect at that instance's
 startup — which is why most entries in the table below say Restart.
 
-The two exceptions are `Worker:MaxConcurrency` and `Documents:MaxUploadBytes`, which the running
-service re-reads through a change listener: a stored write applies on the instance that served it
-without a restart. Both are held in runtime state rather than only in the startup snapshot — the
-execution Worker's claim gate for the concurrency ceiling, and a live upload limit read per request
-by the upload endpoint's request-size bound and by the storage write that is the authoritative
-size rejection. Lowering the concurrency ceiling does not interrupt Parse Runs already executing
-(under the lease model a started attempt runs to its own outcome); it stops the Worker from
-claiming more until the running count falls below the new ceiling.
+The exceptions are `Worker:MaxConcurrency`, `Documents:MaxUploadBytes`, and the three
+`Logging:LogLevel:*` keys, which the running service re-reads through a change listener: a stored
+write applies on the instance that served it without a restart. The concurrency ceiling and the
+upload limit are held in runtime state — the execution Worker's claim gate, and a live upload
+limit read per request by the upload endpoint's request-size bound and by the storage write that
+is the authoritative size rejection. Lowering the concurrency ceiling does not interrupt Parse
+Runs already executing (under the lease model a started attempt runs to its own outcome); it
+stops the Worker from claiming more until the running count falls below the new ceiling. The log
+levels flip the level switches of the console pipeline the events written after them follow; see
+[Observability](./observability.md#structured-logging-pipeline) for the pre-filter relation a
+chosen level sits inside and for what a level chosen after the pipeline exists cannot do.
 
 A listener that fails to apply does not pass silently: the stored value stays, the write is
 answered with the restart it still needs, the read reports the change as pending, and the failure
-is written to the log. `isPendingRestart` for these two keys is reported from the value the
+is written to the log. `isPendingRestart` for these keys is reported from the value the
 running service actually holds, not from what startup bound.
 
 In the shipped single-instance deployment, one instance is the whole service, so one control plane
@@ -103,6 +106,19 @@ whole.
 | `LibreOffice:MaxInputBytes` | integer, 1–8 GiB | Restart |
 | `LibreOffice:MaxOutputBytes` | integer, 1–8 GiB | Restart |
 | `LibreOffice:MaxTemporaryBytes` | integer, 1–8 GiB, ≥ both byte limits above | Restart |
+| `Logging:LogLevel:Default` | `Trace`–`Critical` | Live on the writing instance |
+| `Logging:LogLevel:Microsoft.AspNetCore` | `Trace`–`Critical` | Live on the writing instance |
+| `Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command` | `Trace`–`Critical` | Live on the writing instance |
+
+The three log levels are closed to the standard level names, in the spelling the
+`Logging:LogLevel` configuration section has always used. Their catalog defaults restate the
+shipped `appsettings.json` values — Information for the root, Warning for the two categories —
+and the configuration section keeps its place in front of the pipeline, so a level chosen here
+moves the switch the running console filters at but cannot widen what the deployment's own
+`Logging:LogLevel` values hold back; see
+[Observability](./observability.md#structured-logging-pipeline). A `Logging__LogLevel__*` pin
+seeds the switch at startup, is reported as managed by the deployment, and answers `409` on
+write like every other pin.
 
 A duration is written the way the configuration files write one — `00:00:30` for thirty seconds, `1.00:00:00` for a day, with an optional fractional part for sub-second values. Any spelling the runtime accepts is stored, and the API reports the one canonical spelling back, so a saved value never looks different from itself after a reload. A number may carry a fractional part and is parsed and stored in the invariant culture only.
 
@@ -168,17 +184,19 @@ The administration page loads its panels independently rather than together for 
 ## Taking Effect
 
 Options are bound once at startup, so a stored value reaches the running service only through a
-change listener. Two settings have one: `Worker:MaxConcurrency` moves the execution Worker's claim
-gate, and `Documents:MaxUploadBytes` moves the live upload limit that the upload endpoint's
-request-size bound and the storage write during ingestion both read per request. A write to either
-takes effect on the instance that served it — new claims respect the concurrency ceiling, and the
-next upload answers from the new size limit — and the report says so by reading back what the
-running service holds rather than what startup bound.
+change listener. Five settings have one: `Worker:MaxConcurrency` moves the execution Worker's claim
+gate; `Documents:MaxUploadBytes` moves the live upload limit that the upload endpoint's
+request-size bound and the storage write during ingestion both read per request; and the three
+`Logging:LogLevel:*` keys flip the console pipeline's level switches, so the events written after
+the change are filtered at the new level. A write to any of them takes effect on the instance
+that served it — new claims respect the concurrency ceiling, the next upload answers from the new
+size limit, the next log event answers from the new level — and the report says so by reading
+back what the running service holds rather than what startup bound.
 
 `Worker:ExecutionEnabled` was the one setting that used to have such a listener and was removed,
 because a switch that stood between an administrator configuring a Provider and the Worker acting
 on it added nothing to that decision while producing deployments where a requested Parse Run queued
-forever with nothing failing and nothing logged. The lesson shapes the two listeners that exist
+forever with nothing failing and nothing logged. The lesson shapes the listeners that exist
 now: an apply that fails must be visible — the write answers that a restart is still needed, the
 read reports the change as pending, and the log records the failure — and the upload limit's
 authoritative rejection stays with the storage write, so a request that slips past a stale outer

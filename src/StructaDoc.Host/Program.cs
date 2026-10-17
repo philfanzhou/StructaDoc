@@ -22,6 +22,7 @@ using StructaDoc.Host.Auditing;
 using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
 using StructaDoc.Host.Health;
+using StructaDoc.Host.Logging;
 using StructaDoc.Host.Migrations;
 using StructaDoc.Host.OpenApi;
 using StructaDoc.Host.ParseRuns;
@@ -62,22 +63,18 @@ var serviceMantle = builder.Services.AddServiceMantle(
     .AddServiceMantleHealthEndpoints()
     .AddOpenTelemetryInstrumentation();
 
-// Console logging runs through the ServiceMantle Serilog pipeline: structured properties are
-// sanitized by the library before they reach the sink, and the default MEL console providers are
-// removed so no event can bypass that boundary. Registered before builder.Build() so startup
-// logging, including the stored-setting fault warnings below, goes through the same pipeline.
-// The two override categories keep the shipped appsettings filtering: their Information events
-// stay off the console. Grafana Loki stays off; there is no remote log transport in this wiring.
-builder.AddServiceMantleSerilog(options =>
-{
-    options.MinimumLevel = LogLevel.Information;
-    options.MinimumLevelOverrides = new Dictionary<string, LogLevel>
-    {
-        ["Microsoft.AspNetCore"] = LogLevel.Warning,
-        ["Microsoft.EntityFrameworkCore.Database.Command"] = LogLevel.Warning,
-    };
-    options.IncludeScopes = true;
-});
+// Console logging runs through a Serilog pipeline composed here rather than through
+// ServiceMantle.Logging's Serilog host: the level has to move at runtime, and the published
+// ServiceMantle surface reads its levels once at startup. The local composition keeps the
+// boundary that pipeline existed for — structured properties are sanitized by the ServiceMantle
+// core StructuredLogSanitizer before they reach the console sink, and the default MEL console
+// providers are removed so no event can write around that boundary. Registered before
+// builder.Build() so startup logging, including the stored-setting fault warnings below, goes
+// through the same pipeline. The three switches start at the shipped appsettings levels and are
+// re-seeded from the settings-aware configuration further down, before the host starts. Grafana
+// Loki stays off; there is no remote log transport in this wiring.
+var consoleLogSwitches = new StructaDocConsoleLogSwitches();
+builder.Services.AddStructaDocConsoleLogging(consoleLogSwitches);
 
 var controlPlaneOptions = builder.Configuration
     .GetSection(ControlPlaneOptions.SectionName)
@@ -154,6 +151,13 @@ var settingsConfiguration = StructaDocSettingsConfiguration.Create(
     settingSecretProtector,
     settingsStartupFault);
 var configuration = settingsConfiguration.Effective;
+
+// The pipeline's switches are seeded from the configuration the service actually reads, so a
+// deployment pin or a stored log level is the level the console starts filtering at. Everything
+// the host logs from here on — including the stored-configuration fault warnings below — follows
+// the seeded levels; events written between composition and this point carry the shipped
+// appsettings levels, which is the documented limit of a level chosen after the pipeline exists.
+consoleLogSwitches.SeedFrom(configuration);
 
 // Every section the settings catalog can write to is bound as a recoverable one: where business
 // data and documents live, and the Worker, Provider result, and conversion tuning. A stored value
@@ -262,6 +266,7 @@ builder.Services.AddScoped<ISettingsService, SettingsService>();
 // running, which is what the settings read uses to say honestly whether a restart is pending.
 builder.Services.AddSingleton<ISettingChangeListener, WorkerConcurrencySettingListener>();
 builder.Services.AddSingleton<ISettingChangeListener, DocumentUploadLimitsSettingListener>();
+builder.Services.AddSingleton<ISettingChangeListener, LoggingLevelSettingListener>();
 builder.Services.AddSingleton(new WorkerConcurrencyGate(workerOptions.MaxConcurrency));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ParseRunLeaseHeartbeat>();
