@@ -16,16 +16,19 @@ public static class HostAuthenticationServiceCollectionExtensions
     public static IServiceCollection AddStructaDocHostAuthentication(
         this IServiceCollection services,
         StructaDocAuthenticationOptions options,
+        AuthenticationTuningOptions tuningOptions,
         OidcAuthenticationOptions oidcOptions,
         IDataProtectionProvider keyRing,
         ServiceMantleBuilder serviceMantle)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(tuningOptions);
         ArgumentNullException.ThrowIfNull(oidcOptions);
         ArgumentNullException.ThrowIfNull(keyRing);
         ArgumentNullException.ThrowIfNull(serviceMantle);
         options.Validate();
+        tuningOptions.Validate();
         oidcOptions.Validate();
 
         services.AddStructaDocAuthenticationPersistence();
@@ -55,14 +58,17 @@ public static class HostAuthenticationServiceCollectionExtensions
         // `application/problem+json` body (`rate_limit.exceeded`, `Retry-After`, `correlationId`)
         // rather than an empty 429, and the shared keys must now satisfy the narrower of the two
         // policies — PermitLimit 1–60 and a 10 s–10 min window — or the host refuses to start,
-        // instead of the previous 1–1000 / 1 s–1 h that only the local policy enforced.
+        // instead of the previous 1–1000 / 1 s–1 h that only the local policy enforced. The values
+        // arrive through `tuningOptions`, bound from the settings-aware configuration, and the
+        // catalog's write-time bounds for the two keys sit inside that narrower range so a value a
+        // browser can store is never one the next start refuses.
         serviceMantle
             .AddRateLimiting(rateLimiting =>
             {
-                rateLimiting.Setup.PermitLimit = options.LoginPermitLimit;
-                rateLimiting.Setup.Window = options.LoginRateLimitWindow;
-                rateLimiting.Management.PermitLimit = options.LoginPermitLimit;
-                rateLimiting.Management.Window = options.LoginRateLimitWindow;
+                rateLimiting.Setup.PermitLimit = tuningOptions.LoginPermitLimit;
+                rateLimiting.Setup.Window = tuningOptions.LoginRateLimitWindow;
+                rateLimiting.Management.PermitLimit = tuningOptions.LoginPermitLimit;
+                rateLimiting.Management.Window = tuningOptions.LoginRateLimitWindow;
             })
             .AddSecurityResponseHeaders();
 
@@ -88,7 +94,7 @@ public static class HostAuthenticationServiceCollectionExtensions
                 cookie.Cookie.HttpOnly = true;
                 cookie.Cookie.SameSite = SameSiteMode.Lax;
                 cookie.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
-                cookie.ExpireTimeSpan = options.AdministratorSessionLifetime;
+                cookie.ExpireTimeSpan = tuningOptions.AdministratorSessionLifetime;
                 cookie.SlidingExpiration = true;
                 cookie.EventsType = typeof(AdministratorCookieEvents);
             })

@@ -136,14 +136,105 @@ public sealed class SettingCatalogContractTests
     [Fact]
     public void Nothing_that_locates_the_key_ring_is_settable()
     {
-        // Authentication options are read from the raw configuration before the store is opened,
-        // because the key ring they locate is what decrypts the stored secrets. A settable key in
-        // that section would be read too early to have any effect, and would silently do nothing.
-        Assert.DoesNotContain(
-            SettingCatalog.All,
-            definition => definition.Key.StartsWith(
+        // The key-ring and bootstrap half of Authentication is read from the raw configuration
+        // before the store is opened, because the key ring it locates is what decrypts the stored
+        // secrets. A settable key in that half would be read too early to have any effect, and
+        // would silently do nothing.
+        string[] earlyBound =
+        [
+            "Authentication:DataProtectionKeysPath",
+            "Authentication:DataProtectionKeyPersistence",
+            "Authentication:DataProtectionRootKey",
+            "Authentication:BootstrapAdministratorUsername",
+            "Authentication:BootstrapAdministratorPassword",
+            "Authentication:BootstrapAdministratorDisplayName",
+        ];
+
+        foreach (var key in earlyBound)
+        {
+            Assert.Null(SettingCatalog.Find(key));
+        }
+
+        // The tuning half is the reason the section is split: those keys are bound from the
+        // settings-aware configuration, so they are exactly the Authentication keys that may be
+        // written from the browser. Locking the list both ways keeps the split from drifting in
+        // either direction — a tuning key read early would do nothing, and an early key published
+        // as settable would misdescribe what writing it does.
+        var settable = SettingCatalog.All
+            .Select(definition => definition.Key)
+            .Where(key => key.StartsWith(
                 StructaDocAuthenticationOptions.SectionName + ":",
-                StringComparison.Ordinal));
+                StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Equal(
+            new[]
+            {
+                SettingCatalog.AuthenticationAdministratorSessionLifetime,
+                SettingCatalog.AuthenticationLoginPermitLimit,
+                SettingCatalog.AuthenticationLoginRateLimitWindow,
+            },
+            settable);
+    }
+
+    [Fact]
+    public void Authentication_tuning_defaults_match_the_options_they_describe()
+    {
+        var options = new AuthenticationTuningOptions();
+
+        // The parameterless TimeSpan format is the invariant constant format, which is what the
+        // catalog stores, so equal here means equal as written rather than equal after parsing.
+        Assert.Equal(
+            options.AdministratorSessionLifetime.ToString(),
+            Definition(SettingCatalog.AuthenticationAdministratorSessionLifetime).Default);
+        Assert.Equal(
+            options.LoginPermitLimit.ToString(),
+            Definition(SettingCatalog.AuthenticationLoginPermitLimit).Default);
+        Assert.Equal(
+            options.LoginRateLimitWindow.ToString(),
+            Definition(SettingCatalog.AuthenticationLoginRateLimitWindow).Default);
+    }
+
+    [Fact]
+    public void Authentication_tuning_ranges_match_the_bounds_validation_enforces()
+    {
+        // The session bounds are validation's own, so both edges validate and one step past either
+        // fails there.
+        var session = Definition(SettingCatalog.AuthenticationAdministratorSessionLifetime);
+        TuningWhere(SettingCatalog.AuthenticationAdministratorSessionLifetime, session.Minimum).Validate();
+        TuningWhere(SettingCatalog.AuthenticationAdministratorSessionLifetime, session.Maximum).Validate();
+        Assert.ThrowsAny<Exception>(
+            () => TuningWhere(SettingCatalog.AuthenticationAdministratorSessionLifetime, session.Minimum - 1).Validate());
+        Assert.ThrowsAny<Exception>(
+            () => TuningWhere(SettingCatalog.AuthenticationAdministratorSessionLifetime, session.Maximum + 1).Validate());
+
+        // The two login keys are narrowed below what their options class accepts, because both
+        // values feed the ServiceMantle sign-in policies, which accept a permit limit of 1–60 and a
+        // window of 10 s–10 min and stop the host outside that range. The published edges have to
+        // stay inside the options class's own bounds — a value accepted here is never one the next
+        // restart rejects for its own sake — and stay at or inside the library's, so the exact
+        // numbers are held rather than left to drift back toward the wider range.
+        var permit = Definition(SettingCatalog.AuthenticationLoginPermitLimit);
+        Assert.Equal(1, permit.Minimum);
+        Assert.Equal(60, permit.Maximum);
+        TuningWhere(SettingCatalog.AuthenticationLoginPermitLimit, permit.Minimum).Validate();
+        TuningWhere(SettingCatalog.AuthenticationLoginPermitLimit, permit.Maximum).Validate();
+        Assert.ThrowsAny<Exception>(
+            () => TuningWhere(SettingCatalog.AuthenticationLoginPermitLimit, permit.Minimum - 1).Validate());
+        // The options class still accepts values beyond the published ceiling (up to 1000); the
+        // deployment keeps that fail-fast path, and the browser never gets to store one.
+        TuningWhere(SettingCatalog.AuthenticationLoginPermitLimit, permit.Maximum + 1).Validate();
+
+        var window = Definition(SettingCatalog.AuthenticationLoginRateLimitWindow);
+        Assert.Equal(10_000, window.Minimum);
+        Assert.Equal(600_000, window.Maximum);
+        TuningWhere(SettingCatalog.AuthenticationLoginRateLimitWindow, window.Minimum).Validate();
+        TuningWhere(SettingCatalog.AuthenticationLoginRateLimitWindow, window.Maximum).Validate();
+        // The options class's own floor is one second, below the published 10 s; only the ceiling
+        // has room left above it (up to one hour), and it is held for the same reason as the
+        // permit's.
+        TuningWhere(SettingCatalog.AuthenticationLoginRateLimitWindow, 1_000).Validate();
+        TuningWhere(SettingCatalog.AuthenticationLoginRateLimitWindow, window.Maximum + 1_000).Validate();
     }
 
     [Fact]
@@ -453,6 +544,29 @@ public sealed class SettingCatalogContractTests
                 SettingCatalog.LibreOfficeMaxTemporaryBytes,
                 milliseconds,
                 defaults.MaxTemporaryBytes),
+        };
+    }
+
+    private static AuthenticationTuningOptions TuningWhere(string key, long milliseconds)
+    {
+        var defaults = new AuthenticationTuningOptions();
+        return new AuthenticationTuningOptions
+        {
+            AdministratorSessionLifetime = TimeSpan.FromMilliseconds(Pick(
+                key,
+                SettingCatalog.AuthenticationAdministratorSessionLifetime,
+                milliseconds,
+                defaults.AdministratorSessionLifetime.TotalMilliseconds)),
+            LoginPermitLimit = (int)Pick(
+                key,
+                SettingCatalog.AuthenticationLoginPermitLimit,
+                milliseconds,
+                defaults.LoginPermitLimit),
+            LoginRateLimitWindow = TimeSpan.FromMilliseconds(Pick(
+                key,
+                SettingCatalog.AuthenticationLoginRateLimitWindow,
+                milliseconds,
+                defaults.LoginRateLimitWindow.TotalMilliseconds)),
         };
     }
 
