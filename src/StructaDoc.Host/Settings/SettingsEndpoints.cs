@@ -17,6 +17,8 @@ public static class SettingsEndpoints
 
         group.MapGet("", ListAsync)
             .Produces<IReadOnlyList<SettingResponse>>();
+        group.MapGet("/startup-faults", ListStartupFaults)
+            .Produces<IReadOnlyList<SettingStartupFaultResponse>>();
         group.MapPut("", UpdateAsync)
             .Produces<SettingUpdateResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -32,6 +34,18 @@ public static class SettingsEndpoints
     {
         var states = await settings.ListAsync(cancellationToken);
         return Results.Ok(states.Select(ToResponse).ToArray());
+    }
+
+    /// <summary>
+    /// The storage, database, and identity-provider panels report their own fault beside the values
+    /// that produced it. The tuning sections have no panel of their own yet, so this is where the
+    /// fault for any dropped section is visible: a stored value that is not in effect must be
+    /// discoverable, or the page reports it as though it were running.
+    /// </summary>
+    private static IResult ListStartupFaults(SettingsStartupFault fault)
+    {
+        return Results.Ok(fault.Faults.Select(
+            pair => new SettingStartupFaultResponse(pair.Key, pair.Value)).ToArray());
     }
 
     private static async Task<IResult> UpdateAsync(

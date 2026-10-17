@@ -1,11 +1,11 @@
 # Service Settings
 
 - Status: Implementation note
-- Last updated: 2026-09-30
+- Last updated: 2026-10-17
 
 ## Purpose
 
-Administrators can manage the settings listed below under `/admin`, with their values stored in the control-plane database. Other options, including Worker enablement and Data Protection key configuration, remain deployment settings. Configuration files and environment variables can supply defaults or pin values that the browser cannot change.
+Administrators can manage the settings listed below under `/admin`, with their values stored in the control-plane database. The settable keys now cover the service's tuning as well as its connections: Worker lease, heartbeat, retry, and polling rhythm; the bounds on Provider result intake and normalization; and the LibreOffice conversion limits, alongside storage, the business database, sign-in, and the upload limits. Other options remain deployment settings (see [Deployment-Minimum Keys](#deployment-minimum-keys)). Configuration files and environment variables can supply defaults or pin values that the browser cannot change.
 
 ## Where Settings Live
 
@@ -44,6 +44,14 @@ whole.
 | Key | Type | Effect |
 |---|---|---|
 | `Worker:MaxConcurrency` | integer, 1–64 | Restart |
+| `Worker:MaintenanceInterval` | duration, ≥ 100 ms | Restart |
+| `Worker:RecoveryBatchSize` | integer, 1–10,000 | Restart |
+| `Worker:LeaseDuration` | duration, ≥ 500 ms | Restart |
+| `Worker:HeartbeatInterval` | duration, ≥ 50 ms and < `Worker:LeaseDuration` | Restart |
+| `Worker:RetryDelay` | duration, > 0 | Restart |
+| `Worker:MinimumPollDelay` | duration, ≥ 100 ms | Restart |
+| `Worker:MaximumPollDelay` | duration, ≥ 100 ms and ≥ `Worker:MinimumPollDelay` | Restart |
+| `Worker:MaxExecutionDuration` | duration, 0 or ≥ 1 s; `00:00:00` disables the bound | Restart |
 | `Documents:UploadApiEnabled` | boolean | Restart |
 | `Documents:MaxUploadBytes` | integer, 1024–8 GiB | Restart |
 | `Oidc:Enabled` | boolean | Restart |
@@ -61,6 +69,25 @@ whole.
 | `Database:Provider` | `Sqlite`, `PostgreSql`, `MySql`, or `MariaDb` | Restart |
 | `Database:ConnectionString` | secret | Restart |
 | `Database:ServerVersion` | text | Restart |
+| `ProviderResults:MaxArchiveBytes` | integer, 1–8 GiB | Restart |
+| `ProviderResults:MaxEntryCount` | integer, 1–1,000,000 | Restart |
+| `ProviderResults:MaxEntryBytes` | integer, 1–8 GiB | Restart |
+| `ProviderResults:MaxExpandedBytes` | integer, 1–8 GiB, ≥ `MaxEntryBytes` | Restart |
+| `ProviderResults:MaxCompressionRatio` | number, ≥ 1 | Restart |
+| `ProviderResults:MaxEntryPathBytes` | integer, 64–16,384 | Restart |
+| `ProviderResults:MaxCentralDirectoryBytes` | integer, 1–8 GiB | Restart |
+| `ProviderResultNormalization:MaxMarkdownBytes` | integer, 1–`Int32.MaxValue` | Restart |
+| `ProviderResultNormalization:MaxJsonBytes` | integer, 1–`Int32.MaxValue` | Restart |
+| `ProviderResultNormalization:MaxAssetBytes` | integer, 1–8 GiB | Restart |
+| `LibreOffice:Enabled` | boolean | Restart |
+| `LibreOffice:MaxConcurrency` | integer, 1–64 | Restart |
+| `LibreOffice:Timeout` | duration, ≥ 1 s | Restart |
+| `LibreOffice:ResourceInspectionInterval` | duration, 50 ms–5 s | Restart |
+| `LibreOffice:MaxInputBytes` | integer, 1–8 GiB | Restart |
+| `LibreOffice:MaxOutputBytes` | integer, 1–8 GiB | Restart |
+| `LibreOffice:MaxTemporaryBytes` | integer, 1–8 GiB, ≥ both byte limits above | Restart |
+
+A duration is written the way the configuration files write one — `00:00:30` for thirty seconds, `1.00:00:00` for a day, with an optional fractional part for sub-second values. Any spelling the runtime accepts is stored, and the API reports the one canonical spelling back, so a saved value never looks different from itself after a reload. A number may carry a fractional part and is parsed and stored in the invariant culture only.
 
 `Storage:Provider` and `Database:Provider` are closed sets. A value outside one is refused by the write rather than at the next start, which is the only moment an administrator is still looking at what they typed. The list of accepted spellings is reported with the setting, so the web interface offers a choice instead of asking anyone to guess, and an architecture test holds it against what the options classes accept.
 
@@ -80,6 +107,19 @@ Nothing under `ReverseProxy` is settable either, for a different reason. It name
 
 An address is stored without its trailing slash. An authority written with one and the issuer a provider reports without one are the same address, and the sign-in middleware compares them literally.
 
+## Deployment-Minimum Keys
+
+Everything an administrator adjusts from the browser reaches the service at the next restart and no earlier, which means one set of keys has to exist before the first restart can mean anything: the deployment layer. A minimal deployment supplies
+
+- the listening port or URL prefix (`ASPNETCORE_URLS`, `--urls`),
+- `ControlPlane__DatabasePath` and the Data Protection key ring location (`Authentication__DataProtectionKeysPath`, or the database key ring form with its own prerequisites),
+- `ReverseProxy__*`, because which peer may state a request's real scheme and host is a fact about the network in front of the container,
+- `Database__ApplyMigrationsOnStartup` when the deployment manages migrations itself,
+- bootstrap administrator credentials for the first start, and
+- the pinned server-database connection details, in any deployment whose database must not depend on a browser-set value.
+
+Everything else on the settable list above — the tuning, the limits, the storage form, even which database holds business data in a single-instance deployment — is adjustable from `/admin`. Keys the deployment pins stay readable there but answer `409` on write and are reported as managed by the deployment. The paths an administrator cannot see from inside the browser stay deployment-only altogether: `ProviderResults:TemporaryPath`, `ProviderResultNormalization:TemporaryPath`, `LibreOffice:TemporaryPath`, and `LibreOffice:ExecutablePath` name locations inside the running image, and `Worker:Enabled` stays with whoever placed the container, because a Worker switch on the page is the silent-queue failure mode removed once already (see [Taking Effect](#taking-effect)).
+
 ## Secrets
 
 A secret is encrypted with the Data Protection key ring — `/data/keys` in the default file form, or the business database's `service_data_protection_keys` table when the deployment uses the database form — the same ring that already protects Provider credentials. The control-plane database sits beside the rest of a deployment's data and travels with every backup, so a client secret written there in the clear would travel with it.
@@ -94,9 +134,13 @@ A value written from a browser can be wrong in ways a configuration file cannot,
 
 Refusing to start on that would take away the only surface such a deployment could be fixed from. A stored section that fails validation is dropped instead, the service starts without it, and `GET /api/v1/admin/settings/oidc` reports what was rejected. The whole section goes rather than the failing key alone: half a configuration is harder to reason about than none. The stored values are still reported so an administrator can see what they wrote; the fault is what says they are not in effect.
 
+Tuning keys are written one at a time in exactly the same way, so the same rescue covers the combinations their own rules compare across keys: a `Worker:HeartbeatInterval` no shorter than its `Worker:LeaseDuration`, a `Worker:MaximumPollDelay` below its floor, an expansion allowance that no longer covers the entry limit, a `LibreOffice:MaxTemporaryBytes` below the limits it has to house, and a `Worker:MaxExecutionDuration` between zero and one second. Each value is one its key accepts alone, so no single write can refuse the combination; the next start drops the stored section and runs on the shipped tuning instead.
+
 The distinction is the source of the value, not the error. Anything the deployment pins still stops the service, because whoever set it has a command line.
 
-`Oidc`, `Storage`, and `Database` are the recoverable sections. Each is dropped to the shipped default when a stored value fails to bind or validate, and each records why. An architecture test holds that every recoverable section is one the catalog can write to, since a section no browser can produce is not one that needs rescuing. More than one can be wrong at once — moving a deployment to object storage and an external database in the same sitting is an ordinary way to do that — so faults are kept per section rather than one at a time.
+`Oidc`, `Storage`, `Database`, `Worker`, `ProviderResults`, `ProviderResultNormalization`, and `LibreOffice` are the recoverable sections. Each is dropped to the shipped default when a stored value fails to bind or validate, and each records why. An architecture test holds that every recoverable section is one the catalog can write to, since a section no browser can produce is not one that needs rescuing. More than one can be wrong at once — moving a deployment to object storage and an external database in the same sitting is an ordinary way to do that — so faults are kept per section rather than one at a time.
+
+The identity-provider, storage, and database panels report their own fault beside the values that produced it. The tuning sections have no panel of their own, so `GET /api/v1/admin/settings/startup-faults` answers every dropped section and why — one place an administrator can check before trusting what the page reports as in force.
 
 The business database goes further, because a wrong value there is not always a value that fails to validate. A connection string can be perfectly well formed and point at a server that is not there, credentials that are refused, or a database this build cannot migrate, and none of that is visible until the service starts. Refusing to start on it would take away the administration area, which is the only place it can be corrected from, so a startup migration that fails against a *stored* configuration is recorded and the service starts without a usable business database. Administrator sign-in, settings, storage, and the database panel all still work, because they run on the control plane. Readiness still fails, so nothing routes real traffic to a service that cannot store a document. A database the deployment pinned still stops startup exactly as before.
 
@@ -120,6 +164,7 @@ The Host exits cleanly, with status `0`, so `on-failure` does not restart it. `u
 |---|---|---|
 | `GET` | `/api/v1/admin/settings` | Current value, source, and pending state of every settable key |
 | `PUT` | `/api/v1/admin/settings` | Set or clear one key |
+| `GET` | `/api/v1/admin/settings/startup-faults` | Every stored configuration section refused while starting, and why |
 | `GET` | `/api/v1/admin/settings/oidc` | What sign-in is running, what was rejected at startup, and the addresses to register |
 | `POST` | `/api/v1/admin/settings/oidc/test` | Fetch an authority's discovery document and check it |
 | `GET` | `/api/v1/admin/settings/storage` | Which storage the running service uses, and what was rejected at startup |
