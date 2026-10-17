@@ -226,6 +226,14 @@ public sealed class SettingsEndpointTests
     [InlineData(SettingCatalog.ParseMaxConcurrency, "many")]
     [InlineData(SettingCatalog.UploadApiEnabled, "yes")]
     [InlineData(SettingCatalog.MaxUploadBytes, "512")]
+    [InlineData(SettingCatalog.WorkerLeaseDuration, "00:00:00.4")]
+    [InlineData(SettingCatalog.WorkerLeaseDuration, "soon")]
+    [InlineData(SettingCatalog.WorkerRecoveryBatchSize, "0")]
+    [InlineData(SettingCatalog.ProviderResultsMaxCompressionRatio, "0.5")]
+    [InlineData(SettingCatalog.ProviderResultsMaxCompressionRatio, "lots")]
+    [InlineData(SettingCatalog.ProviderResultsMaxEntryPathBytes, "63")]
+    [InlineData(SettingCatalog.LibreOfficeMaxConcurrency, "0")]
+    [InlineData(SettingCatalog.LibreOfficeResourceInspectionInterval, "00:00:06")]
     public async Task Values_outside_a_settings_range_or_type_are_refused(string key, string value)
     {
         using var deployment = new SettingsTestDeployment();
@@ -306,6 +314,182 @@ public sealed class SettingsEndpointTests
         var body = await accepted.Content.ReadFromJsonAsync<RestartAcceptedResponse>(
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains("restart policy", body!.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task The_tuning_keys_are_published_with_their_defaults_and_pending_state()
+    {
+        using var deployment = new SettingsTestDeployment();
+        using var factory = deployment.CreateFactory();
+        using var client = await SignedInClientAsync(factory);
+
+        var settings = await client.GetFromJsonAsync<SettingResponse[]>(
+            "/api/v1/admin/settings",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // The list is the catalog and nothing else: every key the catalog publishes is answered,
+        // and no key that is not in it appears.
+        Assert.Equal(SettingCatalog.All.Count, settings!.Length);
+
+        var maintenance = settings.Single(setting => setting.Key == SettingCatalog.WorkerMaintenanceInterval);
+        Assert.Equal("Duration", maintenance.Kind);
+        Assert.Equal("00:00:05", maintenance.Value);
+        Assert.False(maintenance.IsStored);
+        Assert.False(maintenance.IsManagedExternally);
+        Assert.False(maintenance.IsPendingRestart);
+
+        var ratio = settings.Single(setting => setting.Key == SettingCatalog.ProviderResultsMaxCompressionRatio);
+        Assert.Equal("Number", ratio.Kind);
+        Assert.Equal("200", ratio.Value);
+
+        var conversion = settings.Single(setting => setting.Key == SettingCatalog.LibreOfficeEnabled);
+        Assert.Equal("Boolean", conversion.Kind);
+        Assert.Equal("true", conversion.Value);
+
+        var inspection = settings.Single(
+            setting => setting.Key == SettingCatalog.LibreOfficeResourceInspectionInterval);
+        // The sub-second interval is reported in the one spelling the service stores, not the
+        // shorter one the image's configuration file happens to write.
+        Assert.Equal("00:00:00.2500000", inspection.Value);
+    }
+
+    [Fact]
+    public async Task Tuning_values_round_trip_through_the_store_and_survive_a_restart()
+    {
+        using var deployment = new SettingsTestDeployment();
+
+        using (var factory = deployment.CreateFactory())
+        using (var client = await SignedInClientAsync(factory))
+        {
+            await WriteAsync(client, SettingCatalog.WorkerLeaseDuration, "00:05:00");
+            await WriteAsync(client, SettingCatalog.ProviderResultsMaxCompressionRatio, "150.5");
+            await WriteAsync(client, SettingCatalog.LibreOfficeResourceInspectionInterval, "00:00:01");
+
+            var lease = await GetAsync(client, SettingCatalog.WorkerLeaseDuration);
+            Assert.True(lease.IsStored);
+            Assert.True(lease.IsPendingRestart);
+        }
+
+        using (var restarted = deployment.CreateFactory())
+        using (var client = await SignedInClientAsync(restarted))
+        {
+            Assert.Equal("00:05:00", (await GetAsync(client, SettingCatalog.WorkerLeaseDuration)).Value);
+            Assert.Equal("150.5", (await GetAsync(client, SettingCatalog.ProviderResultsMaxCompressionRatio)).Value);
+            Assert.Equal("00:00:01", (await GetAsync(client, SettingCatalog.LibreOfficeResourceInspectionInterval)).Value);
+
+            // This process bound its options with the rows in place, so nothing is waiting on a
+            // restart any more.
+            Assert.False((await GetAsync(client, SettingCatalog.WorkerLeaseDuration)).IsPendingRestart);
+        }
+    }
+
+    [Fact]
+    public async Task A_duration_written_in_shorthand_is_reported_in_the_stored_spelling()
+    {
+        using var deployment = new SettingsTestDeployment();
+        using var factory = deployment.CreateFactory();
+        using var client = await SignedInClientAsync(factory);
+
+        // "0:45" and "00:45:00" are the same duration, and the binder reads either. What comes
+        // back is the one canonical spelling, so a saved value never looks different from itself
+        // after a reload.
+        using var response = await client.PutAsJsonAsync(
+            "/api/v1/admin/settings",
+            new SettingUpdateRequest(SettingCatalog.WorkerRetryDelay, "0:45"),
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var state = await GetAsync(client, SettingCatalog.WorkerRetryDelay);
+        Assert.Equal("00:45:00", state.Value);
+        Assert.True(state.IsStored);
+    }
+
+    [Fact]
+    public async Task A_tuning_key_the_deployment_pins_cannot_be_written_here()
+    {
+        using var deployment = new SettingsTestDeployment();
+
+        using var factory = deployment.CreateFactory(builder => builder.ConfigureServices(
+            (context, services) => services.AddSingleton(
+                StructaDocSettingsConfiguration.Create(
+                    context.Configuration,
+                    new ControlPlaneOptions
+                    {
+                        DatabasePath = context.Configuration["ControlPlane:DatabasePath"]!,
+                    },
+                    ["--Worker:LeaseDuration=00:09:00"],
+                    new FakeSettingSecretProtector(),
+                    new SettingsStartupFault()))));
+        using var client = await SignedInClientAsync(factory);
+
+        Assert.True((await GetAsync(client, SettingCatalog.WorkerLeaseDuration)).IsManagedExternally);
+
+        using var response = await client.PutAsJsonAsync(
+            "/api/v1/admin/settings",
+            new SettingUpdateRequest(SettingCatalog.WorkerLeaseDuration, "00:05:00"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.False((await GetAsync(client, SettingCatalog.WorkerLeaseDuration)).IsStored);
+    }
+
+    [Fact]
+    public async Task A_combination_that_cannot_start_is_dropped_reported_and_repairable()
+    {
+        using var deployment = new SettingsTestDeployment();
+
+        // Each value is one the key accepts alone; together they break the rule that a heartbeat
+        // must be shorter than the lease it renews. Nothing a single write sees can refuse that.
+        using (var writer = deployment.CreateFactory())
+        using (var client = await SignedInClientAsync(writer))
+        {
+            await WriteAsync(client, SettingCatalog.WorkerLeaseDuration, "00:02:00");
+            await WriteAsync(client, SettingCatalog.WorkerHeartbeatInterval, "00:05:00");
+
+            var faults = await client.GetFromJsonAsync<SettingStartupFaultResponse[]>(
+                "/api/v1/admin/settings/startup-faults",
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Empty(faults!);
+        }
+
+        // The next start refuses the combination, drops the stored Worker section, and runs on the
+        // shipped tuning instead of crash-looping.
+        using (var restarted = deployment.CreateFactory())
+        using (var client = await SignedInClientAsync(restarted))
+        {
+            var faults = await client.GetFromJsonAsync<SettingStartupFaultResponse[]>(
+                "/api/v1/admin/settings/startup-faults",
+                cancellationToken: TestContext.Current.CancellationToken);
+            var fault = faults!.Single();
+            Assert.Equal(SettingCatalog.WorkerSection, fault.Section);
+            Assert.Contains("HeartbeatInterval", fault.Detail, StringComparison.Ordinal);
+
+            // The administration surface the repair needs is what stayed working. Raising the lease
+            // above the heartbeat is the repair; it has to beat it rather than match it, which is
+            // the same rule the next start will enforce.
+            await WriteAsync(client, SettingCatalog.WorkerLeaseDuration, "00:10:00");
+        }
+
+        using (var repaired = deployment.CreateFactory())
+        using (var client = await SignedInClientAsync(repaired))
+        {
+            var faults = await client.GetFromJsonAsync<SettingStartupFaultResponse[]>(
+                "/api/v1/admin/settings/startup-faults",
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Empty(faults!);
+            Assert.Equal("00:10:00", (await GetAsync(client, SettingCatalog.WorkerLeaseDuration)).Value);
+        }
+    }
+
+    private static async Task WriteAsync(HttpClient client, string key, string value)
+    {
+        using var response = await client.PutAsJsonAsync(
+            "/api/v1/admin/settings",
+            new SettingUpdateRequest(key, value),
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(
+            response.IsSuccessStatusCode,
+            $"Writing '{key}' returned {(int)response.StatusCode}.");
     }
 
     private static async Task<SettingResponse> GetAsync(HttpClient client, string key)
