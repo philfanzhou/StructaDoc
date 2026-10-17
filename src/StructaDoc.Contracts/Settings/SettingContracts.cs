@@ -23,6 +23,12 @@ public sealed record SettingUpdateRequest(string Key, string? Value);
 
 public sealed record SettingUpdateResponse(bool RestartRequired);
 
+/// <summary>
+/// One stored configuration section the service refused while starting, and why. Sections with no
+/// entry started clean: the list is the sections that were dropped, not every recoverable section.
+/// </summary>
+public sealed record SettingStartupFaultResponse(string Section, string Detail);
+
 public sealed record RestartAcceptedResponse(string Detail);
 
 /// <summary>

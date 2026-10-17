@@ -40,8 +40,13 @@ public static class RecoverableConfigurationBinder
             validate(options);
             return options;
         }
-        catch (InvalidOperationException error) when (settings.IsStoredSection(section))
+        catch (Exception error) when (
+            settings.IsStoredSection(section)
+            && error is InvalidOperationException or ArgumentException)
         {
+            // Options classes state their bounds two ways — InvalidOperationException for rules in
+            // their own words, the ArgumentException family for the ThrowIf guards — and both are
+            // the same event here: a stored value this section cannot use.
             fault.Record(
                 section,
                 $"The stored {description} was rejected while starting and is not in effect: {error.Message}");

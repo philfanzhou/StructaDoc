@@ -252,18 +252,18 @@ Administrator endpoints manage local sessions, API clients, and Provider configu
 
 ## Key Configuration
 
-Configuration uses standard ASP.NET Core keys; environment variables replace `:` with `__`. Some keys are also settable under `/admin`, where an environment variable, if present, wins and the setting is shown as managed by the deployment. See [Service Settings](./docs/development/service-settings.md).
+Configuration uses standard ASP.NET Core keys; environment variables replace `:` with `__`. Most keys are also settable under `/admin`, where an environment variable, if present, wins and the setting is shown as managed by the deployment — including the Worker lease/heartbeat/retry/polling rhythm, the Provider result intake and normalization limits, and the LibreOffice conversion limits, not just the connections. See [Service Settings](./docs/development/service-settings.md) for the full settable list and the short deployment-minimum set that stays with the container (ports, control-plane and key ring paths, reverse-proxy trust, the migration gate, and bootstrap credentials).
 
 | Area | Important keys |
 |---|---|
 | Database | `Database__Provider`, `Database__ConnectionString`, `Database__ServerVersion`, `Database__ApplyMigrationsOnStartup` |
-| Worker | `Worker__Enabled`, `Worker__MaxConcurrency`, `Worker__MaxExecutionDuration`, lease, heartbeat, retry, and polling limits |
+| Worker | `Worker__Enabled` (deployment only), `Worker__MaxConcurrency`, `Worker__MaxExecutionDuration`, lease, heartbeat, retry, and polling limits |
 | Storage | `Storage__Provider`, `Storage__RootPath`, S3 endpoint, bucket, prefix, region, and credential settings |
 | Documents | `Documents__UploadApiEnabled`, `Documents__MaxUploadBytes` |
 | OIDC | `Oidc__Enabled`, `Oidc__Authority`, `Oidc__ClientId`, `Oidc__ClientSecret`, scopes and role mapping; all but scopes and the callback paths are also settable under `/admin` |
-| Local administration | bootstrap credentials, session lifetime, login limits, and Data Protection key path, persistence form, and root key under `Authentication__*` |
-| Conversion | executable, concurrency, timeout, and byte/disk limits under `LibreOffice__*` |
-| Provider results | archive, entry, expansion, compression-ratio, and normalization limits |
+| Local administration | bootstrap credentials, session lifetime, login limits, and Data Protection key path, persistence form, and root key under `Authentication__*` (deployment only) |
+| Conversion | concurrency, timeout, and byte/disk limits under `LibreOffice__*`; the executable and temporary paths are deployment only |
+| Provider results | archive, entry, expansion, compression-ratio, and normalization limits; the temporary path is deployment only |
 
 Connection strings, bootstrap passwords, OIDC secrets, Provider tokens, and storage credentials must come from deployment secrets, never committed configuration.
 

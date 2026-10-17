@@ -16,6 +16,19 @@ public enum SettingKind
     Uri,
 
     /// <summary>
+    /// A time span in the format the .NET configuration binder reads, such as <c>00:00:30</c> or
+    /// <c>1.00:00:00</c>. Stored values are rewritten to the invariant round-trippable spelling so
+    /// that what the value reports tomorrow is what was written today.
+    /// </summary>
+    Duration,
+
+    /// <summary>
+    /// A number that may carry a fractional part, such as a compression ratio. Parsed and stored in
+    /// the invariant culture only, so a value never depends on the server's regional settings.
+    /// </summary>
+    Number,
+
+    /// <summary>
     /// A value that is encrypted at rest and never sent back to a browser. Only whether it is set is
     /// reported, so a stolen administration session cannot read a credential it did not write.
     /// </summary>
@@ -30,8 +43,11 @@ public enum SettingKind
 /// are absent from appsettings.json and get their default from the options class instead, so
 /// reporting an empty value would misdescribe what the service is doing.
 ///
-/// <paramref name="Minimum"/> and <paramref name="Maximum"/> bound an integer. For text kinds only
-/// <paramref name="Maximum"/> applies, as a length limit.
+/// <paramref name="Minimum"/> and <paramref name="Maximum"/> bound an integer. A
+/// <see cref="SettingKind.Duration"/> is bounded in whole milliseconds. A
+/// <see cref="SettingKind.Number"/> is bounded by whole-number comparisons. For those three kinds a
+/// <paramref name="Maximum"/> of zero means no upper bound, because the validation behind the key
+/// imposes none; for text kinds only <paramref name="Maximum"/> applies, as a length limit.
 ///
 /// <paramref name="AllowedValues"/> closes a text setting to a fixed set. A key whose wrong value
 /// would stop the service is better refused at the moment it is written, while the administrator is
@@ -55,6 +71,14 @@ public sealed record SettingDefinition(
 public static class SettingCatalog
 {
     public const string ParseMaxConcurrency = "Worker:MaxConcurrency";
+    public const string WorkerMaintenanceInterval = "Worker:MaintenanceInterval";
+    public const string WorkerRecoveryBatchSize = "Worker:RecoveryBatchSize";
+    public const string WorkerLeaseDuration = "Worker:LeaseDuration";
+    public const string WorkerHeartbeatInterval = "Worker:HeartbeatInterval";
+    public const string WorkerRetryDelay = "Worker:RetryDelay";
+    public const string WorkerMinimumPollDelay = "Worker:MinimumPollDelay";
+    public const string WorkerMaximumPollDelay = "Worker:MaximumPollDelay";
+    public const string WorkerMaxExecutionDuration = "Worker:MaxExecutionDuration";
     public const string UploadApiEnabled = "Documents:UploadApiEnabled";
     public const string MaxUploadBytes = "Documents:MaxUploadBytes";
 
@@ -82,6 +106,31 @@ public static class SettingCatalog
     public const string DatabaseConnectionString = "Database:ConnectionString";
     public const string DatabaseServerVersion = "Database:ServerVersion";
 
+    public const string ProviderResultsMaxArchiveBytes = "ProviderResults:MaxArchiveBytes";
+    public const string ProviderResultsMaxEntryCount = "ProviderResults:MaxEntryCount";
+    public const string ProviderResultsMaxEntryBytes = "ProviderResults:MaxEntryBytes";
+    public const string ProviderResultsMaxExpandedBytes = "ProviderResults:MaxExpandedBytes";
+    public const string ProviderResultsMaxCompressionRatio = "ProviderResults:MaxCompressionRatio";
+    public const string ProviderResultsMaxEntryPathBytes = "ProviderResults:MaxEntryPathBytes";
+    public const string ProviderResultsMaxCentralDirectoryBytes =
+        "ProviderResults:MaxCentralDirectoryBytes";
+
+    public const string ProviderResultNormalizationMaxMarkdownBytes =
+        "ProviderResultNormalization:MaxMarkdownBytes";
+    public const string ProviderResultNormalizationMaxJsonBytes =
+        "ProviderResultNormalization:MaxJsonBytes";
+    public const string ProviderResultNormalizationMaxAssetBytes =
+        "ProviderResultNormalization:MaxAssetBytes";
+
+    public const string LibreOfficeEnabled = "LibreOffice:Enabled";
+    public const string LibreOfficeMaxConcurrency = "LibreOffice:MaxConcurrency";
+    public const string LibreOfficeTimeout = "LibreOffice:Timeout";
+    public const string LibreOfficeResourceInspectionInterval =
+        "LibreOffice:ResourceInspectionInterval";
+    public const string LibreOfficeMaxInputBytes = "LibreOffice:MaxInputBytes";
+    public const string LibreOfficeMaxOutputBytes = "LibreOffice:MaxOutputBytes";
+    public const string LibreOfficeMaxTemporaryBytes = "LibreOffice:MaxTemporaryBytes";
+
     /// <summary>
     /// The section every setting that configures sign-in through an identity provider belongs to.
     /// A bad value here can only be corrected from the browser, so these keys are treated as
@@ -103,12 +152,49 @@ public static class SettingCatalog
     /// </summary>
     public const string DatabaseSection = "Database";
 
+    /// <summary>
+    /// The Parse Run Worker's timing and batch tuning. Its keys are pure adjustment — wrong values
+    /// slow parsing down or hold leases too long but leave the administration area working — so a
+    /// stored combination that fails validation (a heartbeat no shorter than its lease, for example)
+    /// is dropped as a whole rather than stopping the service.
+    /// </summary>
+    public const string WorkerSection = "Worker";
+
+    /// <summary>
+    /// Bounds on the Provider result archive an attempt will accept. Recoverable for the same reason
+    /// as the Worker section: a stored combination that contradicts itself is corrected from the
+    /// browser, and the parsing limits it leaves behind are the shipped ones.
+    /// </summary>
+    public const string ProviderResultsSection = "ProviderResults";
+
+    /// <summary>
+    /// Bounds on what normalization keeps from a result. Recoverable alongside the intake limits it
+    /// is tuned together with.
+    /// </summary>
+    public const string ProviderResultNormalizationSection = "ProviderResultNormalization";
+
+    /// <summary>
+    /// The LibreOffice conversion limits. Recoverable because a combination that fails validation
+    /// (a temporary-disk allowance below the limits it has to cover) is a mistake an administrator
+    /// can only see from the browser that wrote it.
+    /// </summary>
+    public const string LibreOfficeSection = "LibreOffice";
+
     /// <summary>Sections a stored value may be dropped from rather than stopping the service.</summary>
     public static IReadOnlyList<string> RecoverableSections { get; } =
-        [OidcSection, StorageSection, DatabaseSection];
+    [
+        OidcSection,
+        StorageSection,
+        DatabaseSection,
+        WorkerSection,
+        ProviderResultsSection,
+        ProviderResultNormalizationSection,
+        LibreOfficeSection,
+    ];
 
     private const int ClaimNameMaximumLength = 255;
     private const int PathMaximumLength = 1024;
+    private const long EightGibibytes = 8L * 1024 * 1024 * 1024;
 
     public static IReadOnlyList<SettingDefinition> All { get; } =
     [
@@ -119,6 +205,66 @@ public static class SettingCatalog
             Default: "1",
             Minimum: 1,
             Maximum: 64),
+
+        // Worker timing and batch tuning. Duration bounds are whole milliseconds; the floors are the
+        // ones ParseRunWorkerOptions.Validate enforces, so a value accepted here is never one the
+        // next restart rejects for its own sake. Combinations that only fail together — a heartbeat
+        // no shorter than its lease, a poll ceiling below its floor — are caught at startup and
+        // dropped with the whole stored section, which is the recovery the recoverable binding
+        // exists for.
+        new(
+            WorkerMaintenanceInterval,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "00:00:05",
+            Minimum: 100),
+        new(
+            WorkerRecoveryBatchSize,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "100",
+            Minimum: 1,
+            Maximum: 10_000),
+        new(
+            WorkerLeaseDuration,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "00:02:00",
+            Minimum: 500),
+        new(
+            WorkerHeartbeatInterval,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "00:00:30",
+            Minimum: 50),
+        new(
+            WorkerRetryDelay,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "00:00:30",
+            Minimum: 1),
+        new(
+            WorkerMinimumPollDelay,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "00:00:01",
+            Minimum: 100),
+        new(
+            WorkerMaximumPollDelay,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "00:00:30",
+            // No smaller than the floor its own minimum sits on: the poll ceiling can never be
+            // shorter than a poll floor that is valid.
+            Minimum: 100),
+        new(
+            WorkerMaxExecutionDuration,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "01:00:00",
+            // Zero is the documented "no bound" value, so the floor sits at it; a positive value
+            // below one second is refused by validation at startup and recovered there.
+            Minimum: 0),
         new(UploadApiEnabled, SettingKind.Boolean, RequiresRestart: true, Default: "false"),
         new(
             MaxUploadBytes,
@@ -215,6 +361,133 @@ public static class SettingCatalog
             RequiresRestart: true,
             Default: "",
             Maximum: 32),
+
+        // Bounds on the Provider result archive an attempt accepts. The byte caps beyond what
+        // validation requires are guards against a misplaced digit rather than claims about what
+        // the intake can do: a limit eight billion bytes past its default is not a tuning anyone
+        // chose on purpose. Cross-field rules (expansion covering the entry limit) are enforced at
+        // startup, where a failing combination drops the stored section.
+        new(
+            ProviderResultsMaxArchiveBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "536870912",
+            Minimum: 1,
+            Maximum: EightGibibytes),
+        new(
+            ProviderResultsMaxEntryCount,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "20000",
+            Minimum: 1,
+            Maximum: 1_000_000),
+        new(
+            ProviderResultsMaxEntryBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "268435456",
+            Minimum: 1,
+            Maximum: EightGibibytes),
+        new(
+            ProviderResultsMaxExpandedBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "2147483648",
+            Minimum: 1,
+            Maximum: EightGibibytes),
+        new(
+            ProviderResultsMaxCompressionRatio,
+            SettingKind.Number,
+            RequiresRestart: true,
+            Default: "200",
+            // Validation demands a finite ratio of at least one and caps it nowhere.
+            Minimum: 1),
+        new(
+            ProviderResultsMaxEntryPathBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "2048",
+            Minimum: 64,
+            Maximum: 16_384),
+        new(
+            ProviderResultsMaxCentralDirectoryBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "67108864",
+            Minimum: 1,
+            Maximum: EightGibibytes),
+
+        // Bounds on what normalization keeps. The text limits carry the Int32 ceiling validation
+        // imposes, because beyond it the limit is no longer a length anyone can compare against.
+        new(
+            ProviderResultNormalizationMaxMarkdownBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "67108864",
+            Minimum: 1,
+            Maximum: int.MaxValue),
+        new(
+            ProviderResultNormalizationMaxJsonBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "67108864",
+            Minimum: 1,
+            Maximum: int.MaxValue),
+        new(
+            ProviderResultNormalizationMaxAssetBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "268435456",
+            Minimum: 1,
+            Maximum: EightGibibytes),
+
+        // LibreOffice conversion limits. The temporary-disk allowance covering the input and output
+        // limits is a cross-field rule validation owns; the floors and the inspection-interval
+        // ceiling here are the ones LibreOfficeConversionOptions.Validate enforces per key.
+        new(LibreOfficeEnabled, SettingKind.Boolean, RequiresRestart: true, Default: "true"),
+        new(
+            LibreOfficeMaxConcurrency,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "1",
+            Minimum: 1,
+            Maximum: 64),
+        new(
+            LibreOfficeTimeout,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "00:03:00",
+            Minimum: 1000),
+        new(
+            LibreOfficeResourceInspectionInterval,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            // The invariant round-trippable spelling of 250 milliseconds, so the stored value
+            // reports back identically to how it was written.
+            Default: "00:00:00.2500000",
+            Minimum: 50,
+            Maximum: 5000),
+        new(
+            LibreOfficeMaxInputBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "104857600",
+            Minimum: 1,
+            Maximum: EightGibibytes),
+        new(
+            LibreOfficeMaxOutputBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "209715200",
+            Minimum: 1,
+            Maximum: EightGibibytes),
+        new(
+            LibreOfficeMaxTemporaryBytes,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "536870912",
+            Minimum: 1,
+            Maximum: EightGibibytes),
     ];
 
     /// <summary>
@@ -267,6 +540,44 @@ public static class SettingCatalog
                 return number >= definition.Minimum && number <= definition.Maximum
                     ? number.ToString(CultureInfo.InvariantCulture)
                     : null;
+
+            case SettingKind.Duration:
+                if (!TimeSpan.TryParse(trimmed, CultureInfo.InvariantCulture, out var duration)
+                    || duration < TimeSpan.Zero)
+                {
+                    return null;
+                }
+
+                // Bounds are whole milliseconds because that is the unit every validator behind
+                // these keys states its floor in. A maximum of zero is no ceiling, matching the
+                // validation that imposes none.
+                var milliseconds = duration.TotalMilliseconds;
+                if (milliseconds < definition.Minimum
+                    || (definition.Maximum > 0 && milliseconds > definition.Maximum))
+                {
+                    return null;
+                }
+
+                // The constant format is invariant and round-trippable, so a value written as
+                // "0:30" today is reported as "00:00:30" tomorrow and still binds identically.
+                return duration.ToString("c", CultureInfo.InvariantCulture);
+
+            case SettingKind.Number:
+                if (!double.TryParse(
+                        trimmed,
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var ratio)
+                    || !double.IsFinite(ratio)
+                    || ratio < definition.Minimum
+                    || (definition.Maximum > 0 && ratio > definition.Maximum))
+                {
+                    return null;
+                }
+
+                // "R" holds the exact value across a write and the parse that reads it back, so a
+                // ratio never drifts by being reported.
+                return ratio.ToString("R", CultureInfo.InvariantCulture);
 
             case SettingKind.String:
             case SettingKind.Secret:

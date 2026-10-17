@@ -1,7 +1,9 @@
 using StructaDoc.Adapters.Authentication;
+using StructaDoc.Adapters.Conversion;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Documents;
+using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Settings;
 
 namespace StructaDoc.ArchitectureTests;
@@ -151,6 +153,314 @@ public sealed class SettingCatalogContractTests
 
         Assert.Equal(keys.Length, keys.Distinct(StringComparer.Ordinal).Count());
     }
+
+    [Fact]
+    public void Provider_result_intake_defaults_match_the_options_they_describe()
+    {
+        var options = new ProviderResultIntakeOptions();
+
+        Assert.Equal(
+            options.MaxArchiveBytes.ToString(),
+            Definition(SettingCatalog.ProviderResultsMaxArchiveBytes).Default);
+        Assert.Equal(
+            options.MaxEntryCount.ToString(),
+            Definition(SettingCatalog.ProviderResultsMaxEntryCount).Default);
+        Assert.Equal(
+            options.MaxEntryBytes.ToString(),
+            Definition(SettingCatalog.ProviderResultsMaxEntryBytes).Default);
+        Assert.Equal(
+            options.MaxExpandedBytes.ToString(),
+            Definition(SettingCatalog.ProviderResultsMaxExpandedBytes).Default);
+        Assert.Equal(
+            options.MaxCompressionRatio.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Definition(SettingCatalog.ProviderResultsMaxCompressionRatio).Default);
+        Assert.Equal(
+            options.MaxEntryPathBytes.ToString(),
+            Definition(SettingCatalog.ProviderResultsMaxEntryPathBytes).Default);
+        Assert.Equal(
+            options.MaxCentralDirectoryBytes.ToString(),
+            Definition(SettingCatalog.ProviderResultsMaxCentralDirectoryBytes).Default);
+    }
+
+    [Fact]
+    public void Provider_result_normalization_defaults_match_the_options_they_describe()
+    {
+        var options = new ProviderResultNormalizationOptions();
+
+        Assert.Equal(
+            options.MaxMarkdownBytes.ToString(),
+            Definition(SettingCatalog.ProviderResultNormalizationMaxMarkdownBytes).Default);
+        Assert.Equal(
+            options.MaxJsonBytes.ToString(),
+            Definition(SettingCatalog.ProviderResultNormalizationMaxJsonBytes).Default);
+        Assert.Equal(
+            options.MaxAssetBytes.ToString(),
+            Definition(SettingCatalog.ProviderResultNormalizationMaxAssetBytes).Default);
+    }
+
+    [Fact]
+    public void Document_conversion_defaults_match_the_options_they_describe()
+    {
+        var options = new LibreOfficeConversionOptions();
+
+        Assert.Equal(
+            options.Enabled ? "true" : "false",
+            Definition(SettingCatalog.LibreOfficeEnabled).Default);
+        Assert.Equal(
+            options.MaxConcurrency.ToString(),
+            Definition(SettingCatalog.LibreOfficeMaxConcurrency).Default);
+        // The parameterless TimeSpan format is the invariant constant format, which is what the
+        // catalog stores, so equal here means equal as written rather than equal after parsing.
+        Assert.Equal(
+            options.Timeout.ToString(),
+            Definition(SettingCatalog.LibreOfficeTimeout).Default);
+        Assert.Equal(
+            options.ResourceInspectionInterval.ToString(),
+            Definition(SettingCatalog.LibreOfficeResourceInspectionInterval).Default);
+        Assert.Equal(
+            options.MaxInputBytes.ToString(),
+            Definition(SettingCatalog.LibreOfficeMaxInputBytes).Default);
+        Assert.Equal(
+            options.MaxOutputBytes.ToString(),
+            Definition(SettingCatalog.LibreOfficeMaxOutputBytes).Default);
+        Assert.Equal(
+            options.MaxTemporaryBytes.ToString(),
+            Definition(SettingCatalog.LibreOfficeMaxTemporaryBytes).Default);
+    }
+
+    /// <summary>
+    /// A range the catalog publishes has to be one the options behind it accept, or an
+    /// administrator can save a value the next restart rejects for its own sake. The edges are
+    /// what prove it: the minimum and maximum themselves must validate, and where validation
+    /// states its own floor, one step below it must fail there, so the write-time bound and the
+    /// startup bound are the same bound rather than two that happen to overlap.
+    /// </summary>
+    [Fact]
+    public void Provider_result_intake_ranges_match_the_bounds_validation_enforces()
+    {
+        foreach (var key in new[]
+        {
+            SettingCatalog.ProviderResultsMaxArchiveBytes,
+            SettingCatalog.ProviderResultsMaxEntryCount,
+            SettingCatalog.ProviderResultsMaxEntryBytes,
+            SettingCatalog.ProviderResultsMaxCentralDirectoryBytes,
+        })
+        {
+            var definition = Definition(key);
+            IntakeWhere(key, definition.Minimum).Validate();
+            Assert.ThrowsAny<Exception>(() => IntakeWhere(key, definition.Minimum - 1).Validate());
+        }
+
+        // The expansion limit is floored not only by positivity but by having to cover the entry
+        // limit, so its floor probe lowers the entry limit with it rather than leaving the default
+        // beside it.
+        var expanded = Definition(SettingCatalog.ProviderResultsMaxExpandedBytes);
+        new ProviderResultIntakeOptions
+        {
+            MaxExpandedBytes = expanded.Minimum,
+            MaxEntryBytes = expanded.Minimum,
+        }.Validate();
+        Assert.ThrowsAny<Exception>(() => new ProviderResultIntakeOptions
+        {
+            MaxExpandedBytes = expanded.Minimum - 1,
+            MaxEntryBytes = expanded.Minimum,
+        }.Validate());
+
+        // The entry-path limit is the one that carries both of validation's own bounds.
+        var entryPath = Definition(SettingCatalog.ProviderResultsMaxEntryPathBytes);
+        IntakeWhere(SettingCatalog.ProviderResultsMaxEntryPathBytes, entryPath.Minimum).Validate();
+        IntakeWhere(SettingCatalog.ProviderResultsMaxEntryPathBytes, entryPath.Maximum).Validate();
+        Assert.ThrowsAny<Exception>(
+            () => IntakeWhere(SettingCatalog.ProviderResultsMaxEntryPathBytes, entryPath.Minimum - 1).Validate());
+        Assert.ThrowsAny<Exception>(
+            () => IntakeWhere(SettingCatalog.ProviderResultsMaxEntryPathBytes, entryPath.Maximum + 1).Validate());
+
+        // The compression ratio is a number rather than an integer. Validation demands a finite
+        // value of at least one and caps it nowhere, which the catalog restates.
+        var ratio = Definition(SettingCatalog.ProviderResultsMaxCompressionRatio);
+        Assert.Equal(SettingKind.Number, ratio.Kind);
+        Assert.Equal(1, ratio.Minimum);
+        Assert.Equal(0, ratio.Maximum);
+        new ProviderResultIntakeOptions { MaxCompressionRatio = ratio.Minimum }.Validate();
+        Assert.ThrowsAny<Exception>(
+            () => new ProviderResultIntakeOptions { MaxCompressionRatio = ratio.Minimum - 0.5 }.Validate());
+    }
+
+    [Fact]
+    public void Provider_result_normalization_ranges_match_the_bounds_validation_enforces()
+    {
+        foreach (var key in new[]
+        {
+            SettingCatalog.ProviderResultNormalizationMaxMarkdownBytes,
+            SettingCatalog.ProviderResultNormalizationMaxJsonBytes,
+            SettingCatalog.ProviderResultNormalizationMaxAssetBytes,
+        })
+        {
+            var definition = Definition(key);
+            NormalizationWhere(key, definition.Minimum).Validate();
+            NormalizationWhere(key, definition.Maximum).Validate();
+            Assert.ThrowsAny<Exception>(
+                () => NormalizationWhere(key, definition.Minimum - 1).Validate());
+        }
+
+        // The text limits carry the Int32 ceiling validation imposes, rather than a guard this
+        // catalog invented: a length nobody can compare against is not a length.
+        Assert.Equal(int.MaxValue, Definition(SettingCatalog.ProviderResultNormalizationMaxMarkdownBytes).Maximum);
+        Assert.Equal(int.MaxValue, Definition(SettingCatalog.ProviderResultNormalizationMaxJsonBytes).Maximum);
+    }
+
+    [Fact]
+    public void Conversion_ranges_match_the_bounds_validation_enforces()
+    {
+        foreach (var key in new[]
+        {
+            SettingCatalog.LibreOfficeMaxConcurrency,
+            SettingCatalog.LibreOfficeMaxInputBytes,
+            SettingCatalog.LibreOfficeMaxOutputBytes,
+        })
+        {
+            var definition = Definition(key);
+            ConversionWhere(key, definition.Minimum).Validate();
+            Assert.ThrowsAny<Exception>(() => ConversionWhere(key, definition.Minimum - 1).Validate());
+        }
+
+        // The temporary-disk allowance is floored not only by positivity but by having to cover
+        // the input and output limits, so its floor probe lowers those with it.
+        var temporary = Definition(SettingCatalog.LibreOfficeMaxTemporaryBytes);
+        new LibreOfficeConversionOptions
+        {
+            MaxInputBytes = temporary.Minimum,
+            MaxOutputBytes = temporary.Minimum,
+            MaxTemporaryBytes = temporary.Minimum,
+        }.Validate();
+        Assert.ThrowsAny<Exception>(() => new LibreOfficeConversionOptions
+        {
+            MaxInputBytes = temporary.Minimum,
+            MaxOutputBytes = temporary.Minimum,
+            MaxTemporaryBytes = temporary.Minimum - 1,
+        }.Validate());
+
+        var timeout = Definition(SettingCatalog.LibreOfficeTimeout);
+        Assert.Equal(SettingKind.Duration, timeout.Kind);
+        ConversionWhere(SettingCatalog.LibreOfficeTimeout, timeout.Minimum).Validate();
+        Assert.ThrowsAny<Exception>(
+            () => ConversionWhere(SettingCatalog.LibreOfficeTimeout, timeout.Minimum - 1).Validate());
+
+        // The inspection interval is the one conversion limit validation caps as well as floors.
+        var inspection = Definition(SettingCatalog.LibreOfficeResourceInspectionInterval);
+        ConversionWhere(
+            SettingCatalog.LibreOfficeResourceInspectionInterval,
+            inspection.Minimum).Validate();
+        ConversionWhere(
+            SettingCatalog.LibreOfficeResourceInspectionInterval,
+            inspection.Maximum).Validate();
+        Assert.ThrowsAny<Exception>(
+            () => ConversionWhere(
+                SettingCatalog.LibreOfficeResourceInspectionInterval,
+                inspection.Minimum - 1).Validate());
+        Assert.ThrowsAny<Exception>(
+            () => ConversionWhere(
+                SettingCatalog.LibreOfficeResourceInspectionInterval,
+                inspection.Maximum + 1).Validate());
+    }
+
+    /// <summary>
+    /// Paths inside the running image and the Worker on/off switch are deployment facts, not
+    /// tuning: a browser cannot see the filesystem it would be pointing at, and a Worker switch
+    /// reachable from the page is the silent-queue failure mode this catalog already removed once.
+    /// </summary>
+    [Fact]
+    public void Deployment_owned_keys_stay_out_of_the_catalog()
+    {
+        string[] deploymentOwned =
+        [
+            "Worker:Enabled",
+            "ProviderResults:TemporaryPath",
+            "ProviderResultNormalization:TemporaryPath",
+            "LibreOffice:TemporaryPath",
+            "LibreOffice:ExecutablePath",
+        ];
+
+        foreach (var key in deploymentOwned)
+        {
+            Assert.Null(SettingCatalog.Find(key));
+        }
+    }
+
+    /// <summary>
+    /// One field set to the value under test, every other field left at the default the options
+    /// class ships, because a range probe that quietly changed two fields would prove nothing
+    /// about either.
+    /// </summary>
+    private static ProviderResultIntakeOptions IntakeWhere(string key, long value)
+    {
+        var defaults = new ProviderResultIntakeOptions();
+        return new ProviderResultIntakeOptions
+        {
+            MaxArchiveBytes = Pick(key, SettingCatalog.ProviderResultsMaxArchiveBytes, value, defaults.MaxArchiveBytes),
+            MaxEntryCount = (int)Pick(key, SettingCatalog.ProviderResultsMaxEntryCount, value, defaults.MaxEntryCount),
+            MaxEntryBytes = Pick(key, SettingCatalog.ProviderResultsMaxEntryBytes, value, defaults.MaxEntryBytes),
+            MaxExpandedBytes = Pick(key, SettingCatalog.ProviderResultsMaxExpandedBytes, value, defaults.MaxExpandedBytes),
+            MaxEntryPathBytes = (int)Pick(key, SettingCatalog.ProviderResultsMaxEntryPathBytes, value, defaults.MaxEntryPathBytes),
+            MaxCentralDirectoryBytes = Pick(
+                key,
+                SettingCatalog.ProviderResultsMaxCentralDirectoryBytes,
+                value,
+                defaults.MaxCentralDirectoryBytes),
+        };
+    }
+
+    private static ProviderResultNormalizationOptions NormalizationWhere(string key, long value)
+    {
+        var defaults = new ProviderResultNormalizationOptions();
+        return new ProviderResultNormalizationOptions
+        {
+            MaxMarkdownBytes = Pick(
+                key,
+                SettingCatalog.ProviderResultNormalizationMaxMarkdownBytes,
+                value,
+                defaults.MaxMarkdownBytes),
+            MaxJsonBytes = Pick(
+                key,
+                SettingCatalog.ProviderResultNormalizationMaxJsonBytes,
+                value,
+                defaults.MaxJsonBytes),
+            MaxAssetBytes = Pick(
+                key,
+                SettingCatalog.ProviderResultNormalizationMaxAssetBytes,
+                value,
+                defaults.MaxAssetBytes),
+        };
+    }
+
+    private static LibreOfficeConversionOptions ConversionWhere(string key, long milliseconds)
+    {
+        var defaults = new LibreOfficeConversionOptions();
+        return new LibreOfficeConversionOptions
+        {
+            MaxConcurrency = (int)Pick(key, SettingCatalog.LibreOfficeMaxConcurrency, milliseconds, defaults.MaxConcurrency),
+            Timeout = TimeSpan.FromMilliseconds(
+                Pick(key, SettingCatalog.LibreOfficeTimeout, milliseconds, defaults.Timeout.TotalMilliseconds)),
+            ResourceInspectionInterval = TimeSpan.FromMilliseconds(Pick(
+                key,
+                SettingCatalog.LibreOfficeResourceInspectionInterval,
+                milliseconds,
+                defaults.ResourceInspectionInterval.TotalMilliseconds)),
+            MaxInputBytes = Pick(key, SettingCatalog.LibreOfficeMaxInputBytes, milliseconds, defaults.MaxInputBytes),
+            MaxOutputBytes = Pick(key, SettingCatalog.LibreOfficeMaxOutputBytes, milliseconds, defaults.MaxOutputBytes),
+            MaxTemporaryBytes = Pick(
+                key,
+                SettingCatalog.LibreOfficeMaxTemporaryBytes,
+                milliseconds,
+                defaults.MaxTemporaryBytes),
+        };
+    }
+
+    private static long Pick(string key, string candidate, long value, long fallback) =>
+        key == candidate ? value : fallback;
+
+    private static double Pick(string key, string candidate, long value, double fallback) =>
+        key == candidate ? value : fallback;
 
     private static SettingDefinition Definition(string key)
     {

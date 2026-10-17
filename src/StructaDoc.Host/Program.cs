@@ -153,10 +153,11 @@ var settingsConfiguration = StructaDocSettingsConfiguration.Create(
     settingsStartupFault);
 var configuration = settingsConfiguration.Effective;
 
-// Where business data and documents live are the two settings whose wrong value leaves nothing
-// working, and both are reachable from the browser, so both are bound as recoverable sections: a
-// stored value the service cannot use is dropped and reported rather than allowed to stop startup.
-// What survives is the control plane, which is what the administration area runs on.
+// Every section the settings catalog can write to is bound as a recoverable one: where business
+// data and documents live, and the Worker, Provider result, and conversion tuning. A stored value
+// the service cannot use is dropped and reported rather than allowed to stop startup, because the
+// browser that wrote it is the only surface it can be corrected from. What survives any of it is
+// the control plane, which is what the administration area runs on.
 var databaseOptions = RecoverableConfigurationBinder.Bind(
     settingsConfiguration,
     settingsStartupFault,
@@ -165,10 +166,14 @@ var databaseOptions = RecoverableConfigurationBinder.Bind(
     source => source.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>()
         ?? new DatabaseOptions(),
     options => options.Validate());
-var workerOptions = configuration
-    .GetSection(ParseRunWorkerOptions.SectionName)
-    .Get<ParseRunWorkerOptions>() ?? new ParseRunWorkerOptions();
-workerOptions.Validate();
+var workerOptions = RecoverableConfigurationBinder.Bind(
+    settingsConfiguration,
+    settingsStartupFault,
+    SettingCatalog.WorkerSection,
+    "worker configuration",
+    source => source.GetSection(ParseRunWorkerOptions.SectionName).Get<ParseRunWorkerOptions>()
+        ?? new ParseRunWorkerOptions(),
+    options => options.Validate());
 var ingestionOptions = configuration
     .GetSection(DocumentIngestionOptions.SectionName)
     .Get<DocumentIngestionOptions>() ?? new DocumentIngestionOptions();
@@ -180,19 +185,31 @@ var storageOptions = RecoverableConfigurationBinder.Bind(
     source => source.GetSection(FileStorageOptions.SectionName).Get<FileStorageOptions>()
         ?? new FileStorageOptions(),
     options => options.Validate());
-var providerResultOptions = configuration
-    .GetSection(ProviderResultIntakeOptions.SectionName)
-    .Get<ProviderResultIntakeOptions>() ?? new ProviderResultIntakeOptions();
-var providerResultNormalizationOptions = configuration
-    .GetSection(ProviderResultNormalizationOptions.SectionName)
-    .Get<ProviderResultNormalizationOptions>() ?? new ProviderResultNormalizationOptions();
-var conversionOptions = configuration
-    .GetSection(LibreOfficeConversionOptions.SectionName)
-    .Get<LibreOfficeConversionOptions>() ?? new LibreOfficeConversionOptions();
+var providerResultOptions = RecoverableConfigurationBinder.Bind(
+    settingsConfiguration,
+    settingsStartupFault,
+    SettingCatalog.ProviderResultsSection,
+    "provider result intake configuration",
+    source => source.GetSection(ProviderResultIntakeOptions.SectionName)
+        .Get<ProviderResultIntakeOptions>() ?? new ProviderResultIntakeOptions(),
+    options => options.Validate());
+var providerResultNormalizationOptions = RecoverableConfigurationBinder.Bind(
+    settingsConfiguration,
+    settingsStartupFault,
+    SettingCatalog.ProviderResultNormalizationSection,
+    "provider result normalization configuration",
+    source => source.GetSection(ProviderResultNormalizationOptions.SectionName)
+        .Get<ProviderResultNormalizationOptions>() ?? new ProviderResultNormalizationOptions(),
+    options => options.Validate());
+var conversionOptions = RecoverableConfigurationBinder.Bind(
+    settingsConfiguration,
+    settingsStartupFault,
+    SettingCatalog.LibreOfficeSection,
+    "document conversion configuration",
+    source => source.GetSection(LibreOfficeConversionOptions.SectionName)
+        .Get<LibreOfficeConversionOptions>() ?? new LibreOfficeConversionOptions(),
+    options => options.Validate());
 ingestionOptions.Validate();
-providerResultOptions.Validate();
-providerResultNormalizationOptions.Validate();
-conversionOptions.Validate();
 var oidcOptions = OidcConfigurationBinder.Bind(settingsConfiguration, settingsStartupFault);
 
 builder.Services.AddStructaDocControlPlane(controlPlaneOptions);
