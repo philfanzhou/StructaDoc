@@ -49,6 +49,16 @@
     <PackageVersion Include="ServiceMantle.Web" Version="0.3.1-rc.1" />
     <PackageVersion Include="SQLite" Version="3.53.4" />
     <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    <!-- Transitive security pins, not direct dependencies: neither package is referenced by any
+         project. PDFsharp 6.2.4 still asks for System.Security.Cryptography.Pkcs 8.0.1, and
+         ServiceMantle.Persistence.Relational pulls Microsoft.AspNetCore.DataProtection 10.0.11,
+         which resolves Cryptography.Xml and Pkcs 10.0.11; both ranges are named in the NuGet
+         audit advisories GHSA-2fmv-rv2c-59x7, GHSA-846f-f764-76mx, GHSA-7hqp-7c5m-4vq6,
+         GHSA-c399-9853-6jmj, and GHSA-r955-8q5j-3h83. Central transitive pinning lifts every
+         path to 10.0.13, the first version outside all affected ranges; a single central version
+         cannot keep the 8.0.x line alive without downgrading the 10.0.11 chain. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.13" />
     <!-- The browsable page for the OpenAPI document, and nothing else from Swashbuckle: the
          document itself is produced by Microsoft.AspNetCore.OpenApi above. This package carries its
          assets as embedded resources, so the page works in a deployment that cannot reach a CDN,
