@@ -8,6 +8,7 @@ using ServiceMantle.Web;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Providers;
+using StructaDoc.Host.Settings;
 
 namespace StructaDoc.Host.Authentication;
 
@@ -71,6 +72,20 @@ public static class HostAuthenticationServiceCollectionExtensions
                 rateLimiting.Management.Window = tuningOptions.LoginRateLimitWindow;
             })
             .AddSecurityResponseHeaders();
+
+        // The connection tests — OIDC discovery, the storage probe, the database probe — are the
+        // settings endpoints that make the service reach an address the caller chose, so they get
+        // their own named policy. Neither library policy can count by StructaDoc administrator:
+        // `servicemantle.management` partitions by the library's own operator identity and consumer
+        // policies by client address, so the policy is registered locally on the same
+        // `RateLimiterOptions` the library configured. Riding that registration is what keeps a
+        // refusal identical to sign-in's — the shared `OnRejected` answers with the same safe
+        // `application/problem+json` body (`rate_limit.exceeded`, `Retry-After`, `correlationId`)
+        // and logs the warning that is the visible trace a rejection leaves — while the partition
+        // is the administrator's stable identity rather than the address. All three test endpoints
+        // share the one bucket, with fixed limits rather than catalog keys, because the budget it
+        // protects is the service's own outbound requests.
+        services.AddConnectionTestRateLimiting();
 
         services.AddScoped<AdministratorCookieEvents>();
         var authentication = services

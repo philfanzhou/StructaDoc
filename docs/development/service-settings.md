@@ -240,8 +240,13 @@ The database probe connects and reads migration history. It creates nothing, bec
 
 Both report a stable code the web interface translates, plus a bounded detail. A driver's message is the useful part of a failed connection, but it is written by something that was handed a credential and may quote it back, so any message containing the submitted connection string or storage key is dropped rather than repeated to a browser.
 
+## Rate Limiting
+
+The three connection tests share one rate limit, because they are the settings endpoints that make the service reach an address the caller chose: twenty attempts per minute, as a sliding window, counted per administrator identity — the same stable `(issuer, subject)` pair the service persists for principals — with the caller's address standing in for requests that arrive unauthenticated. All three tests spend the one budget, so probing any of them consumes the same allowance; reading the status endpoints, writing settings, and sign-in are not limited. The limits are fixed in code rather than settable, because the budget the policy protects is the service's own outbound requests, not a tuning an administrator is better placed to choose.
+
+A refused attempt answers with the same safe `application/problem+json` body sign-in limiting produces — the rule that fired, a correlation id, and nothing about the address probed or the caller — and each refusal is logged as a warning through the console pipeline, which is the trace it leaves. The policy is local rather than one of ServiceMantle's because neither library policy can count by StructaDoc administrator: the management policy partitions by the library's own operator identity, and consumer policies by client address alone. Registering on the same rate-limiting pipeline is what keeps the refusal identical to sign-in's.
+
 ## Remaining Work
 
 - change listeners for the remaining restart-class keys, so fewer settings need a restart at all;
-- rate limiting on the connection tests, which are the settings endpoints that make outbound requests;
 - moving existing objects and rows when storage or the database changes, which today is left where it belongs — with whoever is doing the migration.
