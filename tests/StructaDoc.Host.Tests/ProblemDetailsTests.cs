@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using ServiceMantle;
 using ServiceMantle.Web.Http;
 using ServiceMantle.Web.Logging;
+using StructaDoc.Host.Logging;
 
 namespace StructaDoc.Host.Tests;
 
@@ -179,12 +180,12 @@ public sealed class ProblemDetailsTests(StructaDocWebApplicationFactory factory)
     }
 
     /// <summary>
-    /// A web host with the Host's own wiring — ServiceMantle identity, the Serilog console pipeline
-    /// with the shipped level settings, the correlation middleware, and the Problem Details
-    /// middleware — around probe endpoints that fail the ways the fallback contract names. The
-    /// environment is pinned to Production because the fallback contract is the non-Development
-    /// one: Development used to answer with the developer exception page, and the shipped behavior
-    /// is now the same safe body everywhere.
+    /// A web host with the Host's own wiring — ServiceMantle identity, the locally composed Serilog
+    /// console pipeline with the shipped level switches, the correlation middleware, and the
+    /// Problem Details middleware — around probe endpoints that fail the ways the fallback contract
+    /// names. The environment is pinned to Production because the fallback contract is the
+    /// non-Development one: Development used to answer with the developer exception page, and the
+    /// shipped behavior is now the same safe body everywhere.
     /// </summary>
     private static async Task<WebApplication> StartProbeHostAsync()
     {
@@ -193,15 +194,7 @@ public sealed class ProblemDetailsTests(StructaDocWebApplicationFactory factory)
         builder.Services.AddServiceMantle(
             ServiceId.Parse("structadoc"),
             InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"));
-        builder.AddServiceMantleSerilog(options =>
-        {
-            options.MinimumLevel = LogLevel.Information;
-            options.MinimumLevelOverrides = new Dictionary<string, LogLevel>
-            {
-                ["Microsoft.AspNetCore"] = LogLevel.Warning,
-            };
-            options.IncludeScopes = true;
-        });
+        builder.Services.AddStructaDocConsoleLogging(new StructaDocConsoleLogSwitches());
         builder.WebHost.UseTestServer();
 
         var app = builder.Build();

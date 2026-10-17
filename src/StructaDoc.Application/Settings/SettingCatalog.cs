@@ -139,6 +139,11 @@ public static class SettingCatalog
     public const string LibreOfficeMaxOutputBytes = "LibreOffice:MaxOutputBytes";
     public const string LibreOfficeMaxTemporaryBytes = "LibreOffice:MaxTemporaryBytes";
 
+    public const string LoggingDefaultLevel = "Logging:LogLevel:Default";
+    public const string LoggingAspNetCoreLevel = "Logging:LogLevel:Microsoft.AspNetCore";
+    public const string LoggingEfCoreDatabaseCommandLevel =
+        "Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command";
+
     /// <summary>
     /// The section every setting that configures sign-in through an identity provider belongs to.
     /// A bad value here can only be corrected from the browser, so these keys are treated as
@@ -536,6 +541,35 @@ public static class SettingCatalog
             Default: "536870912",
             Minimum: 1,
             Maximum: EightGibibytes),
+
+        // Console log verbosity, one key for the pipeline's root level and one for each of the two
+        // fixed override categories. A change listener flips the level switch the running console
+        // pipeline filters at, so a stored write applies without a restart. The closed set is the
+        // standard Microsoft.Extensions.Logging spelling, and the defaults restate the shipped
+        // appsettings.json values, so the page reports what the console is doing before anything is
+        // written. A key the deployment pins through Logging__LogLevel__* stays read-only: the pin
+        // seeds the switch at startup and the page refusing it keeps one source of truth.
+        new(
+            LoggingDefaultLevel,
+            SettingKind.String,
+            RequiresRestart: true,
+            Default: "Information",
+            Maximum: 16,
+            AllowedValues: ["Trace", "Debug", "Information", "Warning", "Error", "Critical"]),
+        new(
+            LoggingAspNetCoreLevel,
+            SettingKind.String,
+            RequiresRestart: true,
+            Default: "Warning",
+            Maximum: 16,
+            AllowedValues: ["Trace", "Debug", "Information", "Warning", "Error", "Critical"]),
+        new(
+            LoggingEfCoreDatabaseCommandLevel,
+            SettingKind.String,
+            RequiresRestart: true,
+            Default: "Warning",
+            Maximum: 16,
+            AllowedValues: ["Trace", "Debug", "Information", "Warning", "Error", "Critical"]),
     ];
 
     /// <summary>

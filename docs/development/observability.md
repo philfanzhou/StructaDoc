@@ -1,7 +1,7 @@
 # Observability
 
 - Status: Implementation note
-- Last updated: 2026-10-06
+- Last updated: 2026-10-17
 
 ## Service Identity
 
@@ -37,27 +37,50 @@ required; the process identity remains ephemeral.
 
 ## Structured Logging Pipeline
 
-Console logging runs through the ServiceMantle Serilog pipeline (`AddServiceMantleSerilog`),
-registered before the host is built so startup logging — including the stored-configuration fault
-warnings — flows through it:
+Console logging runs through a Serilog pipeline composed in this repository
+(`AddStructaDocConsoleLogging`), registered before the host is built so startup logging —
+including the stored-configuration fault warnings — flows through it. It replaced
+ServiceMantle.Logging's Serilog host, whose published options are read once at startup and offer
+no runtime switch; composing the pipeline locally is what lets the level move without a restart.
+What the change keeps is the boundary that pipeline existed for:
 
-- Minimum level `Information`, with per-category overrides raising `Microsoft.AspNetCore` and
-  `Microsoft.EntityFrameworkCore.Database.Command` to `Warning`, matching the shipped
-  `appsettings.json` values. Events below the override level in those categories are not emitted.
+- The pipeline's minimum level is one `LoggingLevelSwitch` for the root plus one for each of the
+  two fixed override categories, `Microsoft.AspNetCore` and
+  `Microsoft.EntityFrameworkCore.Database.Command`. The shipped `appsettings.json` values seed
+  them — Information for the root, Warning for both categories — and the three
+  `Logging:LogLevel:*` settings described in [Service Settings](./service-settings.md) move them
+  at runtime through a change listener. Events below the level in force are not emitted.
+- Structured properties are sanitized by the same ServiceMantle core `StructuredLogSanitizer` the
+  library pipeline used, on every property of every event before it reaches the console sink, and
+  sanitization cannot be switched off in this wiring. Secret-shaped values are masked rather than
+  written to the console.
 - Scopes are propagated, so a `ServiceLogContext.BeginScope(logger)` scope emits the identity
   fields `ServiceName`, `ServiceVersion`, and `InstanceId` as structured properties on every event
-  written inside it.
-- Structured properties are sanitized by the library before they reach the sink; sanitization
-  cannot be disabled through options. Secret-shaped values are rejected or masked rather than
-  written to the console.
+  written inside it, beside the request's `CorrelationId`.
 - Registering the pipeline removes the default Microsoft.Extensions.Logging console providers, so
-  no event can bypass the sanitizing boundary. A conflicting pre-existing Serilog configuration
-  fails host startup with the stable error code `serilog.console_sink_conflict`; equivalent
-  repeated registrations are idempotent.
+  no event can bypass the sanitizing boundary. The Serilog bridge is the only logging provider.
 
 The `Logging:LogLevel` section in `appsettings*.json` remains a Microsoft.Extensions.Logging
-pre-filter in front of the pipeline: it can suppress events further, but it cannot raise events
-above the pipeline minimum level or its per-category overrides. Both layers are in force at once.
+pre-filter in front of the pipeline, and it keeps its asymmetry: it can suppress events further,
+but it cannot reveal an event the pipeline's own switches hold back. Both layers are in force at
+once, and the same relation governs a level chosen under `/admin`: a stored value moves the
+switch, and the switch cannot widen what the deployment's own `Logging:LogLevel` values pass. A
+deployment that wants the page to reveal more verbose events raises its own `Logging:LogLevel`
+pin first — and a pinned key is exactly the one the page refuses (`409`), so each level has one
+source of truth. Because the section seeds the switches too, a pin and a stored row never fight
+over the level a restart starts from: the pin wins, and the page reports it as managed by the
+deployment.
+
+A level chosen under `/admin` applies to events written from that point on, in the process that
+served the write, with no restart. It does not reopen events written before the change, and the
+earliest startup logs — written between the pipeline's composition and the seeding of the
+switches — carry the shipped `appsettings.json` levels. A multi-instance deployment gets
+per-instance levels, like every stored setting (see [Service Settings](./service-settings.md)).
+
+The previous `serilog.console_sink_conflict` startup failure belonged to the library pipeline,
+which refused to share the console with a pre-existing Serilog configuration. The local
+composition has no such conflict to refuse: it builds its own logger, replaces the provider
+registrations, and nothing else in this wiring registers a console logger.
 
 The `--migrate-business-database` CLI path does not use this pipeline. It exits before the web
 host is built and keeps its own `Microsoft.EntityFrameworkCore` suppression, so migration command

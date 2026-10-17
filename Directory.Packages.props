@@ -39,16 +39,25 @@
          the process unless a later decision registers one; the package is what keeps that a
          deliberate choice rather than a build default. -->
     <PackageVersion Include="ServiceMantle.Diagnostics" Version="0.3.1-rc.1" />
+    <PackageVersion Include="ServiceMantle.Web" Version="0.3.1-rc.1" />
     <!-- The native SQLite engine the Sqlite provider loads at runtime. EF Core asks for
          SQLitePCLRaw.bundle_e_sqlite3 2.1.12, which is old enough to matter for a component parsing
          untrusted files, so the bundle is pinned forward. The engine itself used to arrive as
          SQLitePCLRaw.lib.e_sqlite3; SQLitePCLRaw 3.x renamed that package to SQLite, so pinning the
          retired name constrains nothing. Naming it here is what keeps the engine version decided in
          this file rather than by whatever the bundle happens to depend on. -->
-    <PackageVersion Include="ServiceMantle.Logging" Version="0.3.1-rc.1" />
-    <PackageVersion Include="ServiceMantle.Web" Version="0.3.1-rc.1" />
     <PackageVersion Include="SQLite" Version="3.53.4" />
     <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    <!-- The locally composed Serilog console pipeline. The Host composes its own logger so the
+         level can move at runtime (a LoggingLevelSwitch per catalogued key), which the
+         ServiceMantle.Logging Serilog host cannot do: its published options are read once at
+         startup. All three versions match what ServiceMantle.Logging 0.3.1-rc.1 already brings
+         transitively, so there is one Serilog pipeline and no version drift; naming them here
+         makes the direct use of their types a direct reference rather than a transitive
+         accident. -->
+    <PackageVersion Include="Serilog" Version="4.4.0" />
+    <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <!-- Transitive security pins, not direct dependencies: neither package is referenced by any
          project. PDFsharp 6.2.4 still asks for System.Security.Cryptography.Pkcs 8.0.1, and
          ServiceMantle.Persistence.Relational pulls Microsoft.AspNetCore.DataProtection 10.0.11,

@@ -252,6 +252,13 @@ public sealed class SettingsEndpointTests
     [InlineData(SettingCatalog.AuthenticationLoginPermitLimit, "61")]
     [InlineData(SettingCatalog.AuthenticationLoginRateLimitWindow, "00:00:09")]
     [InlineData(SettingCatalog.AuthenticationLoginRateLimitWindow, "00:11:00")]
+    // The log levels close to the standard set. "Verbose" and "Fatal" are Serilog's own
+    // spellings rather than Microsoft.Extensions.Logging ones, so a stored value uses the
+    // logging configuration spelling; "None" has no pipeline equivalent because the switches
+    // filter at a level rather than switching the console off.
+    [InlineData(SettingCatalog.LoggingDefaultLevel, "Verbose")]
+    [InlineData(SettingCatalog.LoggingDefaultLevel, "None")]
+    [InlineData(SettingCatalog.LoggingEfCoreDatabaseCommandLevel, "loud")]
     public async Task Values_outside_a_settings_range_or_type_are_refused(string key, string value)
     {
         using var deployment = new SettingsTestDeployment();

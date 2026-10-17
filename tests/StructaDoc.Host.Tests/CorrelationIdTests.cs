@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using ServiceMantle;
 using ServiceMantle.Web.Http;
 using ServiceMantle.Web.Logging;
+using StructaDoc.Host.Logging;
 
 namespace StructaDoc.Host.Tests;
 
@@ -261,9 +262,10 @@ public sealed partial class CorrelationIdTests(StructaDocWebApplicationFactory f
     private static partial Regex GeneratedCorrelationIdPattern();
 
     /// <summary>
-    /// A web host with the Host's own observability wiring — identity, Serilog pipeline with the
-    /// shipped level settings, and the correlation middleware — around endpoints that log while a
-    /// request runs. The scope the middleware opens is what carries the fields asserted above.
+    /// A web host with the Host's own observability wiring — identity, the locally composed Serilog
+    /// console pipeline with the shipped level switches, and the correlation middleware — around
+    /// endpoints that log while a request runs. The scope the middleware opens is what carries the
+    /// fields asserted above.
     /// </summary>
     private static async Task<WebApplication> StartProbeHostAsync()
     {
@@ -271,16 +273,7 @@ public sealed partial class CorrelationIdTests(StructaDocWebApplicationFactory f
         builder.Services.AddServiceMantle(
             ServiceId.Parse("structadoc"),
             InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"));
-        builder.AddServiceMantleSerilog(options =>
-        {
-            options.MinimumLevel = LogLevel.Information;
-            options.MinimumLevelOverrides = new Dictionary<string, LogLevel>
-            {
-                ["Microsoft.AspNetCore"] = LogLevel.Warning,
-                ["Microsoft.EntityFrameworkCore.Database.Command"] = LogLevel.Warning,
-            };
-            options.IncludeScopes = true;
-        });
+        builder.Services.AddStructaDocConsoleLogging(new StructaDocConsoleLogSwitches());
         builder.WebHost.UseTestServer();
 
         var app = builder.Build();
