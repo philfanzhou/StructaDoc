@@ -19,6 +19,7 @@ namespace StructaDoc.Host.Tests;
 // verbatim, everything else is replaced by a generated value, the header reaches responses
 // produced by the static files, the SPA fallback, and the API error paths, and the value in the
 // response header, the request context, and the downstream log scope is one and the same.
+[Collection("Console output")]
 public sealed partial class CorrelationIdTests(StructaDocWebApplicationFactory factory)
     : IClassFixture<StructaDocWebApplicationFactory>
 {
@@ -126,10 +127,12 @@ public sealed partial class CorrelationIdTests(StructaDocWebApplicationFactory f
         AssertGeneratedCorrelationId(response);
     }
 
-    // The log scope assertion needs a host whose console sink binds while the capture owns the
-    // output, which the shared web host cannot offer. The host below wires the same registration
-    // as the Host's Program.cs — identity, Serilog pipeline, correlation middleware — around a
-    // probe endpoint that logs inside a request.
+    // The log scope assertion needs the console sink to emit while the capture owns Console.Out —
+    // the sink resolves the writer per event, so the capture has to be installed before the
+    // request runs and nothing else may swap it in that window (the Console output collection
+    // serializes the tests that swap it). The host below wires the same registration as the Host's
+    // Program.cs — identity, Serilog pipeline, correlation middleware — around a probe endpoint
+    // that logs inside a request.
     [Fact]
     public async Task Log_scope_carries_the_correlation_id_and_the_identity_fields()
     {

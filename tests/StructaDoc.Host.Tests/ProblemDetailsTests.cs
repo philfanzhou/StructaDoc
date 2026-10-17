@@ -21,6 +21,7 @@ namespace StructaDoc.Host.Tests;
 // exception has to sit downstream of the middleware to exercise it; the regression tests at the end
 // run against the real Host pipeline through the shared factory and hold that responses endpoints
 // produce themselves are unchanged.
+[Collection("Console output")]
 public sealed class ProblemDetailsTests(StructaDocWebApplicationFactory factory)
     : IClassFixture<StructaDocWebApplicationFactory>
 {
@@ -67,9 +68,10 @@ public sealed class ProblemDetailsTests(StructaDocWebApplicationFactory factory)
     [Fact]
     public async Task Fallback_log_names_the_error_code_and_correlation_id_but_no_exception_text()
     {
-        // The console sink binds when a host starts, so the capture must own the console before
-        // the probe host starts. ChainingConsoleWriter forwards to the real console, so hosts other
-        // tests started keep working.
+        // The console sink resolves Console.Out when each event is emitted, so the capture must own
+        // the console for the whole request and nothing else may swap it in that window; the
+        // Console output collection serializes the tests that swap it. ChainingConsoleWriter
+        // forwards to the real console, so hosts other tests started keep working.
         var originalOutput = Console.Out;
         using var capture = new ChainingConsoleWriter(originalOutput);
         Console.SetOut(capture);
