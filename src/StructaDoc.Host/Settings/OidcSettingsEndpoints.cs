@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.RateLimiting;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Settings;
@@ -17,6 +18,7 @@ public static class OidcSettingsEndpoints
 
         group.MapGet("", GetStatus).Produces<OidcStatusResponse>();
         group.MapPost("/test", TestAsync)
+            .RequireRateLimiting(ConnectionTestRateLimiting.PolicyName)
             .Produces<OidcConnectionTestResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest);
 

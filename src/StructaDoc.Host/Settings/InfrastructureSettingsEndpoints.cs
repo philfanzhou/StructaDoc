@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.RateLimiting;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Settings;
@@ -26,10 +27,12 @@ public static class InfrastructureSettingsEndpoints
 
         group.MapGet("/storage", GetStorageStatus).Produces<StorageStatusResponse>();
         group.MapPost("/storage/test", TestStorageAsync)
+            .RequireRateLimiting(ConnectionTestRateLimiting.PolicyName)
             .Produces<ConnectionTestResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest);
         group.MapGet("/database", GetDatabaseStatusAsync).Produces<DatabaseStatusResponse>();
         group.MapPost("/database/test", TestDatabaseAsync)
+            .RequireRateLimiting(ConnectionTestRateLimiting.PolicyName)
             .Produces<ConnectionTestResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
