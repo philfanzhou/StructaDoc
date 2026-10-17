@@ -75,5 +75,5 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 - Planning, implementation, and verification status must remain explicit.
 - Database differences must not change the domain model, public API, or job lifecycle.
 - Product and technical documentation, code comments, logs, and exceptions use English.
-  Repository workflow and constraint documents use Chinese as defined by
+  Repository workflow and constraint documents also use English, as defined by
   [`AGENTS.md`](../AGENTS.md).
