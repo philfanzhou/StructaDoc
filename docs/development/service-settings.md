@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Administrators can manage the settings listed below under `/admin`, with their values stored in the control-plane database. The settable keys now cover the service's tuning as well as its connections: Worker lease, heartbeat, retry, and polling rhythm; the bounds on Provider result intake and normalization; and the LibreOffice conversion limits, alongside storage, the business database, sign-in, and the upload limits. Other options remain deployment settings (see [Deployment-Minimum Keys](#deployment-minimum-keys)). Configuration files and environment variables can supply defaults or pin values that the browser cannot change.
+Administrators can manage the settings listed below under `/admin`, with their values stored in the control-plane database. The settable keys now cover the service's tuning as well as its connections: Worker lease, heartbeat, retry, and polling rhythm; the bounds on Provider result intake and normalization; the LibreOffice conversion limits; and the local administration session lifetime and login throttling, alongside storage, the business database, sign-in through an identity provider, and the upload limits. Other options remain deployment settings (see [Deployment-Minimum Keys](#deployment-minimum-keys)). Configuration files and environment variables can supply defaults or pin values that the browser cannot change.
 
 ## Where Settings Live
 
@@ -60,6 +60,9 @@ whole.
 | `Oidc:ClientSecret` | secret | Restart |
 | `Oidc:RequireHttpsMetadata` | boolean | Restart |
 | `Oidc:NameClaim`, `Oidc:EmailClaim`, `Oidc:RoleClaim`, `Oidc:AdministratorRole` | text | Restart |
+| `Authentication:AdministratorSessionLifetime` | duration, 5 minutes–7 days | Restart |
+| `Authentication:LoginPermitLimit` | integer, 1–60 | Restart |
+| `Authentication:LoginRateLimitWindow` | duration, 10 s–10 min | Restart |
 | `Storage:Provider` | `Local` or `S3` | Restart |
 | `Storage:RootPath` | text | Restart |
 | `Storage:ServiceUrl` | address | Restart |
@@ -101,7 +104,9 @@ The catalog restates each default because several of these keys are absent from 
 
 `Oidc:Scopes` is an array and cannot be expressed as one key and one value, so it is not settable. `CallbackPath` and `SignedOutCallbackPath` are not settable either, because they are addresses registered at the identity provider rather than choices. All three are reported by `GET /api/v1/admin/settings/oidc` so an administrator can see them.
 
-Nothing under `Authentication` is settable. Those options are read from the raw configuration before the store is opened, because the Data Protection key ring they locate is what decrypts the stored secrets; a settable key there would be read too early to have any effect. An architecture test holds that.
+The `Authentication` section is split in two. Its key-ring and bootstrap half — `DataProtectionKeysPath`, `DataProtectionKeyPersistence`, `DataProtectionRootKey`, and the `BootstrapAdministrator*` credentials — is read from the raw configuration before the store is opened, because the key ring it locates is what decrypts the stored secrets; none of it is settable, and an architecture test holds those keys out of the catalog. The tuning half — the three keys above — is bound after the stored settings have joined the configuration, which is what makes it settable: the session cookie and both sign-in rate-limit policies are built once at startup from the bound values, so a changed value reaches them at the next restart.
+
+The two login keys are narrower than the range their options class alone accepts (1–1000 permits, a 1-second–1-hour window). Both values feed the two ServiceMantle sign-in policies, which accept a permit limit of 1–60 and a window of 10 s–10 min and stop the host at startup outside that range, so the write-time bound refuses a value there first — a browser can never store one the next start rejects. A deployment pin outside the range keeps the fail-fast startup behaviour, because whoever set it has a command line. See [Authentication](./authentication.md#local-administrator-session-flow) for what the limits protect and what needs immediate effect rather than a restart.
 
 Nothing under `ReverseProxy` is settable either, for a different reason. It names the peer allowed to say what scheme, host, and address a request really had, which is a fact about the network the container was placed in; an administrator reaches the service through that proxy and cannot see what is in front of it, and a wrong answer lets a caller choose its own apparent address. It stays with whoever placed the container, and a test holds it out of this catalog. See [Behind a Reverse Proxy](../deployment/single-container.md#behind-a-reverse-proxy).
 
@@ -138,7 +143,7 @@ Tuning keys are written one at a time in exactly the same way, so the same rescu
 
 The distinction is the source of the value, not the error. Anything the deployment pins still stops the service, because whoever set it has a command line.
 
-`Oidc`, `Storage`, `Database`, `Worker`, `ProviderResults`, `ProviderResultNormalization`, and `LibreOffice` are the recoverable sections. Each is dropped to the shipped default when a stored value fails to bind or validate, and each records why. An architecture test holds that every recoverable section is one the catalog can write to, since a section no browser can produce is not one that needs rescuing. More than one can be wrong at once — moving a deployment to object storage and an external database in the same sitting is an ordinary way to do that — so faults are kept per section rather than one at a time.
+`Oidc`, `Authentication` (the tuning half above), `Storage`, `Database`, `Worker`, `ProviderResults`, `ProviderResultNormalization`, and `LibreOffice` are the recoverable sections. Each is dropped to the shipped default when a stored value fails to bind or validate, and each records why. An architecture test holds that every recoverable section is one the catalog can write to, since a section no browser can produce is not one that needs rescuing. More than one can be wrong at once — moving a deployment to object storage and an external database in the same sitting is an ordinary way to do that — so faults are kept per section rather than one at a time.
 
 The identity-provider, storage, and database panels report their own fault beside the values that produced it. The tuning sections have no panel of their own, so `GET /api/v1/admin/settings/startup-faults` answers every dropped section and why — one place an administrator can check before trusting what the page reports as in force.
 

@@ -85,9 +85,11 @@ var controlPlaneOptions = builder.Configuration
 controlPlaneOptions.Validate();
 
 // Read from the builder configuration rather than the settings-aware one below, because the key
-// ring it locates is what decrypts the stored settings. Nothing under Authentication is settable
-// from the browser, which is what makes reading it this early the same as reading it later; an
-// architecture test holds that true.
+// ring it locates is what decrypts the stored settings. Only the key-ring and bootstrap keys live
+// in this half of the Authentication section; the session and login tuning under the same section
+// is bound later, from the settings-aware configuration, and is settable from the browser. An
+// architecture test holds both halves of the split in place: the keys read here stay out of the
+// settings catalog, and the tuning keys are in it.
 var authenticationOptions = builder.Configuration
     .GetSection(StructaDocAuthenticationOptions.SectionName)
     .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
@@ -211,6 +213,15 @@ var conversionOptions = RecoverableConfigurationBinder.Bind(
     options => options.Validate());
 ingestionOptions.Validate();
 var oidcOptions = OidcConfigurationBinder.Bind(settingsConfiguration, settingsStartupFault);
+// The Authentication section's tuning half binds from the settings-aware configuration rather than
+// the raw one above: nothing it holds is needed before the store opens, and binding it here is what
+// lets an administrator change session length and login throttling from the browser. It binds
+// recoverably for the same reason as the identity-provider options, and the cookie plus both
+// sign-in rate-limit policies are built once from the result, so a changed value reaches them at
+// the next start.
+var authenticationTuningOptions = AuthenticationTuningConfigurationBinder.Bind(
+    settingsConfiguration,
+    settingsStartupFault);
 
 builder.Services.AddStructaDocControlPlane(controlPlaneOptions);
 builder.Services.AddStructaDocPersistence(databaseOptions);
@@ -224,9 +235,15 @@ builder.Services.AddStructaDocParseProviders();
 builder.Services.AddStructaDocProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
-builder.Services.AddStructaDocHostAuthentication(authenticationOptions, oidcOptions, keyRing, serviceMantle);
+builder.Services.AddStructaDocHostAuthentication(
+    authenticationOptions,
+    authenticationTuningOptions,
+    oidcOptions,
+    keyRing,
+    serviceMantle);
 builder.Services.AddStructaDocApiDescription();
 builder.Services.AddSingleton(oidcOptions);
+builder.Services.AddSingleton(authenticationTuningOptions);
 builder.Services.AddSingleton(workerOptions);
 builder.Services.AddSingleton(settingsConfiguration);
 builder.Services.AddSingleton(settingsStartupFault);
@@ -400,12 +417,12 @@ if (ingestionOptions.UploadApiEnabled)
 app.MapDocumentReadEndpoints();
 app.MapDocumentAccessGrantEndpoints();
 
-app.MapSetupEndpoints(authenticationOptions.AdministratorSessionLifetime);
+app.MapSetupEndpoints(authenticationTuningOptions.AdministratorSessionLifetime);
 app.MapAdministratorSessionEndpoints(
-    authenticationOptions.AdministratorSessionLifetime);
+    authenticationTuningOptions.AdministratorSessionLifetime);
 app.MapInteractiveSessionEndpoints(oidcOptions);
 app.MapAdministratorAccountEndpoints(
-    authenticationOptions.AdministratorSessionLifetime);
+    authenticationTuningOptions.AdministratorSessionLifetime);
 app.MapManagementAuditQueryEndpoints();
 app.MapApiClientAdministrationEndpoints();
 app.MapSettingsEndpoints();

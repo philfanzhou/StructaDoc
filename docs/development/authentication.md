@@ -1,7 +1,7 @@
 # Authentication
 
 - Status: Implementation note
-- Last updated: 2026-08-31
+- Last updated: 2026-10-17
 
 ## Current Boundary
 
@@ -74,6 +74,15 @@ Authentication__BootstrapAdministratorDisplayName
 
 Username and password must be configured together. Password length is 8–1024 characters. After migration, the Host creates the account only if its normalized username does not exist, which also closes first-run setup. Bootstrap settings never overwrite a stored password, enabled state, or security stamp. Remove the bootstrap password after first use.
 
+## Authentication Configuration
+
+The `Authentication` section is bound in two halves, and the split is what makes part of it settable:
+
+- **Early-bound, deployment-only.** The Data Protection key ring location, persistence form, and root key, plus the bootstrap administrator credentials above. Stored settings are decrypted with the key ring these keys locate, so they are read from the raw configuration before the settings store opens — nothing stored can reach them, and architecture tests hold those keys out of the settings catalog.
+- **Late-bound, settable.** `AdministratorSessionLifetime`, `LoginPermitLimit`, and `LoginRateLimitWindow`. Nothing here is needed before the store opens, so these bind from the settings-aware configuration — the one an administrator's stored values have already joined — and are settable under `/admin` (see [Service Settings](./service-settings.md)). A stored value that fails validation is dropped at startup with a recorded fault, and the shipped defaults apply, rather than stopping the service.
+
+Both halves take effect at startup: the administrator session cookie and the two sign-in rate-limit policies are built once from the bound values, so a changed value reaches them at the next restart. An administrator who needs tighter login protection to apply immediately should still use a deployment-level pin or a reverse-proxy control; the stored values are tuning, not a live switch.
+
 ## Account Administration
 
 Administrator Cookie endpoints under `/api/v1/admin/administrators` list accounts, add them, change passwords, enable and disable them, and delete them. All writes require antiforgery validation.
@@ -126,7 +135,7 @@ Three behaviors are intentional tightenings over the previous local fixed-window
 
 - The window is sliding, not fixed: a caller cannot double its rate by aligning requests to a window boundary.
 - A rejected request is answered with the safe `application/problem+json` body — `type` `urn:servicemantle:error:rate_limit.exceeded`, `title` `Too many requests.`, `status` `429`, `errorCode` `rate_limit.exceeded`, and the `correlationId` that matches the `x-correlation-id` response header — instead of an empty 429. The body and the middleware's log line name no client address, partition key, operator identity, or credential. `Retry-After` appears only when the failed lease carries the metadata; a sliding-window lease never does.
-- Both policies read the same keys, `Authentication:LoginPermitLimit` (default 10) and `Authentication:LoginRateLimitWindow` (default 1 minute), so those keys must now satisfy the narrower of the two policies: a permit limit of 1–60 and a window of 10 seconds to 10 minutes. A value outside that range — previously accepted up to 1000 permits and down to a 1-second window — stops the host at startup with a stable error naming the field, instead of running with a limit one policy silently could not use.
+- Both policies read the same keys, `Authentication:LoginPermitLimit` (default 10) and `Authentication:LoginRateLimitWindow` (default 1 minute), so those keys must satisfy the narrower of the two policies: a permit limit of 1–60 and a window of 10 seconds to 10 minutes. The keys are settable under `/admin` within exactly that range — the write refuses a value outside it, so a browser cannot store one the next start would reject — while a deployment pin outside the range stops the host at startup with a stable error naming the field, instead of running with a limit one policy silently could not use. Both keys apply at the next restart; see [Authentication Configuration](#authentication-configuration) for the immediate-effect caveat.
 
 Multi-instance limits remain per instance: the counters live in the process, so the aggregate budget of N instances is N times the configured one. The limits are abuse friction, not a DDoS or WAF control.
 

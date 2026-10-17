@@ -1,12 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Settings;
-using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Contracts.Settings;
 
@@ -234,6 +236,16 @@ public sealed class SettingsEndpointTests
     [InlineData(SettingCatalog.ProviderResultsMaxEntryPathBytes, "63")]
     [InlineData(SettingCatalog.LibreOfficeMaxConcurrency, "0")]
     [InlineData(SettingCatalog.LibreOfficeResourceInspectionInterval, "00:00:06")]
+    [InlineData(SettingCatalog.AuthenticationAdministratorSessionLifetime, "00:04:00")]
+    [InlineData(SettingCatalog.AuthenticationAdministratorSessionLifetime, "8.00:00:00")]
+    [InlineData(SettingCatalog.AuthenticationAdministratorSessionLifetime, "forever")]
+    [InlineData(SettingCatalog.AuthenticationLoginPermitLimit, "0")]
+    // Sixty-one passes the options class and is refused by the ServiceMantle sign-in policies at
+    // startup; the write-time bound has to refuse it first, or a browser could store a value the
+    // next start rejects.
+    [InlineData(SettingCatalog.AuthenticationLoginPermitLimit, "61")]
+    [InlineData(SettingCatalog.AuthenticationLoginRateLimitWindow, "00:00:09")]
+    [InlineData(SettingCatalog.AuthenticationLoginRateLimitWindow, "00:11:00")]
     public async Task Values_outside_a_settings_range_or_type_are_refused(string key, string value)
     {
         using var deployment = new SettingsTestDeployment();
@@ -351,6 +363,25 @@ public sealed class SettingsEndpointTests
         // The sub-second interval is reported in the one spelling the service stores, not the
         // shorter one the image's configuration file happens to write.
         Assert.Equal("00:00:00.2500000", inspection.Value);
+
+        // The sign-in tuning half of Authentication is settable; the key-ring half is not, and
+        // these three are the whole published set for the section.
+        var session = settings.Single(
+            setting => setting.Key == SettingCatalog.AuthenticationAdministratorSessionLifetime);
+        Assert.Equal("Duration", session.Kind);
+        Assert.Equal("08:00:00", session.Value);
+        Assert.False(session.IsStored);
+        Assert.False(session.IsManagedExternally);
+        Assert.False(session.IsPendingRestart);
+
+        var permit = settings.Single(setting => setting.Key == SettingCatalog.AuthenticationLoginPermitLimit);
+        Assert.Equal("Integer", permit.Kind);
+        Assert.Equal("10", permit.Value);
+
+        var loginWindow = settings.Single(
+            setting => setting.Key == SettingCatalog.AuthenticationLoginRateLimitWindow);
+        Assert.Equal("Duration", loginWindow.Kind);
+        Assert.Equal("00:01:00", loginWindow.Value);
     }
 
     [Fact]
@@ -479,6 +510,161 @@ public sealed class SettingsEndpointTests
             Assert.Empty(faults!);
             Assert.Equal("00:10:00", (await GetAsync(client, SettingCatalog.WorkerLeaseDuration)).Value);
         }
+    }
+
+    [Fact]
+    public async Task Authentication_tuning_round_trips_and_drives_the_sign_in_cookie_after_a_restart()
+    {
+        using var deployment = new SettingsTestDeployment();
+
+        using (var factory = deployment.CreateFactory())
+        using (var client = await SignedInClientAsync(factory))
+        {
+            await WriteAsync(client, SettingCatalog.AuthenticationAdministratorSessionLifetime, "00:30:00");
+            await WriteAsync(client, SettingCatalog.AuthenticationLoginPermitLimit, "5");
+            await WriteAsync(client, SettingCatalog.AuthenticationLoginRateLimitWindow, "00:02:00");
+
+            var session = await GetAsync(client, SettingCatalog.AuthenticationAdministratorSessionLifetime);
+            Assert.True(session.IsStored);
+            Assert.True(session.IsPendingRestart);
+        }
+
+        using (var restarted = deployment.CreateFactory())
+        using (var client = await SignedInClientAsync(restarted))
+        {
+            Assert.Equal(
+                "00:30:00",
+                (await GetAsync(client, SettingCatalog.AuthenticationAdministratorSessionLifetime)).Value);
+            Assert.Equal(
+                "5",
+                (await GetAsync(client, SettingCatalog.AuthenticationLoginPermitLimit)).Value);
+            Assert.Equal(
+                "00:02:00",
+                (await GetAsync(client, SettingCatalog.AuthenticationLoginRateLimitWindow)).Value);
+
+            // This process bound its tuning with the rows in place, so nothing waits on a restart.
+            Assert.False(
+                (await GetAsync(client, SettingCatalog.AuthenticationAdministratorSessionLifetime)).IsPendingRestart);
+
+            // The stored tuning is what the running service composed, not only what the page
+            // reports: the bound instance is the one both sign-in rate-limit policies were built
+            // from, and the administrator cookie carries a half-hour window where the shipped
+            // default is eight hours. The sign-in cookie itself is issued without an Expires
+            // attribute — the lifetime is enforced inside the encrypted ticket — so the composed
+            // options are where the late binding becomes inspectable.
+            Assert.Equal(TimeSpan.FromMinutes(30), AdministratorCookieOptions(restarted).ExpireTimeSpan);
+            var tuning = BoundAuthenticationTuning(restarted);
+            Assert.Equal(5, tuning.LoginPermitLimit);
+            Assert.Equal(TimeSpan.FromMinutes(2), tuning.LoginRateLimitWindow);
+        }
+    }
+
+    [Fact]
+    public async Task An_authentication_tuning_key_the_deployment_pins_cannot_be_written_here()
+    {
+        using var deployment = new SettingsTestDeployment();
+
+        using var factory = deployment.CreateFactory(builder => builder.ConfigureServices(
+            (context, services) => services.AddSingleton(
+                StructaDocSettingsConfiguration.Create(
+                    context.Configuration,
+                    new ControlPlaneOptions
+                    {
+                        DatabasePath = context.Configuration["ControlPlane:DatabasePath"]!,
+                    },
+                    ["--Authentication:AdministratorSessionLifetime=00:45:00"],
+                    new FakeSettingSecretProtector(),
+                    new SettingsStartupFault()))));
+        using var client = await SignedInClientAsync(factory);
+
+        Assert.True(
+            (await GetAsync(client, SettingCatalog.AuthenticationAdministratorSessionLifetime)).IsManagedExternally);
+
+        using var response = await client.PutAsJsonAsync(
+            "/api/v1/admin/settings",
+            new SettingUpdateRequest(SettingCatalog.AuthenticationAdministratorSessionLifetime, "00:30:00"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.False(
+            (await GetAsync(client, SettingCatalog.AuthenticationAdministratorSessionLifetime)).IsStored);
+    }
+
+    [Fact]
+    public async Task A_stored_authentication_tuning_value_the_service_cannot_use_is_dropped_at_startup()
+    {
+        using var deployment = new SettingsTestDeployment();
+
+        // A value this wrong cannot arrive through the API, which refuses it at write time. It is
+        // seeded the way it would actually happen: a row left behind by an older build whose
+        // validation accepted it, or written beside the service. Either way the next start has to
+        // drop it, say so, and run on the shipped default rather than refuse to come up.
+        using (var factory = deployment.CreateFactory())
+        {
+            using var client = factory.CreateClient();
+            using var warmup = await client.GetAsync(
+                "/api/v1/system/info",
+                TestContext.Current.CancellationToken);
+            warmup.EnsureSuccessStatusCode();
+        }
+
+        SeedStoredSetting(
+            deployment.ControlPlanePath,
+            SettingCatalog.AuthenticationAdministratorSessionLifetime,
+            "30.00:00:00");
+
+        using (var restarted = deployment.CreateFactory())
+        using (var client = await SignedInClientAsync(restarted))
+        {
+            var faults = await client.GetFromJsonAsync<SettingStartupFaultResponse[]>(
+                "/api/v1/admin/settings/startup-faults",
+                cancellationToken: TestContext.Current.CancellationToken);
+            var fault = faults!.Single();
+            Assert.Equal(SettingCatalog.AuthenticationSection, fault.Section);
+            Assert.Contains("AdministratorSessionLifetime", fault.Detail, StringComparison.Ordinal);
+
+            // The stored row is still reported — the administrator can see what they wrote — but
+            // says it is not in force.
+            var stored = await GetAsync(client, SettingCatalog.AuthenticationAdministratorSessionLifetime);
+            Assert.True(stored.IsStored);
+            Assert.Equal("30.00:00:00", stored.Value);
+
+            // What stayed running is the shipped default, in the same composed options the
+            // round-trip test reads: an eight-hour cookie and the shipped permit and window, not
+            // the thirty days the dropped row held.
+            Assert.Equal(TimeSpan.FromHours(8), AdministratorCookieOptions(restarted).ExpireTimeSpan);
+            var tuning = BoundAuthenticationTuning(restarted);
+            Assert.Equal(10, tuning.LoginPermitLimit);
+            Assert.Equal(TimeSpan.FromMinutes(1), tuning.LoginRateLimitWindow);
+        }
+    }
+
+    private static CookieAuthenticationOptions AdministratorCookieOptions(WebApplicationFactory<Program> factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        return scope.ServiceProvider
+            .GetRequiredService<IOptionsSnapshot<CookieAuthenticationOptions>>()
+            .Get(StructaDoc.Host.Authentication.AuthenticationSchemes.AdministratorCookie);
+    }
+
+    private static AuthenticationTuningOptions BoundAuthenticationTuning(WebApplicationFactory<Program> factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<AuthenticationTuningOptions>();
+    }
+
+    private static void SeedStoredSetting(string controlPlanePath, string key, string value)
+    {
+        using var connection = new SqliteConnection($"Data Source={controlPlanePath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO settings (key, value, updated_at_utc, updated_by) VALUES (@key, @value, @updatedAt, @updatedBy)";
+        command.Parameters.AddWithValue("@key", key);
+        command.Parameters.AddWithValue("@value", value);
+        command.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow.ToString("O"));
+        command.Parameters.AddWithValue("@updatedBy", "seeded");
+        command.ExecuteNonQuery();
     }
 
     private static async Task WriteAsync(HttpClient client, string key, string value)

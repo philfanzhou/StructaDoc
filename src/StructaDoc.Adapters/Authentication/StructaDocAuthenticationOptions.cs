@@ -2,6 +2,15 @@ using StructaDoc.Application.Authentication;
 
 namespace StructaDoc.Adapters.Authentication;
 
+/// <summary>
+/// The Authentication keys that have to be read from the raw, pre-store configuration: the ones
+/// that locate and unlock the Data Protection key ring, plus the bootstrap administrator
+/// credentials. Stored settings are decrypted with the key ring these keys locate, so nothing here
+/// can be read late enough to be influenced by a stored value — which is why none of it is settable
+/// from the browser and an architecture test holds it out of the settings catalog. The same
+/// section's sign-in tuning lives in <see cref="AuthenticationTuningOptions"/> instead and is bound
+/// after the stored settings have joined the configuration.
+/// </summary>
 public sealed class StructaDocAuthenticationOptions
 {
     public const string SectionName = "Authentication";
@@ -27,12 +36,6 @@ public sealed class StructaDocAuthenticationOptions
     /// </summary>
     public string? DataProtectionRootKey { get; init; }
 
-    public TimeSpan AdministratorSessionLifetime { get; init; } = TimeSpan.FromHours(8);
-
-    public int LoginPermitLimit { get; init; } = 10;
-
-    public TimeSpan LoginRateLimitWindow { get; init; } = TimeSpan.FromMinutes(1);
-
     public string? BootstrapAdministratorUsername { get; init; }
 
     public string? BootstrapAdministratorPassword { get; init; }
@@ -52,26 +55,6 @@ public sealed class StructaDocAuthenticationOptions
         {
             throw new InvalidOperationException(
                 "Authentication:DataProtectionRootKey must be configured when Authentication:DataProtectionKeyPersistence is Database.");
-        }
-
-        if (AdministratorSessionLifetime < TimeSpan.FromMinutes(5)
-            || AdministratorSessionLifetime > TimeSpan.FromDays(7))
-        {
-            throw new InvalidOperationException(
-                "Authentication:AdministratorSessionLifetime must be between 5 minutes and 7 days.");
-        }
-
-        if (LoginPermitLimit is < 1 or > 1000)
-        {
-            throw new InvalidOperationException(
-                "Authentication:LoginPermitLimit must be between 1 and 1000.");
-        }
-
-        if (LoginRateLimitWindow < TimeSpan.FromSeconds(1)
-            || LoginRateLimitWindow > TimeSpan.FromHours(1))
-        {
-            throw new InvalidOperationException(
-                "Authentication:LoginRateLimitWindow must be between 1 second and 1 hour.");
         }
 
         var hasUsername = !string.IsNullOrWhiteSpace(BootstrapAdministratorUsername);

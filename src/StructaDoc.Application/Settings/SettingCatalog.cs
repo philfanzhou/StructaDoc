@@ -92,6 +92,11 @@ public static class SettingCatalog
     public const string OidcRoleClaim = "Oidc:RoleClaim";
     public const string OidcAdministratorRole = "Oidc:AdministratorRole";
 
+    public const string AuthenticationAdministratorSessionLifetime =
+        "Authentication:AdministratorSessionLifetime";
+    public const string AuthenticationLoginPermitLimit = "Authentication:LoginPermitLimit";
+    public const string AuthenticationLoginRateLimitWindow = "Authentication:LoginRateLimitWindow";
+
     public const string StorageProvider = "Storage:Provider";
     public const string StorageRootPath = "Storage:RootPath";
     public const string StorageServiceUrl = "Storage:ServiceUrl";
@@ -139,6 +144,15 @@ public static class SettingCatalog
     public const string OidcSection = "Oidc";
 
     /// <summary>
+    /// The tuning half of local administration sign-in: how long an administrator session lasts and
+    /// how tightly the two sign-in endpoints are rate limited. It is recoverable for the same reason
+    /// as the identity-provider section — the browser that wrote a wrong value is the only surface it
+    /// can be corrected from — while the other half of the same section (the key ring and bootstrap
+    /// credentials) stays out of the catalog entirely because it is read before the store opens.
+    /// </summary>
+    public const string AuthenticationSection = "Authentication";
+
+    /// <summary>
     /// Where documents and results are kept. A wrong value here is recoverable in the same way as
     /// sign-in: the section is dropped at startup and the service runs on its shipped default, which
     /// keeps the administration area reachable to correct it from.
@@ -184,6 +198,7 @@ public static class SettingCatalog
     public static IReadOnlyList<string> RecoverableSections { get; } =
     [
         OidcSection,
+        AuthenticationSection,
         StorageSection,
         DatabaseSection,
         WorkerSection,
@@ -307,6 +322,36 @@ public static class SettingCatalog
             RequiresRestart: true,
             Default: "structadoc-admin",
             Maximum: ClaimNameMaximumLength),
+
+        // Local administration sign-in tuning. The session bounds are validation's own: 5 minutes
+        // to 7 days is what the options class enforces. The two login keys are narrower than their
+        // options class on purpose: both values feed the two ServiceMantle sign-in policies, which
+        // accept a permit limit of 1–60 and a window of 10 s–10 min and stop the host at startup
+        // outside that range, and a value a browser can store must never be one the next start
+        // refuses — the write-time bound and the startup bound are the same bound rather than two
+        // that happen to overlap. A deployment pin outside the range still fails at startup as the
+        // fail-fast path for whoever has the command line.
+        new(
+            AuthenticationAdministratorSessionLifetime,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "08:00:00",
+            Minimum: 300_000,
+            Maximum: 604_800_000),
+        new(
+            AuthenticationLoginPermitLimit,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "10",
+            Minimum: 1,
+            Maximum: 60),
+        new(
+            AuthenticationLoginRateLimitWindow,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "00:01:00",
+            Minimum: 10_000,
+            Maximum: 600_000),
 
         // Where uploads, results, and exports are kept. Moving a deployment to object storage
         // otherwise means recreating the container, which is the one thing this product's operator
