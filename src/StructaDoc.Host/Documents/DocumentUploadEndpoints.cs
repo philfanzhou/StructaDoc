@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Documents;
@@ -14,9 +15,13 @@ public static class DocumentUploadEndpoints
     private const long MultipartOverheadAllowance = 1024 * 1024;
 
     public static RouteHandlerBuilder MapDocumentUpload(
-        this IEndpointRouteBuilder endpoints,
-        long maxUploadBytes)
+        this IEndpointRouteBuilder endpoints)
     {
+        // The request-size bound is set per request from the running limit rather than fixed here as
+        // mapping-time metadata, which is what lets an administrator change the upload ceiling
+        // without a restart. The filter resolves the limit each time the endpoint runs.
+        var limits = endpoints.ServiceProvider.GetRequiredService<DocumentUploadLimits>();
+
         return endpoints.MapPost("/api/v1/documents", UploadDocumentAsync)
             .WithName("UploadDocument")
             .Accepts<IFormFile>("multipart/form-data")
@@ -25,8 +30,7 @@ public static class DocumentUploadEndpoints
             .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
             .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
             .RequireAuthorization(AuthorizationPolicies.DocumentsWrite)
-            .WithMetadata(new RequestSizeLimitAttribute(
-                checked(maxUploadBytes + MultipartOverheadAllowance)));
+            .AddEndpointFilter(new UploadRequestSizeLimitFilter(limits));
     }
 
     private static async Task<IResult> UploadDocumentAsync(
@@ -143,5 +147,30 @@ public static class DocumentUploadEndpoints
             {
                 ["code"] = code,
             });
+    }
+
+    /// <summary>
+    /// Bounds the request body to the upload limit in force at the moment the request arrives,
+    /// which is the outer half of a two-sided check: the server stops draining a body that cannot
+    /// fit under the current limit, and the storage write during ingestion remains the authority on
+    /// what "too large" means for the document itself. A host without a per-request body limit
+    /// feature — the test host, for one — simply leaves the limit where it was, and ingestion still
+    /// answers with the same 413.
+    /// </summary>
+    private sealed class UploadRequestSizeLimitFilter(DocumentUploadLimits limits) : IEndpointFilter
+    {
+        public ValueTask<object?> InvokeAsync(
+            EndpointFilterInvocationContext context,
+            EndpointFilterDelegate next)
+        {
+            var feature = context.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (feature is { IsReadOnly: false })
+            {
+                feature.MaxRequestBodySize =
+                    checked(limits.MaxUploadBytes + MultipartOverheadAllowance);
+            }
+
+            return next(context);
+        }
     }
 }

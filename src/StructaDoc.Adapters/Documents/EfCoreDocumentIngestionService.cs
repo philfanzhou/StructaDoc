@@ -11,7 +11,7 @@ public sealed class EfCoreDocumentIngestionService(
     StructaDocDbContext dbContext,
     IFileStorage fileStorage,
     IDocumentTypeDetector documentTypeDetector,
-    DocumentIngestionOptions options,
+    DocumentUploadLimits uploadLimits,
     TimeProvider timeProvider,
     ILogger<EfCoreDocumentIngestionService> logger) : IDocumentIngestionService
 {
@@ -21,7 +21,6 @@ public sealed class EfCoreDocumentIngestionService(
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Content);
-        options.Validate();
 
         var originalFileName = NormalizeFileName(request.OriginalFileName);
         var documentId = Guid.NewGuid();
@@ -30,10 +29,14 @@ public sealed class EfCoreDocumentIngestionService(
 
         try
         {
+            // The size limit is read per ingestion from the running holder rather than the startup
+            // options snapshot, which is what lets an administrator change it without a restart.
+            // This write is the authoritative rejection: nothing before it decides what "too
+            // large" means for the document itself.
             storedFile = await fileStorage.WriteAsync(
                 storageRef,
                 request.Content,
-                options.MaxUploadBytes,
+                uploadLimits.MaxUploadBytes,
                 cancellationToken);
 
             await using var storedContent = await fileStorage.OpenReadAsync(

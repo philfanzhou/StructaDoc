@@ -827,7 +827,7 @@ internal static class DocumentIdentityMigrationContract
                 context,
                 storage,
                 new PdfDocumentTypeDetector(),
-                new DocumentIngestionOptions { MaxUploadBytes = 1024 },
+                new DocumentUploadLimits(1024),
                 TimeProvider.System,
                 NullLogger<EfCoreDocumentIngestionService>.Instance);
             await using var content = new MemoryStream("%PDF-1.7\n%%EOF"u8.ToArray());

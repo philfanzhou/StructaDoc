@@ -179,6 +179,11 @@ var workerOptions = RecoverableConfigurationBinder.Bind(
 var ingestionOptions = configuration
     .GetSection(DocumentIngestionOptions.SectionName)
     .Get<DocumentIngestionOptions>() ?? new DocumentIngestionOptions();
+
+// The upload limit as the running service uses it. It starts from what startup bound and is what a
+// stored change reaches the running service through: the upload endpoint's per-request body bound
+// and the storage write during ingestion both read it live rather than from the options snapshot.
+var uploadLimits = new DocumentUploadLimits(ingestionOptions.MaxUploadBytes);
 var storageOptions = RecoverableConfigurationBinder.Bind(
     settingsConfiguration,
     settingsStartupFault,
@@ -229,7 +234,7 @@ builder.Services.AddStructaDocPersistence(databaseOptions);
 // from the source below. The registration is scoped because the probes run on the request's own
 // control-plane and business-database contexts.
 builder.Services.AddScoped<IServiceHealthSnapshotSource, StructaDocHealthSnapshotSource>();
-builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions);
+builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions, uploadLimits);
 builder.Services.AddStructaDocDocumentConversion(conversionOptions);
 builder.Services.AddStructaDocParseProviders();
 builder.Services.AddStructaDocProviderResults(
@@ -252,6 +257,12 @@ builder.Services.AddSingleton<OidcDiscoveryProbe>();
 builder.Services.AddSingleton<StorageConnectionProbe>();
 builder.Services.AddSingleton<DatabaseConnectionProbe>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+// The two settings that apply to the running service rather than at the next start. Each listener
+// owns one key, applies it to the runtime state that key governs, and reports the value currently
+// running, which is what the settings read uses to say honestly whether a restart is pending.
+builder.Services.AddSingleton<ISettingChangeListener, WorkerConcurrencySettingListener>();
+builder.Services.AddSingleton<ISettingChangeListener, DocumentUploadLimitsSettingListener>();
+builder.Services.AddSingleton(new WorkerConcurrencyGate(workerOptions.MaxConcurrency));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ParseRunLeaseHeartbeat>();
 builder.Services.AddScoped<ParseRunExecutor>();
@@ -260,8 +271,15 @@ builder.Services.AddScoped<StructaDoc.Application.ParseRuns.IParseExportService,
 builder.Services.AddHostedService<ParseRunMaintenanceWorker>();
 builder.Services.AddHostedService<ParseRunExecutionWorker>();
 builder.Services.AddHostedService<ResourceCleanupWorker>();
+// The multipart length limit no longer carries the upload rejection: the limit it used to restate
+// moves at runtime now, while this one is fixed at startup. It therefore sits at the catalog's own
+// ceiling for the key — the largest value a browser write can put in force — plus the multipart
+// overhead allowance, so it never rejects a body the upload limit would have accepted. What bounds
+// a request instead is the endpoint's per-request body size (set from the running limit by the
+// upload filter) and, as the authority on the document itself, the storage write during ingestion.
 builder.Services.Configure<FormOptions>(options =>
-    options.MultipartBodyLengthLimit = checked(ingestionOptions.MaxUploadBytes + (1024 * 1024)));
+    options.MultipartBodyLengthLimit = checked(
+        SettingCatalog.Find(SettingCatalog.MaxUploadBytes)!.Maximum + (1024 * 1024)));
 
 var app = builder.Build();
 
@@ -412,7 +430,7 @@ app.MapGet(
 
 if (ingestionOptions.UploadApiEnabled)
 {
-    app.MapDocumentUpload(ingestionOptions.MaxUploadBytes);
+    app.MapDocumentUpload();
 }
 app.MapDocumentReadEndpoints();
 app.MapDocumentAccessGrantEndpoints();

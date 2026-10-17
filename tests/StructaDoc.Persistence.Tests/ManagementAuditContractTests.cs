@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using ServiceMantle.Audit;
 using ServiceMantle.Persistence.Relational.Stores;
 using StructaDoc.Adapters.ControlPlane;
@@ -144,7 +145,8 @@ public sealed class ManagementAuditContractTests
             configuration,
             new FakeSettingSecretProtector(),
             deployment.AuditRecorder,
-            []);
+            [],
+            NullLogger<SettingsService>.Instance);
 
         var result = await settings.SetAsync(
             SettingCatalog.UploadApiEnabled,
@@ -188,7 +190,8 @@ public sealed class ManagementAuditContractTests
             new StructaDocManagementAuditRecorder(
                 new EfCoreManagementAuditWriter<ControlPlaneDbContext>(dbContext),
                 dbContext),
-            []);
+            [],
+            NullLogger<SettingsService>.Instance);
 
         await Assert.ThrowsAsync<FailingSaveInterceptor.SaveFailedException>(
             () => settings.SetAsync(
