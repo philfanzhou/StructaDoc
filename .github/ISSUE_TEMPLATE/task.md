@@ -1,63 +1,72 @@
 ---
-name: 任务
-about: 一个可独立合并的改动。
+name: Task
+about: A change that can be merged independently.
 title: ''
 labels: ''
 assignees: ''
 ---
 
 <!--
-正文和标题用中文。标题建议使用：[模块] 简明动作。
+Write the body and title in English. Suggested title format: [module] concise action.
 -->
 
-## 背景与目标
+## Background and goal
 
-描述现象、触发条件和影响。有复现步骤、失败输出、受影响的数据库或 Provider 时一并写明。
+Describe the symptom, the trigger conditions, and the impact. Include reproduction
+steps, failure output, and the affected databases or Providers when applicable.
 
-相关代码/文档：`src/...`、`web/...`、`docs/...`
+Related code/docs: `src/...`, `web/...`, `docs/...`
 
-## 必须保持的行为和约定
+## Behavior and contracts that must be preserved
 
-- 写清公共 API、Canonical Model、Parse Run 生命周期、Provider、数据库、存储、认证或部署中必须保持不变的部分。
-- 若修复需要覆盖多条调用路径，写清每条路径都必须满足的要求，以及在哪个共同调用位置修复才能覆盖它们。
+- State explicitly what must remain unchanged in the public API, the Canonical Model,
+  the Parse Run lifecycle, Providers, databases, storage, authentication, or deployment.
+- If a fix must cover multiple call paths, state the requirement that every path must
+  satisfy, and the common call site where a fix covers them all.
 
-## 范围
+## Scope
 
-- 要改什么。
-- **明确排除什么**——尤其是“不改变现有运行时行为”“不修改公共契约”“不重构 X”或
-  “不实现新 Provider”这类限制。
+- What will change.
+- **What is explicitly excluded** — especially limits such as "no change to existing
+  runtime behavior", "no modification of public contracts", "no refactoring of X", or
+  "no new Provider implementation".
 
-## 明确不包含与不保证
+## Explicit exclusions and non-guarantees
 
-安全或健壮性任务必须分别说明保证、不保证和调用方责任；其他任务写“无”。
+Safety or robustness tasks must state guarantees, non-guarantees, and caller
+responsibilities separately; other tasks write "None".
 
-- 保证：
-- 不保证：
-- 调用方责任：
+- Guarantees:
+- Not guaranteed:
+- Caller responsibilities:
 
-## 验收标准
+## Acceptance criteria
 
-- 写出可以逐条验证的结果。
-- 适用的失败、取消、安全、认证、资源和并发结果；不适用时写明“不适用”及理由。
-- 涉及公共 API、Provider、数据库、存储、迁移或部署时，写清兼容性结果。
+- State results that can be verified one by one.
+- Applicable failure, cancellation, security, authentication, resource, and concurrency
+  outcomes; when one does not apply, state "not applicable" and why.
+- When the public API, Providers, databases, storage, migrations, or deployment are
+  involved, state the compatibility outcome.
 
-## 文档与兼容性影响
+## Documentation and compatibility impact
 
-说明是否影响公共 API、Canonical Model、Parse Run 生命周期、Provider 接口、数据库迁移、
-认证与安全边界或部署方式。没有影响时写“无”。
+State whether the public API, the Canonical Model, the Parse Run lifecycle, the Provider
+interface, database migrations, authentication and security boundaries, or the deployment
+approach are affected. Write "None" when there is no impact.
 
-## 其他相关问题（本次不修）
+## Other related problems (not fixed this time)
 
-在这里列出：
+List them here:
 
-- #NNN 一句话说明
-- 若确认没有，写“无”。
+- #NNN one-sentence description
+- If confirmed absent, write "None".
 
-## 依赖
+## Dependencies
 
-- GitHub 原生 Blocked by：#NNN，或“无”
-- GitHub 原生 Blocks：#NNN，或“无”
+- GitHub native Blocked by: #NNN, or "None"
+- GitHub native Blocks: #NNN, or "None"
 
-## 交付约束
+## Delivery constraints
 
-- 公共行为、契约、部署或用法变化时同步英文 README、docs、OpenAPI 和相关运维说明。
+- When public behavior, contracts, deployment, or usage change, update the English
+  README, docs, OpenAPI, and the related operational documentation in sync.

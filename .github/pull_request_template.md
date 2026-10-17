@@ -1,34 +1,40 @@
-> 正文一律用中文填写。标题使用英文 conventional commit 格式（`feat:` / `fix:` / `docs:` …）。
+> Fill in the body in English. Use the English conventional commit format for the title
+> (`feat:` / `fix:` / `docs:` …).
 
-## 概述
+## Summary
 
-说明要解决的问题和本次改动。
+Explain the problem being solved and what this change does.
 
 Closes #
 
-## 范围
+## Scope
 
-引用所链接 issue 的“范围”，并逐项交代：
+Reference the "Scope" section of the linked issue and account for each item:
 
-- **范围内，已完成：**
-- **本次刻意不修：** 在此列出
-  `#NNN —— 一句话说明`；确认没有时写“无”。
+- **In scope, completed:**
+- **Deliberately not fixed this time:** list them here as
+  `#NNN — one-sentence description`; write "None" when confirmed absent.
 
-## 契约与兼容性
+## Contract and compatibility
 
-- **保证的行为和不保证的情况：** 是否与 issue 一致；不适用写“无”。
-列出对公共 API、Canonical Model、Parse Run 状态机、Provider、SQLite/PostgreSQL/MySQL/MariaDB、
-迁移、配置、认证、安全边界或部署的影响。没有影响时写“无”。
+- **Guaranteed behavior and non-guarantees:** whether they match the issue; write "None"
+  when not applicable.
+List the impact on the public API, the Canonical Model, the Parse Run state machine,
+Providers, SQLite/PostgreSQL/MySQL/MariaDB, migrations, configuration, authentication,
+security boundaries, or deployment. Write "None" when there is no impact.
 
-## 验证
+## Verification
 
-列出实际运行的命令和结果，并按适用范围勾选：
+List the commands actually run and their results, and check the applicable items:
 
-- [ ] Web 依赖安装与生产构建通过（`npm ci`、`npm run build`）
-- [ ] .NET 解决方案还原与构建通过
-- [ ] 不依赖 Docker 的自动化测试通过
-- [ ] 相关数据库契约测试通过
-- [ ] 公共 API 变更已通过 OpenAPI 导出和客户端生成验证
-- [ ] 涉及容器或用户流程时，生产镜像和浏览器基本功能验证通过
-- [ ] 行为、契约或运维方式变化时，权威文档已同步更新
-- [ ] 不包含密钥、凭据、连接字符串或私有文档样本
+- [ ] Web dependency install and production build pass (`npm ci`, `npm run build`)
+- [ ] .NET solution restore and build pass
+- [ ] Automated tests that do not require Docker pass
+- [ ] The relevant database contract tests pass
+- [ ] Public API changes are verified through OpenAPI export and client generation
+- [ ] When containers or user flows are involved, the production image and basic browser
+      functionality are verified
+- [ ] When behavior, contracts, or operational procedures change, the authoritative
+      documentation is updated in sync
+- [ ] No secrets, credentials, connection strings, or private document samples are
+      included
