@@ -5,10 +5,13 @@ namespace StructaDoc.Host.Workers;
 public sealed class ParseRunExecutionWorker(
     IServiceScopeFactory serviceScopeFactory,
     ParseRunWorkerOptions options,
+    WorkerConcurrencyGate gate,
     TimeProvider timeProvider,
     ILogger<ParseRunExecutionWorker> logger) : BackgroundService
 {
     private readonly string workerId = CreateWorkerId();
+    private int executionCounter;
+    private Task executions = Task.CompletedTask;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -20,28 +23,42 @@ public sealed class ParseRunExecutionWorker(
         }
 
         logger.LogInformation(
-            "Parse Run execution worker {WorkerId} started with {MaxConcurrency} slots.",
+            "Parse Run execution worker {WorkerId} started with up to {MaxConcurrency} concurrent executions.",
             workerId,
             options.MaxConcurrency);
 
-        // Each slot claims independently under its own Worker ID, so one long-running Parse Run
-        // cannot hold up the others on this Host.
-        await Task.WhenAll(Enumerable
-            .Range(0, options.MaxConcurrency)
-            .Select(slot => RunSlotAsync($"{workerId}:{slot}", stoppingToken)));
-    }
-
-    private async Task RunSlotAsync(string slotWorkerId, CancellationToken stoppingToken)
-    {
-        await Task.Yield();
-
+        // One dispatch loop claims under the concurrency gate rather than through a fixed set of
+        // slot loops, so the ceiling can move while executions are in flight: raising it admits the
+        // next claim at once, lowering it holds new claims until running executions finish. Runs
+        // already executing are never touched, exactly as the lease model requires.
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                if (!await TryExecuteOneAsync(slotWorkerId, stoppingToken))
+                await gate.WaitAsync(stoppingToken);
+
+                ClaimedExecution? claimed = null;
+                try
+                {
+                    claimed = await TryClaimOneAsync(stoppingToken);
+                }
+                finally
+                {
+                    // The permit transfers to the execution when one was claimed; otherwise it goes
+                    // straight back, including on the failure paths that never reach the dispatch.
+                    if (claimed is null)
+                    {
+                        gate.Release();
+                    }
+                }
+
+                if (claimed is null)
                 {
                     await Task.Delay(options.MaintenanceInterval, timeProvider, stoppingToken);
+                }
+                else
+                {
+                    TrackExecution(RunExecutionAsync(claimed.Value, stoppingToken));
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -52,7 +69,7 @@ public sealed class ParseRunExecutionWorker(
             {
                 logger.LogError(
                     "Parse Run execution cycle failed on {WorkerId} with exception type {ExceptionType}.",
-                    slotWorkerId,
+                    workerId,
                     exception.GetType().FullName);
 
                 try
@@ -65,35 +82,71 @@ public sealed class ParseRunExecutionWorker(
                 }
             }
         }
+
+        // Shutdown waits out whatever is executing, exactly as the slot loops it replaces did: a
+        // claim the database already granted is not something to drop on the floor of a stop. Each
+        // execution observes the stopping token through its own lease and deadline handling, so
+        // this await is bounded by their cancellation, not by an abandoned task.
+        await executions;
     }
 
-    private async Task<bool> TryExecuteOneAsync(
-        string slotWorkerId,
-        CancellationToken cancellationToken)
+    private void TrackExecution(Task execution)
     {
+        lock (this)
+        {
+            executions = Task.WhenAll(executions, execution);
+        }
+    }
+
+    private async Task<ClaimedExecution?> TryClaimOneAsync(CancellationToken cancellationToken)
+    {
+        // Each execution claims under its own Worker ID, so one long-running Parse Run cannot hold
+        // up the others on this Host, and the lease, its renewal, and the claim rows all keep
+        // agreeing on which execution owns them.
+        var executionWorkerId = $"{workerId}:{Interlocked.Increment(ref executionCounter)}";
+
         await using var scope = serviceScopeFactory.CreateAsyncScope();
         var leaseStore = scope.ServiceProvider.GetRequiredService<IParseRunLeaseStore>();
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
         var lease = await leaseStore.TryRecoverNextRunningAsync(
-            slotWorkerId,
+            executionWorkerId,
             nowUtc,
             options.LeaseDuration,
             cancellationToken);
         var alreadyRunning = lease is not null;
         lease ??= await leaseStore.TryClaimNextAsync(
-            slotWorkerId,
+            executionWorkerId,
             nowUtc,
             options.LeaseDuration,
             cancellationToken);
-        if (lease is null)
-        {
-            return false;
-        }
+        return lease is null ? null : new ClaimedExecution(lease, alreadyRunning);
+    }
 
-        await scope.ServiceProvider
-            .GetRequiredService<ParseRunExecutor>()
-            .ExecuteAsync(lease, alreadyRunning, cancellationToken);
-        return true;
+    private async Task RunExecutionAsync(
+        ClaimedExecution claim,
+        CancellationToken stoppingToken)
+    {
+        try
+        {
+            await using var scope = serviceScopeFactory.CreateAsyncScope();
+            await scope.ServiceProvider
+                .GetRequiredService<ParseRunExecutor>()
+                .ExecuteAsync(claim.Lease, claim.AlreadyRunning, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                "Parse Run execution failed on {WorkerId} with exception type {ExceptionType}.",
+                claim.Lease.WorkerId,
+                exception.GetType().FullName);
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     private static string CreateWorkerId()
@@ -106,4 +159,6 @@ public sealed class ParseRunExecutionWorker(
 
         return $"{machine}:{Environment.ProcessId}:{Guid.NewGuid():N}";
     }
+
+    private readonly record struct ClaimedExecution(ParseRunLease Lease, bool AlreadyRunning);
 }

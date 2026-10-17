@@ -37,8 +37,11 @@ public enum SettingKind
 
 /// <summary>
 /// One configuration key an administrator may set through the web interface.
-/// <paramref name="RequiresRestart"/> records whether the running service reads the value again on
-/// its own; the value is never guessed from the key. <paramref name="Default"/> is what applies when
+/// <paramref name="RequiresRestart"/> classifies the key as one the running service does not pick
+/// up on its own: options bind once at startup, so the catalog marks a key restart-class unless a
+/// change listener owns it. Whether a restart is actually needed for a given write is answered from
+/// what applied, not from this flag, and the flag is never guessed from the key.
+/// <paramref name="Default"/> is what applies when
 /// nothing supplies the key, which is not the same as the value being unset: several of these keys
 /// are absent from appsettings.json and get their default from the options class instead, so
 /// reporting an empty value would misdescribe what the service is doing.
