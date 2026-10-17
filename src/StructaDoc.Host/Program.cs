@@ -275,6 +275,17 @@ app.UseStructaDocReverseProxy(reverseProxyOptions, app.Logger);
 // fields, so events written while handling a request carry the ID that was returned to the caller.
 app.UseServiceMantleCorrelationId();
 
+// Uncaught exceptions from anything below — endpoints, authentication, the works — are answered with
+// one environment-independent RFC 7807 body instead of an empty 500 or a dropped connection: the
+// fixed `type`, `title`, `status`, `correlationId`, and `errorCode` fields, and nothing else. The
+// middleware never inspects or writes the exception message, stack, inner exceptions, or `Data`, so
+// diagnostics live in the logs linked by that correlation ID. It sits inside the correlation
+// middleware so the fallback body carries the same value the response header and log scope do, and
+// outside everything else so the whole downstream surface is covered. Responses an endpoint produces
+// itself — every existing Results.Problem path — never reach this handler. Development keeps the
+// same safe body: there is no development-details switch, so local diagnostics start from the log.
+app.UseServiceMantleProblemDetails();
+
 app.UseRateLimiter();
 app.UseDefaultFiles();
 app.UseStaticFiles();
