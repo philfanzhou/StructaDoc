@@ -13,16 +13,21 @@ public static class DocumentIngestionServiceCollectionExtensions
     public static IServiceCollection AddStructaDocDocumentIngestion(
         this IServiceCollection services,
         DocumentIngestionOptions ingestionOptions,
-        FileStorageOptions storageOptions)
+        FileStorageOptions storageOptions,
+        DocumentUploadLimits uploadLimits)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(ingestionOptions);
         ArgumentNullException.ThrowIfNull(storageOptions);
+        ArgumentNullException.ThrowIfNull(uploadLimits);
         ingestionOptions.Validate();
         storageOptions.Validate();
 
         services.AddSingleton(ingestionOptions);
         services.AddSingleton(storageOptions);
+        // The running limit the storage write reads per ingestion, seeded from the same options it
+        // is registered beside so the two cannot disagree about what startup bound.
+        services.AddSingleton(uploadLimits);
         if (string.Equals(storageOptions.Provider, "S3", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<IAmazonS3>(_ =>

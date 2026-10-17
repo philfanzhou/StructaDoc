@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.ControlPlane.Entities;
@@ -12,7 +13,8 @@ public sealed class SettingsService(
     StructaDocSettingsConfiguration configuration,
     ISettingSecretProtector secretProtector,
     StructaDocManagementAuditRecorder auditRecorder,
-    IEnumerable<ISettingChangeListener> listeners) : ISettingsService
+    IEnumerable<ISettingChangeListener> listeners,
+    ILogger<SettingsService> logger) : ISettingsService
 {
     public async Task<IReadOnlyList<SettingState>> ListAsync(
         CancellationToken cancellationToken = default)
@@ -32,6 +34,16 @@ public sealed class SettingsService(
         // "false" from the store, and a caller comparing the two spellings would read one wrongly.
         // What this process bound its options from. A value written since then differs from it.
         var running = Normalize(definition, configuration.Effective);
+
+        // A key a listener owns is re-read by the running service, so what that listener holds —
+        // not the startup snapshot — is what is running. The distinction is what keeps the pending
+        // report honest in both directions: an applied change is reported as running, and a change
+        // whose apply failed leaves the previous value running and still reports the restart.
+        var hasLiveListener = TryGetLiveValue(definition, out var live);
+        if (hasLiveListener)
+        {
+            running = SettingCatalog.Normalize(definition, live) ?? definition.Default;
+        }
 
         // What applies with no stored row, which is not the same as what is running: a row deleted
         // since startup is gone from here but still present in what the process is using.
@@ -56,7 +68,10 @@ public sealed class SettingsService(
             // Only whether a secret is set is reported. The value never reaches a browser, so an
             // administration session that is read cannot give up a credential it did not write.
             isSecret ? string.Empty : inForce,
-            definition.RequiresRestart,
+            // The catalog flag classifies the key; whether a restart is actually needed is decided
+            // by who picks the value up. A key with no live listener is bound once at startup, so
+            // the flag stands; one a listener owns is re-read without one.
+            definition.RequiresRestart && !hasLiveListener,
             isManagedExternally,
             IsStored: row is not null,
             IsPendingRestart: definition.RequiresRestart
@@ -64,6 +79,20 @@ public sealed class SettingsService(
             definition.Minimum,
             definition.Maximum,
             definition.AllowedValues ?? []);
+    }
+
+    private bool TryGetLiveValue(SettingDefinition definition, out string? live)
+    {
+        foreach (var listener in listeners)
+        {
+            if (listener.TryGetAppliedValue(definition.Key, out live))
+            {
+                return true;
+            }
+        }
+
+        live = null;
+        return false;
     }
 
     private static string Normalize(SettingDefinition definition, IConfiguration source)
@@ -252,9 +281,23 @@ public sealed class SettingsService(
 
         foreach (var listener in listeners)
         {
-            if (await listener.TryApplyAsync(definition.Key, effectiveValue, cancellationToken))
+            try
             {
-                applied = true;
+                if (await listener.TryApplyAsync(definition.Key, effectiveValue, cancellationToken))
+                {
+                    applied = true;
+                }
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                // A listener that throws must neither take the write down with it nor pass
+                // silently: the value is stored, the running service kept what it had, and the
+                // restart the response reports is the only honest description of that state.
+                logger.LogError(
+                    error,
+                    "Applying setting '{SettingKey}' to the running service failed with exception type {ExceptionType}. The stored value stays and takes effect at the next restart.",
+                    definition.Key,
+                    error.GetType().FullName);
             }
         }
 

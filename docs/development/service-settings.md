@@ -26,9 +26,23 @@ A pinned setting is reported as managed externally and cannot be written through
 
 ## What a Stored Setting Reaches
 
-A stored setting reaches the instance whose control plane holds it, and it takes effect at that
-instance's startup — settings are read into configuration before anything binds options from it,
-which is why every entry in the table above says Restart.
+A stored setting reaches the instance whose control plane holds it. Most settings are read into
+configuration before anything binds options from them, so they take effect at that instance's
+startup — which is why most entries in the table below say Restart.
+
+The two exceptions are `Worker:MaxConcurrency` and `Documents:MaxUploadBytes`, which the running
+service re-reads through a change listener: a stored write applies on the instance that served it
+without a restart. Both are held in runtime state rather than only in the startup snapshot — the
+execution Worker's claim gate for the concurrency ceiling, and a live upload limit read per request
+by the upload endpoint's request-size bound and by the storage write that is the authoritative
+size rejection. Lowering the concurrency ceiling does not interrupt Parse Runs already executing
+(under the lease model a started attempt runs to its own outcome); it stops the Worker from
+claiming more until the running count falls below the new ceiling.
+
+A listener that fails to apply does not pass silently: the stored value stays, the write is
+answered with the restart it still needs, the read reports the change as pending, and the failure
+is written to the log. `isPendingRestart` for these two keys is reported from the value the
+running service actually holds, not from what startup bound.
 
 In the shipped single-instance deployment, one instance is the whole service, so one control plane
 is the whole audience. A multi-instance deployment — several containers against one server
@@ -43,7 +57,7 @@ whole.
 
 | Key | Type | Effect |
 |---|---|---|
-| `Worker:MaxConcurrency` | integer, 1–64 | Restart |
+| `Worker:MaxConcurrency` | integer, 1–64 | Live on the writing instance |
 | `Worker:MaintenanceInterval` | duration, ≥ 100 ms | Restart |
 | `Worker:RecoveryBatchSize` | integer, 1–10,000 | Restart |
 | `Worker:LeaseDuration` | duration, ≥ 500 ms | Restart |
@@ -53,7 +67,7 @@ whole.
 | `Worker:MaximumPollDelay` | duration, ≥ 100 ms and ≥ `Worker:MinimumPollDelay` | Restart |
 | `Worker:MaxExecutionDuration` | duration, 0 or ≥ 1 s; `00:00:00` disables the bound | Restart |
 | `Documents:UploadApiEnabled` | boolean | Restart |
-| `Documents:MaxUploadBytes` | integer, 1024–8 GiB | Restart |
+| `Documents:MaxUploadBytes` | integer, 1024–8 GiB | Live on the writing instance |
 | `Oidc:Enabled` | boolean | Restart |
 | `Oidc:Authority` | address | Restart |
 | `Oidc:ClientId` | text | Restart |
@@ -153,9 +167,27 @@ The administration page loads its panels independently rather than together for 
 
 ## Taking Effect
 
-Options are bound once at startup, so a stored value reaches the running service only through a change listener. No setting currently has one: `Worker:ExecutionEnabled` was the only such setting and was removed, because a switch that stood between an administrator configuring a Provider and the Worker acting on it added nothing to that decision while producing deployments where a requested Parse Run queued forever with nothing failing and nothing logged. `ISettingChangeListener` remains the mechanism, and what depends on it is the reporting below rather than any particular key.
+Options are bound once at startup, so a stored value reaches the running service only through a
+change listener. Two settings have one: `Worker:MaxConcurrency` moves the execution Worker's claim
+gate, and `Documents:MaxUploadBytes` moves the live upload limit that the upload endpoint's
+request-size bound and the storage write during ingestion both read per request. A write to either
+takes effect on the instance that served it — new claims respect the concurrency ceiling, and the
+next upload answers from the new size limit — and the report says so by reading back what the
+running service holds rather than what startup bound.
 
-Everything else needs a restart, and the API reports that from what actually happened rather than from the catalog flag, so a setting that lost its listener says a restart is needed instead of claiming an effect it did not have. `GET /api/v1/admin/settings` reports `isPendingRestart` for a stored value the running process has not picked up.
+`Worker:ExecutionEnabled` was the one setting that used to have such a listener and was removed,
+because a switch that stood between an administrator configuring a Provider and the Worker acting
+on it added nothing to that decision while producing deployments where a requested Parse Run queued
+forever with nothing failing and nothing logged. The lesson shapes the two listeners that exist
+now: an apply that fails must be visible — the write answers that a restart is still needed, the
+read reports the change as pending, and the log records the failure — and the upload limit's
+authoritative rejection stays with the storage write, so a request that slips past a stale outer
+bound still cannot store an oversized document.
+
+Everything else needs a restart, and the API reports that from what actually happened rather than
+from the catalog flag, so a setting that lost its listener says a restart is needed instead of
+claiming an effect it did not have. `GET /api/v1/admin/settings` reports `isPendingRestart` for a
+stored value the running process has not picked up.
 
 ## Restart
 
@@ -192,6 +224,6 @@ Both report a stable code the web interface translates, plus a bounded detail. A
 
 ## Remaining Work
 
-- change listeners for the remaining keys, so fewer settings need a restart at all;
+- change listeners for the remaining restart-class keys, so fewer settings need a restart at all;
 - rate limiting on the connection tests, which are the settings endpoints that make outbound requests;
 - moving existing objects and rows when storage or the database changes, which today is left where it belongs — with whoever is doing the migration.

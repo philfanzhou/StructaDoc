@@ -42,7 +42,10 @@ public sealed class SettingsEndpointTests
 
             var written = await response.Content.ReadFromJsonAsync<SettingUpdateResponse>(
                 cancellationToken: TestContext.Current.CancellationToken);
-            Assert.True(written!.RestartRequired);
+            // The concurrency limit is one of the two keys the running service re-reads, so the
+            // write applies at once and no restart is asked for. That it also survives the restart
+            // below is the part this test exists for.
+            Assert.False(written!.RestartRequired);
         }
 
         // A setting that only lived in the writing process would be a setting nobody set.
@@ -94,27 +97,29 @@ public sealed class SettingsEndpointTests
         {
             using var stored = await client.PutAsJsonAsync(
                 "/api/v1/admin/settings",
-                new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "4"),
+                new SettingUpdateRequest(SettingCatalog.WorkerLeaseDuration, "00:09:00"),
                 cancellationToken: TestContext.Current.CancellationToken);
             stored.EnsureSuccessStatusCode();
         }
 
         // This process bound its options from a configuration that included the row, so clearing it
         // must report the default that now applies and say the running service has not caught up.
-        // Reading the startup snapshot instead would report the deleted value as still chosen.
+        // Reading the startup snapshot instead would report the deleted value as still chosen. The
+        // lease duration is a restart-class key, which is what this behaviour is about; the two
+        // live keys clear straight to their defaults, which LiveSettingTests covers.
         using (var restarted = deployment.CreateFactory())
         using (var client = await SignedInClientAsync(restarted))
         {
-            Assert.Equal("4", (await GetAsync(client, SettingCatalog.ParseMaxConcurrency)).Value);
+            Assert.Equal("00:09:00", (await GetAsync(client, SettingCatalog.WorkerLeaseDuration)).Value);
 
             using var cleared = await client.PutAsJsonAsync(
                 "/api/v1/admin/settings",
-                new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, string.Empty),
+                new SettingUpdateRequest(SettingCatalog.WorkerLeaseDuration, string.Empty),
                 cancellationToken: TestContext.Current.CancellationToken);
             cleared.EnsureSuccessStatusCode();
 
-            var state = await GetAsync(client, SettingCatalog.ParseMaxConcurrency);
-            Assert.Equal("1", state.Value);
+            var state = await GetAsync(client, SettingCatalog.WorkerLeaseDuration);
+            Assert.Equal("00:02:00", state.Value);
             Assert.False(state.IsStored);
             Assert.True(state.IsPendingRestart);
         }
@@ -132,7 +137,8 @@ public sealed class SettingsEndpointTests
             new SettingUpdateRequest(SettingCatalog.ParseMaxConcurrency, "4"),
             cancellationToken: TestContext.Current.CancellationToken);
         stored.EnsureSuccessStatusCode();
-        Assert.True((await GetAsync(client, SettingCatalog.ParseMaxConcurrency)).IsPendingRestart);
+        // The concurrency limit applies as it is written, so nothing is waiting on a restart here.
+        Assert.False((await GetAsync(client, SettingCatalog.ParseMaxConcurrency)).IsPendingRestart);
 
         using var cleared = await client.PutAsJsonAsync(
             "/api/v1/admin/settings",

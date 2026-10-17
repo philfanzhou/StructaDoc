@@ -37,7 +37,7 @@ public sealed class DocumentIngestionCompensationTests
                 dbContext,
                 storage,
                 new OfficeDocumentTypeDetector(),
-                new DocumentIngestionOptions(),
+                new DocumentUploadLimits(new DocumentIngestionOptions().MaxUploadBytes),
                 TimeProvider.System,
                 NullLogger<EfCoreDocumentIngestionService>.Instance);
             await using var content = new MemoryStream("%PDF-1.7\n%%EOF"u8.ToArray());

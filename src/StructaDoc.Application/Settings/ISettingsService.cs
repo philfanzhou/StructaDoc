@@ -49,6 +49,15 @@ public interface ISettingChangeListener
         string key,
         string? value,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when this listener owns <paramref name="key"/> and can report the value the running
+    /// service is using for it right now, as distinct from the snapshot options were bound from at
+    /// startup. That live value is what keeps pending-restart reporting honest for a setting that
+    /// no longer needs one: an applied change reports itself as running, and a change that failed
+    /// to apply leaves the previous value running and reports the restart it still needs.
+    /// </summary>
+    bool TryGetAppliedValue(string key, out string? appliedValue);
 }
 
 public interface ISettingsService
