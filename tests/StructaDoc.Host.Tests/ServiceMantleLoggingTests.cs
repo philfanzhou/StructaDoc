@@ -16,6 +16,7 @@ namespace StructaDoc.Host.Tests;
 // /api/v1/system/info share, that the default console providers really were replaced, that the
 // pipeline emits the identity fields while the two override categories stay suppressed, and that a
 // conflicting Serilog configuration fails host startup with a stable error code.
+[Collection("Console output")]
 public sealed class ServiceMantleLoggingTests(StructaDocWebApplicationFactory factory)
     : IClassFixture<StructaDocWebApplicationFactory>
 {
@@ -53,10 +54,11 @@ public sealed class ServiceMantleLoggingTests(StructaDocWebApplicationFactory fa
             providers[0].GetType().FullName);
     }
 
-    // The shared web hosts start whenever their test class does, so a console sink one of them
-    // created may already be bound to the original output stream. A host built here, after the
-    // stream was swapped, is the way to observe this pipeline's actual console output, which is
-    // what an operator reads.
+    // The console sink resolves Console.Out when each event is emitted, so what matters is that
+    // the capture owns the console while this test logs, not when a host was built; the Console
+    // output collection keeps the other console-swapping tests from stealing the writer mid-test.
+    // A host built here keeps the emitted events inside this test's own window, which is what an
+    // operator's console output reads like.
     [Fact]
     public void Console_pipeline_emits_identity_fields_and_suppresses_override_categories()
     {
