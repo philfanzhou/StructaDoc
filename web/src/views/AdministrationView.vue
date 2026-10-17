@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { get, mutate } from '../api'
 import { message } from '../messages'
 
@@ -73,6 +73,14 @@ const restartPending = computed(() => settings.value.some(setting => setting.isP
 const restarting = ref(false)
 const settingLabels: Record<string, string> = {
   'Worker:MaxConcurrency': '并发解析数',
+  'Worker:MaintenanceInterval': '维护巡检间隔',
+  'Worker:RecoveryBatchSize': '单次恢复任务数',
+  'Worker:LeaseDuration': '任务租约时长',
+  'Worker:HeartbeatInterval': '心跳间隔',
+  'Worker:RetryDelay': '重试等待',
+  'Worker:MinimumPollDelay': '最短轮询间隔',
+  'Worker:MaximumPollDelay': '最长轮询间隔',
+  'Worker:MaxExecutionDuration': '单次解析执行上限（00:00:00 表示不限制）',
   'Documents:UploadApiEnabled': '开放上传接口',
   'Documents:MaxUploadBytes': '单文件上传上限（字节）',
   'Oidc:Enabled': '启用组织账号登录',
@@ -84,6 +92,26 @@ const settingLabels: Record<string, string> = {
   'Oidc:EmailClaim': '邮箱字段（email claim）',
   'Oidc:RoleClaim': '角色字段（role claim）',
   'Oidc:AdministratorRole': '管理员角色值',
+  'Authentication:AdministratorSessionLifetime': '管理员会话时长',
+  'Authentication:LoginPermitLimit': '登录尝试次数上限',
+  'Authentication:LoginRateLimitWindow': '登录尝试统计窗口',
+  'ProviderResults:MaxArchiveBytes': '结果压缩包大小上限（字节）',
+  'ProviderResults:MaxEntryCount': '压缩包条目数上限',
+  'ProviderResults:MaxEntryBytes': '单个条目大小上限（字节）',
+  'ProviderResults:MaxExpandedBytes': '解压后总大小上限（字节）',
+  'ProviderResults:MaxCompressionRatio': '压缩率上限',
+  'ProviderResults:MaxEntryPathBytes': '条目路径长度上限（字节）',
+  'ProviderResults:MaxCentralDirectoryBytes': '压缩包目录区大小上限（字节）',
+  'ProviderResultNormalization:MaxMarkdownBytes': 'Markdown 大小上限（字节）',
+  'ProviderResultNormalization:MaxJsonBytes': 'JSON 大小上限（字节）',
+  'ProviderResultNormalization:MaxAssetBytes': '图片资源大小上限（字节）',
+  'LibreOffice:Enabled': '启用 Office 转 PDF',
+  'LibreOffice:MaxConcurrency': '转换并发数',
+  'LibreOffice:Timeout': '单次转换超时',
+  'LibreOffice:ResourceInspectionInterval': '资源巡检间隔',
+  'LibreOffice:MaxInputBytes': '输入文件大小上限（字节）',
+  'LibreOffice:MaxOutputBytes': '输出文件大小上限（字节）',
+  'LibreOffice:MaxTemporaryBytes': '临时磁盘占用上限（字节）',
   'Storage:Provider': '存储方式',
   'Storage:RootPath': '本地目录',
   'Storage:ServiceUrl': '服务地址',
@@ -148,6 +176,78 @@ const oidcTestResult = ref('')
 const oidcTesting = ref(false)
 const oidcClaimKeys = ['Oidc:NameClaim', 'Oidc:EmailClaim', 'Oidc:RoleClaim', 'Oidc:AdministratorRole']
 const serviceSettings = computed(() => settings.value.filter(setting => !setting.key.startsWith('Oidc:') && !storageKeys.includes(setting.key) && !databaseKeys.includes(setting.key)))
+
+// The catalog's key prefixes are the sections the service itself validates and recovers by, so the
+// page groups by them rather than by a parallel list that could drift. Where documents are kept,
+// where business data lives, and how users sign in keep their dedicated panels below -- they carry
+// secrets and startup faults this list does not -- so their groups only get an entry and a jump in
+// the overview.
+type SettingArea = { id: string; label: string; description: string; prefixes: string[]; ownPanel?: boolean }
+const settingAreas: SettingArea[] = [
+  { id: 'worker', label: '后台解析（Worker）', prefixes: ['Worker:'], description: '后台解析任务的并发、租约、心跳与重试节奏，以及单次执行的时间上限。' },
+  { id: 'documents', label: '文档上传', prefixes: ['Documents:'], description: '上传接口的开放范围与单文件大小上限，网页与 API 上传共用。' },
+  { id: 'provider-results', label: '解析结果接收', prefixes: ['ProviderResults:'], description: '解析结果压缩包的接收上限：总大小、条目数量与解压后占用，防止异常结果占满磁盘。' },
+  { id: 'normalization', label: '结果规范化', prefixes: ['ProviderResultNormalization:'], description: '规范化阶段保留的 Markdown、JSON 与图片资源的大小上限。' },
+  { id: 'libreoffice', label: 'Office 转 PDF（LibreOffice）', prefixes: ['LibreOffice:'], description: '镜像内 LibreOffice 的转换开关、并发与资源上限，在解析提供方需要 PDF 时使用。' },
+  { id: 'oidc', label: '组织账号登录（OIDC）', prefixes: ['Oidc:'], ownPanel: true, description: '' },
+  { id: 'storage', label: '文件存储', prefixes: ['Storage:'], ownPanel: true, description: '' },
+  { id: 'database', label: '业务数据库', prefixes: ['Database:'], ownPanel: true, description: '' },
+  { id: 'authentication', label: '本地管理员登录', prefixes: ['Authentication:'], description: '管理员会话时长与登录尝试限制。' },
+]
+// A key the catalog grows without a prefix known here must still appear; dropping it silently
+// would leave the page reporting less than the service publishes.
+const otherSettingsArea: SettingArea = { id: 'other', label: '其他设置', prefixes: [], description: '尚未归入任何分组的服务设置。' }
+function areaOf(setting: Setting): SettingArea {
+  return settingAreas.find(area => area.prefixes.some(prefix => setting.key.startsWith(prefix))) ?? otherSettingsArea
+}
+function areaSettings(area: SettingArea): Setting[] {
+  return settings.value.filter(setting => areaOf(setting) === area)
+}
+
+// A stored value waiting for its restart is also customized, and a pinned key is never stored;
+// the badge picks the one status that says what, if anything, needs to happen next. Everything
+// here is what the API reports -- pending restart in particular is never inferred from the key.
+type SettingStatus = 'default' | 'customized' | 'pinned' | 'pending'
+function settingStatus(setting: Setting): SettingStatus {
+  if (setting.isManagedExternally) return 'pinned'
+  if (setting.isPendingRestart) return 'pending'
+  return setting.isStored ? 'customized' : 'default'
+}
+const settingStatusText: Record<SettingStatus, string> = { default: '默认', customized: '已自定义', pinned: '由部署管理', pending: '待重启生效' }
+const settingStatusClass: Record<SettingStatus, string> = { default: '', customized: 'running', pinned: 'managed', pending: 'queued' }
+
+type SettingAreaStatus = { area: SettingArea; total: number; customized: number; pinned: number; pending: number }
+const areaStatuses = computed<SettingAreaStatus[]>(() => [...settingAreas, otherSettingsArea]
+  .map(area => {
+    const statuses = areaSettings(area).map(settingStatus)
+    return {
+      area,
+      total: statuses.length,
+      customized: statuses.filter(status => status === 'customized').length,
+      pinned: statuses.filter(status => status === 'pinned').length,
+      pending: statuses.filter(status => status === 'pending').length,
+    }
+  })
+  .filter(status => status.total > 0))
+const serviceSettingGroups = computed(() => areaStatuses.value.filter(status => !status.area.ownPanel))
+function areaStatusSummary(status: SettingAreaStatus): string {
+  const parts: string[] = []
+  if (status.customized) parts.push(`${status.customized} 项已调整`)
+  if (status.pinned) parts.push(`${status.pinned} 项由部署管理`)
+  if (status.pending) parts.push(`${status.pending} 项待重启`)
+  return parts.length ? parts.join(' · ') : '全部使用默认值'
+}
+
+// A collapsed group cannot be scrolled to, so a jump from the overview opens the group it names
+// first and lets the browser land on it afterwards. What a user opens or closes themselves is
+// kept, apart from a group with a pending restart, which is held open for the same reason a
+// panel with a startup fault is: what it holds is waiting on someone looking at it.
+const openGroups = ref<Record<string, boolean>>({})
+async function jumpToSettingGroup(areaId: string) {
+  openGroups.value[areaId] = true
+  await nextTick()
+  document.getElementById(`setting-group-${areaId}`)?.scrollIntoView({ block: 'start' })
+}
 
 // A collapsed panel says what it currently holds, so the common case -- nothing to do here -- is
 // answered without opening anything. A panel is forced open when what it holds is broken: a
@@ -503,7 +603,7 @@ onMounted(() => load())
 
     <section class="panel admin-card wide-card"><p class="eyebrow">ADMINISTRATORS</p><h2>管理员账号</h2><div class="admin-list"><div v-for="administrator in administrators" :key="administrator.id"><span><strong>{{ administrator.displayName }}</strong><small>{{ administrator.username }}<template v-if="administrator.isCurrent"> · 当前登录</template></small></span><span class="row-actions"><span class="status" :class="administrator.isActive ? 'succeeded' : 'failed'">{{ administrator.isActive ? '启用' : '停用' }}</span><button v-if="!administrator.isCurrent" @click="resetPassword(administrator)">重置密码</button><button v-if="!administrator.isCurrent" @click="toggleAdministrator(administrator)">{{ administrator.isActive ? '停用' : '启用' }}</button><button v-if="!administrator.isCurrent" class="danger-link" @click="deleteAdministrator(administrator)">删除</button></span></div></div><details><summary>新增管理员</summary><div class="form-grid"><label>用户名<input v-model="newAdministrator.username" autocomplete="off"></label><label>显示名称<input v-model="newAdministrator.displayName" autocomplete="off"></label><label class="wide">密码（至少 8 位）<input v-model="newAdministrator.password" type="password" autocomplete="new-password"></label><button class="primary" @click="createAdministrator">创建</button></div></details><details><summary>修改我的密码</summary><div class="form-grid"><label class="wide">当前密码<input v-model="ownPassword.currentPassword" type="password" autocomplete="current-password"></label><label>新密码<input v-model="ownPassword.newPassword" type="password" autocomplete="new-password"></label><label>确认新密码<input v-model="ownPassword.confirmPassword" type="password" autocomplete="new-password"></label><button class="primary" @click="changeOwnPassword">修改密码</button><p class="hint wide">修改后其他设备上的登录会立即失效，当前设备保持登录。</p></div></details></section>
 
-    <section class="panel admin-card wide-card">
+    <section class="panel admin-card wide-card" id="setting-group-oidc">
       <p class="eyebrow">SINGLE SIGN-ON</p><h2>组织账号登录 <span class="state-chip">{{ oidcStatus?.enabled ? '已启用' : '未启用' }}</span></h2>
       <p class="hint">普通用户通过组织身份平台登录；未配置时，管理员仍可用本地账号访问工作台和管理页。</p>
       <details :open="oidcNeedsAttention || oidcStatus?.enabled"><summary>配置组织账号登录</summary>
@@ -526,7 +626,23 @@ onMounted(() => load())
 
     <div class="section-band wide-card"><span class="band-label">可选配置</span><p>镜像自带可用的默认值，不改也能跑。只有换存储、换数据库或需要调参时才展开。</p></div>
 
-    <section class="panel admin-card" v-if="settingOf('Storage:Provider')">
+    <section class="panel admin-card wide-card" data-settings-overview>
+      <p class="eyebrow">CONFIGURATION OVERVIEW</p><h2>配置状态总览</h2>
+      <p class="hint">每组设置的当前来源。「全部默认」表示没有改动过；「已调整」表示在本页保存过；「由部署管理」表示部署用环境变量固定，此处只读；「待重启」表示已保存但重启后才生效。点击一行跳到对应的分组或面板。</p>
+      <div class="settings-overview-list">
+        <a v-for="status in areaStatuses" :key="status.area.id" :href="`#setting-group-${status.area.id}`" :data-overview-area="status.area.id" @click.prevent="jumpToSettingGroup(status.area.id)">
+          <span><strong>{{ status.area.label }}</strong><small>{{ status.total }} 项设置</small></span>
+          <span class="row-actions">
+            <span v-if="status.pending" class="status queued">{{ status.pending }} 项待重启</span>
+            <span v-if="status.pinned" class="status managed">{{ status.pinned }} 项由部署管理</span>
+            <span v-if="status.customized" class="status running">{{ status.customized }} 项已调整</span>
+            <span v-if="!status.customized && !status.pinned && !status.pending" class="status">全部默认</span>
+          </span>
+        </a>
+      </div>
+    </section>
+
+    <section class="panel admin-card" v-if="settingOf('Storage:Provider')" id="setting-group-storage">
       <p class="eyebrow">STORAGE</p><h2>文件存储 <span class="state-chip">{{ storageSummary }}</span></h2>
       <p class="hint">原始文档、解析结果与导出文件的存放位置。修改后需重启服务，已经存放的文件不会自动迁移。</p>
       <details :open="storageNeedsAttention"><summary>更改文件存储</summary>
@@ -550,7 +666,7 @@ onMounted(() => load())
       </details>
     </section>
 
-    <section class="panel admin-card" v-if="settingOf('Database:Provider')">
+    <section class="panel admin-card" v-if="settingOf('Database:Provider')" id="setting-group-database">
       <p class="eyebrow">DATABASE</p><h2>业务数据库 <span class="state-chip">{{ databaseSummary }}</span></h2>
       <p class="hint">文档元数据、解析记录与结构化结果的存放位置。管理员账号与本页设置保存在另一个本地数据库中，因此这里配置错误时本页仍可用。</p>
       <div v-if="databaseStatus?.startupFault" class="notice-banner"><div>{{ databaseStatus.startupFault }}</div></div>
@@ -570,11 +686,14 @@ onMounted(() => load())
     <section class="panel admin-card wide-card">
       <p class="eyebrow">SERVICE SETTINGS</p><h2>服务设置 <span class="state-chip">{{ serviceSettingsSummary }}</span></h2>
       <p class="hint">上传限制与解析并发等运行参数。镜像自带的默认值适用于绝大多数部署，遇到具体问题再调。</p>
-      <details :open="restartPending"><summary>调整运行参数</summary>
+      <details v-for="group in serviceSettingGroups" :key="group.area.id" :id="`setting-group-${group.area.id}`" class="setting-group" :data-setting-group="group.area.id" :open="openGroups[group.area.id] ?? group.pending > 0" @toggle="openGroups[group.area.id] = ($event.target as HTMLDetailsElement).open">
+        <summary>{{ group.area.label }}<span class="state-chip">{{ areaStatusSummary(group) }}</span></summary>
+        <p class="hint">{{ group.area.description }}</p>
         <div class="admin-list">
-          <div v-for="setting in serviceSettings" :key="setting.key">
-            <span><strong>{{ settingLabels[setting.key] || setting.key }}</strong><small>{{ setting.key }}<template v-if="setting.isManagedExternally"> · 由部署环境变量固定</template><template v-else-if="!setting.isStored"> · 使用默认值</template><template v-if="setting.isPendingRestart"> · 待重启生效</template></small></span>
+          <div v-for="setting in areaSettings(group.area)" :key="setting.key">
+            <span><strong>{{ settingLabels[setting.key] || setting.key }}</strong><small>{{ setting.key }}</small></span>
             <span class="row-actions">
+              <span class="status" :class="settingStatusClass[settingStatus(setting)]" :data-setting-status="settingStatus(setting)">{{ settingStatusText[settingStatus(setting)] }}</span>
               <template v-if="setting.kind === 'Boolean'">
                 <span class="status" :class="setting.value === 'true' ? 'succeeded' : ''">{{ setting.value === 'true' ? '开启' : '关闭' }}</span>
                 <button v-if="!setting.isManagedExternally" @click="saveSetting(setting, setting.value === 'true' ? 'false' : 'true')">{{ setting.value === 'true' ? '关闭' : '开启' }}</button>
@@ -606,4 +725,18 @@ onMounted(() => load())
 .state-chip{font:600 11px/1 'DM Sans',sans-serif;letter-spacing:0;color:#37664f;background:#e4eee8;border-radius:20px;padding:6px 10px;vertical-align:middle;margin-left:8px}
 .row-actions{display:flex;align-items:center;gap:8px}.row-actions button{border:0;background:transparent;color:#37664f;font-size:11px;padding:3px}.row-actions .danger-link{color:#a23b36}
 .provider-editor{border-top:1px solid #d8ded9;margin-top:20px;padding-top:18px}.provider-editor h3{font-size:13px;margin:0 0 14px}.provider-editor small{font-weight:400;color:#69766f;font-size:11px}.provider-editor .row-actions button{border:1px solid transparent;font-size:13px;padding:11px 17px}.provider-editor .row-actions .primary{border-color:transparent}.provider-editor .row-actions .secondary{border-color:#aab9b0;color:#123c2b}
+/* The overview's rows stand in for the panels they point at, so they read like the collapsed
+   panels of the page -- a label, a count, and the statuses that say whether anyone still owes
+   this group a look -- while being links that land on the group itself. */
+.settings-overview-list{display:flex;flex-wrap:wrap;gap:0 28px}
+.settings-overview-list>a{display:flex;justify-content:space-between;align-items:center;gap:18px;border-top:1px solid var(--line);padding:13px 0;text-decoration:none;color:inherit;flex:1 1 340px}
+.settings-overview-list>a:hover strong{color:#37664f}
+.settings-overview-list span:first-child{display:grid;gap:4px;min-width:0}
+.setting-group{border-top:1px solid var(--line);margin-top:18px;padding-top:14px}
+.setting-group summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px}
+.setting-group summary .state-chip{margin-left:0}
+.setting-group>.hint{margin-bottom:12px}
+/* A pinned key is none of the running states -- it is decided outside this page -- so it gets a
+   quiet slate tone rather than borrowing a color that means started, broken, or waiting. */
+.status.managed{background:#e3e8ec;color:#41586b}
 </style>
