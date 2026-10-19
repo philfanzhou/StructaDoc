@@ -190,6 +190,8 @@ public sealed class EfCoreParseBundleCommitStore(
                     AssetId = block.AssetId,
                     SourceLocatorJson = block.SourceLocatorJson,
                     ProviderDataJson = block.ProviderDataJson,
+                    Caption = block.Caption,
+                    Footnote = block.Footnote,
                 }));
 
                 parseRun.Status = ParseRunStatuses.Succeeded;

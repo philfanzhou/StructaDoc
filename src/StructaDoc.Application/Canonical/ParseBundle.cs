@@ -30,7 +30,9 @@ public sealed record ParseBlock(
     double? Confidence = null,
     Guid? AssetId = null,
     string? SourceLocatorJson = null,
-    string? ProviderDataJson = null);
+    string? ProviderDataJson = null,
+    string? Caption = null,
+    string? Footnote = null);
 
 public sealed record NormalizedBoundingBox(
     double X0,

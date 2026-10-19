@@ -5,7 +5,7 @@ This note describes Parse Bundle validation and idempotent success commits. Fiel
 ## Persistent Structure
 
 - `parse_pages` uses Parse Run ID plus positive page number as its composite key; nullable `label` and `label_source` hold the printed page label and where it came from.
-- `parse_blocks` stores globally contiguous sequence, optional page, type, content, normalized bounding box, confidence, and Asset reference.
+- `parse_blocks` stores globally contiguous sequence, optional page, type, content, normalized bounding box, confidence, and Asset reference; nullable `caption` and `footnote` hold the text a figure, table, chart, or code Block carries with it.
 - `parse_assets` stores internal object references, byte size, and SHA-256 for extracted binary resources.
 - `parse_artifacts` stores metadata for Markdown, Provider archives, content lists, layouts, normalized PDFs, and other outputs.
 - `parse_runs.result_schema_version`, `result_sha256`, and `provider_metadata_json` store the committed bundle version, idempotency fingerprint, and sanitized Provider metadata.
@@ -18,6 +18,7 @@ Schema `1.1` validation includes:
 
 - positive unique Page numbers and Block sequences that start at zero and remain contiguous;
 - Page `label` and `labelSource` set together, a label of 1 to 256 printable characters, and a registered `labelSource`;
+- Block `caption` and `footnote` each null or non-blank text (`invalid-block-annotation` otherwise);
 - Page and Asset references within the same bundle;
 - finite 0–1 bounding boxes with ordered edges and 0–1 confidence;
 - lowercase tokens for types, subtypes, content formats, and Artifact types;
@@ -25,9 +26,9 @@ Schema `1.1` validation includes:
 - bounded JSON objects for Provider metadata, source locators, Artifact metadata, and Provider data;
 - rejection of credential fields, internal paths, and HTTP(S) URLs containing query strings in extensions.
 
-Current aggregate safeguards allow at most 10,000 Pages, 100,000 Blocks, 10,000 Assets, and 10,000 Artifacts; 4 MiB of characters per Block; 64 MiB of Block content; and 64 MiB of extension JSON. These are internal safety bounds and may be tuned without changing public field semantics.
+Current aggregate safeguards allow at most 10,000 Pages, 100,000 Blocks, 10,000 Assets, and 10,000 Artifacts; 4 MiB of characters for each Block's content, caption, and footnote; 64 MiB of Block content, captions, and footnotes together; and 64 MiB of extension JSON. These are internal safety bounds and may be tuned without changing public field semantics.
 
-New bundles must carry the current schema version. Runs committed under `1.0` keep that stored version and stay readable, because no read path checks it.
+New bundles must carry the current schema version. Runs committed under `1.0` keep that stored version and stay readable, because no read path checks it; their Pages have null labels and their Blocks null captions and footnotes, with no backfill.
 
 ## Page Labels
 
@@ -50,7 +51,7 @@ Replaying the same fingerprint on an already successful run returns `AlreadyComm
 
 ## Public Reading
 
-The result API projects stable DTOs rather than serializing persistence entities. Pages (including the optional `label` and `labelSource`), Blocks, Assets, Artifacts, Markdown, and exports are available through resource-authorized endpoints. Binary content is streamed through controlled endpoints; no public response exposes `storageRef`, external task IDs, checkpoints, or raw Provider block JSON.
+The result API projects stable DTOs rather than serializing persistence entities. Pages (including the optional `label` and `labelSource`), Blocks (including the optional `caption` and `footnote`), Assets, Artifacts, Markdown, and exports are available through resource-authorized endpoints. Binary content is streamed through controlled endpoints; no public response exposes `storageRef`, external task IDs, checkpoints, or raw Provider block JSON.
 
 ## Verification and Remaining Risk
 

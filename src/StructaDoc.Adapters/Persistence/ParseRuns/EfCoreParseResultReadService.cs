@@ -47,7 +47,7 @@ public sealed class EfCoreParseResultReadService(
             block.BoundingBoxX0.HasValue && block.BoundingBoxY0.HasValue && block.BoundingBoxX1.HasValue && block.BoundingBoxY1.HasValue
                 ? new BoundingBoxRecord(block.BoundingBoxX0.Value, block.BoundingBoxY0.Value, block.BoundingBoxX1.Value, block.BoundingBoxY1.Value)
                 : null,
-            block.Confidence, block.AssetId)).ToListAsync(cancellationToken);
+            block.Confidence, block.AssetId, block.Caption, block.Footnote)).ToListAsync(cancellationToken);
         var hasMore = rows.Count > limit;
         if (hasMore) rows.RemoveAt(rows.Count - 1);
         return new ParseBlockPage(rows, hasMore ? rows[^1].Sequence : null);

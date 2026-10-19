@@ -37,6 +37,16 @@ public sealed class MinerUResultNormalizer(
             "bbox",
             "score",
             "img_path",
+            "image_caption",
+            "image_footnote",
+            "img_caption",
+            "img_footnote",
+            "chart_caption",
+            "chart_footnote",
+            "table_caption",
+            "table_footnote",
+            "code_caption",
+            "code_footnote",
         ],
         StringComparer.Ordinal);
 
@@ -506,6 +516,7 @@ public sealed class MinerUResultNormalizer(
             var contentFormat = MapContentFormat(source, type, sourceProperty, content);
             var pageNumber = MapPageNumber(source);
             var assetId = MapAsset(source, assetsByPath);
+            var (caption, footnote) = MapAnnotations(source, providerType);
 
             blocks.Add(new ParseBlock(
                 CreateDeterministicId(parseRunId, $"block:{index}"),
@@ -517,10 +528,56 @@ public sealed class MinerUResultNormalizer(
                 contentFormat,
                 MapBoundingBox(source),
                 MapConfidence(source),
-                assetId));
+                assetId,
+                Caption: caption,
+                Footnote: footnote));
         }
 
         return blocks;
+    }
+
+    // The MinerU item type alone chooses which caption and footnote fields belong to the Block.
+    // Fields of another type are not read; they stay in the retained content-list Artifact.
+    private static (string? Caption, string? Footnote) MapAnnotations(JsonElement source, string providerType) =>
+        NormalizeToken(providerType) switch
+        {
+            "image" or "figure" => (
+                ReadAnnotation(source, "image_caption", "img_caption"),
+                ReadAnnotation(source, "image_footnote", "img_footnote")),
+            "chart" => (ReadAnnotation(source, "chart_caption"), ReadAnnotation(source, "chart_footnote")),
+            "table" => (ReadAnnotation(source, "table_caption"), ReadAnnotation(source, "table_footnote")),
+            "code" or "algorithm" => (ReadAnnotation(source, "code_caption"), ReadAnnotation(source, "code_footnote")),
+            _ => (null, null),
+        };
+
+    // MinerU writes each caption or footnote as an array of inline text strings. The non-blank
+    // string entries are kept in order, unmodified, and joined with a newline; a single string is
+    // accepted too. Any other value gives null and never fails normalization. As with page_idx and
+    // page_id, a present current field name alone decides, so the legacy name is read only when the
+    // current one is absent.
+    private static string? ReadAnnotation(JsonElement source, string propertyName, string? legacyPropertyName = null)
+    {
+        if (!source.TryGetProperty(propertyName, out var value)
+            && (legacyPropertyName is null || !source.TryGetProperty(legacyPropertyName, out value)))
+        {
+            return null;
+        }
+
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.String:
+                var text = value.GetString();
+                return string.IsNullOrWhiteSpace(text) ? null : text;
+            case JsonValueKind.Array:
+                var entries = value.EnumerateArray()
+                    .Where(entry => entry.ValueKind == JsonValueKind.String)
+                    .Select(entry => entry.GetString())
+                    .Where(entry => !string.IsNullOrWhiteSpace(entry))
+                    .ToArray();
+                return entries.Length == 0 ? null : string.Join('\n', entries);
+            default:
+                return null;
+        }
     }
 
     private static IReadOnlyList<ParsePage> CreatePages(IReadOnlyList<ParseBlock> blocks) =>

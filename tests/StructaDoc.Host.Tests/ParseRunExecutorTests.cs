@@ -223,16 +223,33 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         // Each segment's content list numbers its own pages from page_idx 0; the merge offsets
         // them by the segment's start page, so the run reads as one continuous document.
         Assert.Equal([1, 2, 3, 4, 5], bundle.Pages.Select(page => page.Number));
+        const string table = "<table></table>";
         Assert.Equal(
             [
                 ("segment page 1", 1),
                 ("segment page 2", 2),
+                (table, 2),
                 ("segment page 1", 3),
                 ("segment page 2", 4),
+                (table, 4),
                 ("segment page 1", 5),
+                (table, 5),
             ],
             bundle.Blocks.Select(block => (block.Content, block.PageNumber)));
-        Assert.Equal([0, 1, 2, 3, 4], bundle.Blocks.Select(block => block.Sequence));
+        Assert.Equal(Enumerable.Range(0, 8), bundle.Blocks.Select(block => block.Sequence));
+        // Each segment's captioned table keeps its caption and footnote through the merge.
+        Assert.Equal(
+            [2, 5, 7],
+            bundle.Blocks
+                .Where(block => block.Caption == "Segment table" && block.Footnote == "Segment note")
+                .Select(block => block.Sequence));
+        Assert.All(
+            bundle.Blocks.Where(block => block.Type == "text"),
+            block =>
+            {
+                Assert.Null(block.Caption);
+                Assert.Null(block.Footnote);
+            });
         Assert.True(ParseBundleValidator.Validate(bundle).IsValid);
         Assert.Equal(
             3,
@@ -1238,7 +1255,11 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 {
                     // Zero-based page_idx per segment, as MinerU writes it for each submitted file.
                     var items = Enumerable.Range(0, pageCount.Value).Select(index =>
-                        $$"""{"type":"text","text":"segment page {{index + 1}}","bbox":[100,100,900,200],"page_idx":{{index}}}""");
+                        $$"""{"type":"text","text":"segment page {{index + 1}}","bbox":[100,100,900,200],"page_idx":{{index}}}""")
+                        // One captioned table on the segment's last page, so the merge is seen to
+                        // keep Block captions and footnotes.
+                        .Append(
+                            $$"""{"type":"table","table_body":"<table></table>","table_caption":["Segment table"],"table_footnote":["Segment note"],"page_idx":{{pageCount.Value - 1}}}""");
                     using var writer = new StreamWriter(archive.CreateEntry("content_list.json").Open());
                     writer.Write($"[{string.Join(',', items)}]");
                 }

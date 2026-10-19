@@ -229,12 +229,21 @@ public static class ParseBundleValidator
                 return Invalid("invalid-block-type", "Block type, subtype, or content format is invalid.");
             }
 
-            if (block.Content?.Length > MaxBlockContentCharacters)
+            if (!IsOptionalAnnotation(block.Caption) || !IsOptionalAnnotation(block.Footnote))
+            {
+                return Invalid("invalid-block-annotation", "A Block caption or footnote must be null or non-blank text.");
+            }
+
+            if (block.Content?.Length > MaxBlockContentCharacters
+                || block.Caption?.Length > MaxBlockContentCharacters
+                || block.Footnote?.Length > MaxBlockContentCharacters)
             {
                 return Invalid("block-content-too-large", "A Block content value exceeds the size limit.");
             }
 
-            totalBlockContentCharacters += block.Content?.Length ?? 0;
+            totalBlockContentCharacters += (block.Content?.Length ?? 0)
+                + (block.Caption?.Length ?? 0)
+                + (block.Footnote?.Length ?? 0);
             if (totalBlockContentCharacters > MaxTotalBlockContentCharacters)
             {
                 return Invalid("bundle-content-too-large", "The Parse Bundle content exceeds the aggregate size limit.");
@@ -363,6 +372,8 @@ public static class ParseBundleValidator
             WriteNullableString(writer, "assetId", block.AssetId?.ToString("N"));
             WriteJsonProperty(writer, "sourceLocator", block.SourceLocatorJson);
             WriteJsonProperty(writer, "providerData", block.ProviderDataJson);
+            WriteNullableString(writer, "caption", block.Caption);
+            WriteNullableString(writer, "footnote", block.Footnote);
             writer.WriteEndObject();
         }
 
@@ -609,6 +620,11 @@ public static class ParseBundleValidator
 
     private static bool IsUnitInterval(double value) =>
         double.IsFinite(value) && value is >= 0 and <= 1;
+
+    // Captions and footnotes are document text like content: no character-class restriction,
+    // only "absent or not blank". Their size is checked together with content.
+    private static bool IsOptionalAnnotation(string? value) =>
+        value is null || !string.IsNullOrWhiteSpace(value);
 
     private static bool IsOptionalToken(string? value, int maxLength) =>
         value is null || IsToken(value, maxLength);

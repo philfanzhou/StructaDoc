@@ -21,6 +21,8 @@ internal sealed class StubMinerUServer : IAsyncDisposable
     public const string TaskId = "stub-task-0001";
     public const string MarkdownHeading = "StructaDoc end-to-end";
     public const string MarkdownBody = "Parsed by the stub MinerU service.";
+    public const string ImageCaption = "Figure 1 Stub figure";
+    public const string ImageFootnote = "Drawn by the stub.";
 
     private readonly WebApplication app;
     private int statusRequests;
@@ -154,7 +156,7 @@ internal sealed class StubMinerUServer : IAsyncDisposable
                 [
                   { "type": "text", "text": "{{MarkdownHeading}}", "text_level": 1, "page_idx": 0 },
                   { "type": "text", "text": "{{MarkdownBody}}", "page_idx": 0 },
-                  { "type": "image", "img_path": "images/figure-1.png", "page_idx": 1 }
+                  { "type": "image", "img_path": "images/figure-1.png", "image_caption": ["{{ImageCaption}}"], "image_footnote": ["{{ImageFootnote}}"], "page_idx": 1 }
                 ]
                 """));
             Write(archive, "images/figure-1.png", png);

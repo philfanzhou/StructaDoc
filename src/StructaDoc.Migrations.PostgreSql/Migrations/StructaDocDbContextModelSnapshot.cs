@@ -475,6 +475,10 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("bbox_y1");
 
+                    b.Property<string>("Caption")
+                        .HasColumnType("text")
+                        .HasColumnName("caption");
+
                     b.Property<double?>("Confidence")
                         .HasColumnType("double precision")
                         .HasColumnName("confidence");
@@ -488,6 +492,10 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                         .IsUnicode(false)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("content_format");
+
+                    b.Property<string>("Footnote")
+                        .HasColumnType("text")
+                        .HasColumnName("footnote");
 
                     b.Property<int?>("PageNumber")
                         .HasColumnType("integer")

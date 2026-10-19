@@ -184,6 +184,20 @@ A Block is the main structured content unit in the public API.
 | `assetId` | No | Referenced same-run Asset |
 | `sourceLocator` | No | Sheet, slide, section, or similar source location |
 | `providerData` | Internal/unstable | Bounded diagnostic extension, excluded from ordinary DTOs |
+| `caption` | No | Caption the Provider attached to this figure, table, chart, or code Block (added in 1.1) |
+| `footnote` | No | Footnote the Provider attached to this figure, table, chart, or code Block (added in 1.1) |
+
+### Captions and Footnotes
+
+`caption` and `footnote` keep the text that describes a figure, table, chart, or code listing on the Block it belongs to. They are never moved into `content` and never become separate Blocks, so a caller can show a table with its title and notes without guessing which nearby text Block belongs to it.
+
+- Each is null or non-blank text. Several Provider entries for the same field are kept in order, unmodified, and joined with a newline (`\n`).
+- The text is the Provider's inline text and may contain inline math delimiters such as `$x$` or Markdown punctuation. There is no separate format field; callers treat it as untrusted plain text and escape it when rendering.
+- Both count toward the same size limits as `content`.
+- They are filled only when the Provider supplies them. A null value does not mean the figure or table has no caption, and Blocks of other types normally have none. Parse Runs committed before these fields existed have null values; re-parse a document to get them.
+- A malformed Provider value gives null and never fails the Parse Run.
+
+The MinerU mapping is in [Provider Result Normalization](../development/provider-result-normalization.md#captions-and-footnotes).
 
 ### Registered Block Types
 
@@ -302,7 +316,7 @@ The complete bundle must validate and persist before the Parse Run becomes `succ
 | Version | Changes |
 |---|---|
 | 1.0 | Initial model |
-| 1.1 | Optional Page `label` and `labelSource` (section 7.1); the registered `page-number` Block type. Runs committed under 1.0 keep that version and have null labels; re-parse a document to get labels |
+| 1.1 | Optional Page `label` and `labelSource` (section 7.1); optional Block `caption` and `footnote` (section 8); the registered `page-number` Block type. Runs committed under 1.0 keep that version and have null labels, captions, and footnotes; re-parse a document to get them |
 
 ## 14. Validation Requirements
 
@@ -312,6 +326,7 @@ At minimum, a normalized result satisfies:
 - Block sequence is unique, contiguous, and in reading order;
 - `pageNumber` is `null` or at least 1;
 - a Page `label` and `labelSource` are both null or both set; a label is non-empty printable text of at most 256 characters, and `labelSource` is a registered value;
+- a Block `caption` and `footnote` are each null or non-blank text within the Block content size limit;
 - every bounding box and confidence value satisfies its normalized range;
 - `assetId` references an Asset in the same Parse Run;
 - a conversion Artifact ID references a same-run `normalized-pdf`;

@@ -53,10 +53,31 @@ MinerU `type` values map as follows (underscores are read as hyphens):
 | `page_number` | `page-number` | `sub_type` when present |
 | any other value, such as `aside_text` or `index` | `unknown` | `sub_type` when present, otherwise the normalized type token, such as `aside-text` or `index` |
 
-The normalizer declares the content-list fields it reads in `MinerUResultNormalizer.RecognizedContentListFields`. These MinerU fields are deliberately not read, and stay available in the retained `content-list` Artifact:
+### Captions and Footnotes
 
-- `image_caption`, `image_footnote`, `table_caption`, `table_footnote`, `chart_caption`, `chart_footnote`, `code_caption`, and `code_footnote`, which need new Block fields (tracked in #163);
-- `anchor`, an internal cross-reference target with no canonical field.
+The MinerU item `type` chooses which caption and footnote fields fill the Block's `caption` and `footnote` ([Canonical Document Model §8](../specifications/canonical-document-model.md#captions-and-footnotes)). Fields that belong to another type are not read and stay in the retained `content-list` Artifact.
+
+| MinerU `type` | `caption` from | `footnote` from |
+|---|---|---|
+| `image`, `figure` | `image_caption`; the legacy `img_caption` only when `image_caption` is absent | `image_footnote`; the legacy `img_footnote` only when `image_footnote` is absent |
+| `chart` | `chart_caption` | `chart_footnote` |
+| `table` | `table_caption` | `table_footnote` |
+| `code`, `algorithm` | `code_caption` | `code_footnote` |
+| any other type | not read | not read |
+
+As with `page_idx` and `page_id`, a current field name that is present, even as an empty array, alone decides; the legacy name is then not read.
+
+MinerU writes each field as an array of inline text strings. The value becomes:
+
+- an array: its string entries in array order, skipping non-string entries and entries that are empty or whitespace only, joined with `\n`; null when nothing is left. Entries are not trimmed or reformatted;
+- a string: that string, or null when it is empty or whitespace only;
+- absent, `null`, a number, a boolean, or an object: null.
+
+A malformed value never fails normalization and is not logged. An oversized caption or footnote fails Parse Bundle validation with the same size codes as oversized content, which the normalizer reports as `mineru-result-bundle-invalid`.
+
+### Field Coverage
+
+The normalizer declares the content-list fields it reads in `MinerUResultNormalizer.RecognizedContentListFields`. One MinerU field is deliberately not read and stays available in the retained `content-list` Artifact: `anchor`, an internal cross-reference target with no canonical field.
 
 The test fixture `tests/StructaDoc.Persistence.Tests/Fixtures/MinerU/pipeline_content_list.json` follows the field structure of real MinerU `pipeline` output with synthetic text. A test fails when the fixture contains a field that is neither recognized nor on the ignore list, so a fixture refresh cannot drop a new or renamed field silently.
 
@@ -89,5 +110,4 @@ Printed page labels are not Provider output and are not read here: one Provider-
 ## Remaining Work
 
 - more observed MinerU layout versions, image media types, and structured fields;
-- captions and footnotes for images, tables, charts, and code (#163);
 - versioned normalization adapters if an upstream change cannot be handled additively.

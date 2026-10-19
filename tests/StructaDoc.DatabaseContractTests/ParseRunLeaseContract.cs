@@ -221,7 +221,15 @@ internal static class ParseRunLeaseContract
             resultLease.ParseRunId,
             // A non-ASCII label checks that every database stores the column as Unicode text.
             [new ParsePage(1, 1000, 1400, "pixel", Label: "Anhang-\u00e4 \u2167", LabelSource: PageLabelSources.PdfPageLabels)],
-            [new ParseBlock(Guid.NewGuid(), 0, 1, "text", Content: "Contract result")],
+            // Non-ASCII caption and footnote text checks the new Block columns store Unicode too.
+            [new ParseBlock(
+                Guid.NewGuid(),
+                0,
+                1,
+                "table",
+                Content: "Contract result",
+                Caption: "Tabelle \u00e4 $x$",
+                Footnote: "Quelle \u2167\nZweite Zeile")],
             [],
             [new ParseArtifact(
                 Guid.NewGuid(),
@@ -376,7 +384,9 @@ internal static class ParseRunLeaseContract
         var persistedPage = Assert.Single(await verificationContext.ParsePages.ToListAsync());
         Assert.Equal("Anhang-\u00e4 \u2167", persistedPage.Label);
         Assert.Equal(PageLabelSources.PdfPageLabels, persistedPage.LabelSource);
-        Assert.Single(await verificationContext.ParseBlocks.ToListAsync());
+        var persistedBlock = Assert.Single(await verificationContext.ParseBlocks.ToListAsync());
+        Assert.Equal("Tabelle \u00e4 $x$", persistedBlock.Caption);
+        Assert.Equal("Quelle \u2167\nZweite Zeile", persistedBlock.Footnote);
         Assert.Equal(2, await verificationContext.ParseArtifacts.CountAsync());
 
         var apiClient = await verificationContext.ApiClients
