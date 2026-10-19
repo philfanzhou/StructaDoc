@@ -10,7 +10,7 @@ using StructaDoc.Application.Storage;
 
 namespace StructaDoc.Adapters.ProviderResults;
 
-public sealed class MinerUResultNormalizer(
+public sealed partial class MinerUResultNormalizer(
     IFileStorage fileStorage,
     ProviderResultNormalizationOptions options,
     ILogger<MinerUResultNormalizer> logger) : IProviderResultNormalizer
@@ -69,7 +69,6 @@ public sealed class MinerUResultNormalizer(
                 options.TemporaryPath,
                 cancellationToken);
 
-            var markdownEntry = FindRequiredMarkdown(session);
             var contentListEntry = FindOptionalJson(
                 session,
                 "content_list.json",
@@ -78,12 +77,21 @@ public sealed class MinerUResultNormalizer(
                 session,
                 "content_list_v2.json",
                 "_content_list_v2.json");
-            var modelEntry = FindOptionalJson(session, "model.json", "_model.json");
-            var layoutEntry = FindOptionalJson(
-                session,
-                "layout.json",
-                "_layout.json",
-                "_middle.json");
+            // A legacy Content List always owns normalization when both families are present.
+            var structuredEntry = contentListEntry is null
+                ? FindOptionalJson(session, "structured_content.json")
+                : null;
+            var markdownEntry = structuredEntry is not null
+                && session.Entries.TryGetValue("markdown.md", out var v4Markdown)
+                && !IsDirectory(v4Markdown)
+                    ? v4Markdown
+                    : FindRequiredMarkdown(session);
+            var modelEntry = structuredEntry is null
+                ? FindOptionalJson(session, "model.json", "_model.json")
+                : FindOptionalJson(session, "model_output.json");
+            var layoutEntry = structuredEntry is null
+                ? FindOptionalJson(session, "layout.json", "_layout.json", "_middle.json")
+                : FindOptionalJson(session, "middle_json.json");
 
             var markdownBytes = await ReadEntryAsync(
                 markdownEntry,
@@ -100,6 +108,7 @@ public sealed class MinerUResultNormalizer(
 
             byte[]? contentListBytes = null;
             JsonDocument? contentList = null;
+            JsonDocument? structuredContent = null;
             try
             {
                 if (contentListEntry is not null)
@@ -113,6 +122,17 @@ public sealed class MinerUResultNormalizer(
                         contentListBytes,
                         "content_list.json",
                         requireArray: true);
+                }
+
+                byte[]? structuredBytes = null;
+                if (structuredEntry is not null)
+                {
+                    structuredBytes = await ReadEntryAsync(
+                        structuredEntry,
+                        options.MaxJsonBytes,
+                        "mineru-result-json-too-large",
+                        cancellationToken);
+                    structuredContent = ParseJson(structuredBytes, "structured-content.json", requireArray: false);
                 }
 
                 var artifacts = new List<ParseArtifact>
@@ -142,6 +162,19 @@ public sealed class MinerUResultNormalizer(
                         cancellationToken));
                 }
 
+                if (structuredBytes is not null)
+                {
+                    artifacts.Add(await StoreArtifactAsync(
+                        request.ParseRunId,
+                        ArtifactTypes.ProviderRaw,
+                        "structured-content.json",
+                        "application/json",
+                        "structured-content.json",
+                        structuredBytes,
+                        options.MaxJsonBytes,
+                        cancellationToken));
+                }
+
                 await AddOptionalJsonArtifactAsync(
                     artifacts,
                     request.ParseRunId,
@@ -163,7 +196,7 @@ public sealed class MinerUResultNormalizer(
                     request.ParseRunId,
                     modelEntry,
                     ArtifactTypes.ModelOutput,
-                    "model.json",
+                    structuredEntry is null ? "model.json" : "model-output.json",
                     "model-output.json",
                     cancellationToken);
 
@@ -180,6 +213,14 @@ public sealed class MinerUResultNormalizer(
                 }
 
                 var pages = CreatePages(blocks);
+                if (structuredContent is not null)
+                {
+                    (pages, blocks) = CreateStructuredContent(
+                        request.ParseRunId,
+                        structuredContent.RootElement,
+                        assetsByEntryPath,
+                        cancellationToken);
+                }
 
                 var bundle = new ParseBundle(
                     ParseBundleValidator.CurrentSchemaVersion,
@@ -202,6 +243,7 @@ public sealed class MinerUResultNormalizer(
             finally
             {
                 contentList?.Dispose();
+                structuredContent?.Dispose();
             }
         }
         catch (OperationCanceledException)

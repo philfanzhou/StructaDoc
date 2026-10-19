@@ -12,7 +12,7 @@ using StructaDoc.Application.Storage;
 
 namespace StructaDoc.Persistence.Tests;
 
-public sealed class MinerUResultNormalizerTests
+public sealed partial class MinerUResultNormalizerTests
 {
     // Fields the fixture carries that the normalizer deliberately does not read. anchor has no
     // canonical field; it stays available in the retained content-list Artifact.
@@ -768,7 +768,9 @@ public sealed class MinerUResultNormalizerTests
     private sealed class NormalizerTestEnvironment : IDisposable
     {
         public NormalizerTestEnvironment(
-            ProviderResultNormalizationOptions? normalizationOptions = null)
+            ProviderResultNormalizationOptions? normalizationOptions = null,
+            long maxEntryBytes = 1024 * 1024,
+            double maxCompressionRatio = 1000)
         {
             RootPath = Path.Combine(
                 Path.GetTempPath(),
@@ -780,11 +782,11 @@ public sealed class MinerUResultNormalizerTests
                 Storage,
                 new ProviderResultIntakeOptions
                 {
-                    MaxArchiveBytes = 1024 * 1024,
+                    MaxArchiveBytes = maxEntryBytes,
                     MaxEntryCount = 100,
-                    MaxEntryBytes = 1024 * 1024,
-                    MaxExpandedBytes = 2 * 1024 * 1024,
-                    MaxCompressionRatio = 1000,
+                    MaxEntryBytes = maxEntryBytes,
+                    MaxExpandedBytes = 2 * maxEntryBytes,
+                    MaxCompressionRatio = maxCompressionRatio,
                     TemporaryPath = Path.Combine(RootPath, "intake-temp"),
                 });
             Normalizer = new MinerUResultNormalizer(
@@ -792,7 +794,7 @@ public sealed class MinerUResultNormalizerTests
                 normalizationOptions ?? new ProviderResultNormalizationOptions
                 {
                     MaxMarkdownBytes = 1024 * 1024,
-                    MaxJsonBytes = 1024 * 1024,
+                    MaxJsonBytes = maxEntryBytes,
                     MaxAssetBytes = 1024 * 1024,
                     TemporaryPath = Path.Combine(RootPath, "normalizer-temp"),
                 },
