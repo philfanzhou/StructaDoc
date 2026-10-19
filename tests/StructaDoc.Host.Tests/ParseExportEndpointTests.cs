@@ -376,6 +376,59 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
     }
 
     [Fact]
+    public async Task A_run_stored_with_result_schema_1_0_stays_readable_through_every_result_endpoint()
+    {
+        using var client = factory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+        var seeded = await SeedSucceededResultAsync(sourceIsPdf: true);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            // A run committed before model 1.1: its stored schema version is 1.0 and its Pages
+            // have no label columns set. No read path checks the stored version.
+            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+            await dbContext.ParseRuns
+                .Where(parseRun => parseRun.Id == seeded.ParseRunId)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(parseRun => parseRun.ResultSchemaVersion, "1.0"),
+                    TestContext.Current.CancellationToken);
+            dbContext.ParsePages.Add(new ParsePageEntity { ParseRunId = seeded.ParseRunId, Number = 1, Width = 612, Height = 792, Unit = "point" });
+            dbContext.ParseBlocks.Add(new ParseBlockEntity { Id = Guid.NewGuid(), ParseRunId = seeded.ParseRunId, Sequence = 0, PageNumber = 1, Type = "text", Content = "Stored before 1.1" });
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        var root = $"/api/v1/parse-runs/{seeded.ParseRunId:D}";
+        foreach (var path in new[]
+        {
+            "/pages",
+            "/blocks",
+            "/assets",
+            $"/assets/{seeded.AssetId:D}/content",
+            "/artifacts",
+            $"/artifacts/{seeded.MarkdownArtifactId:D}/content",
+            "/markdown",
+            "/markdown/preview",
+            "/exports/markdown",
+            "/exports/html",
+            "/exports/zip",
+            "/exports/pdf",
+        })
+        {
+            using var response = await client.GetAsync(root + path, TestContext.Current.CancellationToken);
+            Assert.True(
+                response.StatusCode == HttpStatusCode.OK,
+                $"GET {path} answered {(int)response.StatusCode} for a run stored with schema 1.0.");
+        }
+
+        using var pages = await client.GetAsync(root + "/pages", TestContext.Current.CancellationToken);
+        using var json = System.Text.Json.JsonDocument.Parse(
+            await pages.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var page = Assert.Single(json.RootElement.EnumerateArray());
+        Assert.Equal(1, page.GetProperty("number").GetInt32());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, page.GetProperty("label").ValueKind);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, page.GetProperty("labelSource").ValueKind);
+    }
+
+    [Fact]
     public async Task Pdf_export_returns_the_original_when_the_source_is_already_pdf()
     {
         using var client = factory.CreateClient();

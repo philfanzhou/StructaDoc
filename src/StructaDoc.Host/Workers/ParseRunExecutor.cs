@@ -16,6 +16,7 @@ public sealed class ParseRunExecutor(
     IProviderResultIntake resultIntake,
     IFileStorage fileStorage,
     LargePdfParseOrchestrator largePdf,
+    PageLabelEnricher pageLabels,
     ParseRunLeaseHeartbeat heartbeat,
     ParseRunWorkerOptions options,
     ILogger<ParseRunExecutor> logger)
@@ -82,6 +83,12 @@ public sealed class ParseRunExecutor(
                         preparedSource.Capabilities,
                         provider,
                         normalizer,
+                        session.ExecutionCancellationToken);
+                    // Labels come from the full submitted PDF, never from a segment, so a split
+                    // document gets the same labels as the unsplit one.
+                    segmentedBundle = await AddPageLabelsAsync(
+                        segmentedBundle,
+                        source,
                         session.ExecutionCancellationToken);
                     if (conversion is not null)
                     {
@@ -266,6 +273,10 @@ public sealed class ParseRunExecutor(
                     archive,
                     context.ProviderConfiguration.Model,
                     context.ProviderConfiguration.Backend),
+                session.ExecutionCancellationToken);
+            bundle = await AddPageLabelsAsync(
+                bundle,
+                source,
                 session.ExecutionCancellationToken);
             if (conversion is not null)
             {
@@ -641,6 +652,26 @@ public sealed class ParseRunExecutor(
                 "The persisted document conversion is inconsistent with the Parse Run.",
                 retryable: false);
         }
+    }
+
+    private async Task<ParseBundle> AddPageLabelsAsync(
+        ParseBundle bundle,
+        ProviderDocumentSource submittedDocument,
+        CancellationToken cancellationToken)
+    {
+        var result = await pageLabels.EnrichAsync(bundle, submittedDocument, cancellationToken);
+        if (result.PdfStatus is PdfPageLabelReadStatus.Unreadable or PdfPageLabelReadStatus.Malformed)
+        {
+            // Labels are optional, so this is not a failure. Nothing from the PDF is logged.
+            logger.LogWarning(
+                "Parse Run {ParseRunId} did not use the submitted PDF's page labels ({PageLabelProblem}).",
+                bundle.ParseRunId,
+                result.PdfStatus == PdfPageLabelReadStatus.Unreadable
+                    ? "unreadable-pdf"
+                    : "malformed-page-label-tree");
+        }
+
+        return result.Bundle;
     }
 
     private static ParseBundle AddConversionArtifact(

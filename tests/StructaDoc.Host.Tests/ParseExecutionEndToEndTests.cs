@@ -93,6 +93,11 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
         // The image Block resolves to a stored Asset rather than to a Provider path.
         Assert.NotNull(blocks.Items[2].AssetId);
         Assert.Equal(2, pages!.Length);
+        // The uploaded PDF declares printed page labels; they reach the API through the
+        // Provider-neutral step after normalization.
+        Assert.Equal(
+            [("Cover", "pdf-page-labels"), ("1", "pdf-page-labels")],
+            pages.Select(page => (page.Label, page.LabelSource)));
         var asset = Assert.Single(assets!);
         Assert.Equal("image/png", asset.MediaType);
         Assert.Equal(asset.Id, blocks.Items[2].AssetId);
@@ -237,8 +242,9 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
 
     private static async Task<DocumentResponse> UploadDocumentAsync(HttpClient client)
     {
+        // A real two-page PDF whose catalog labels its pages "Cover" and "1".
         using var content = new ByteArrayContent(
-            "%PDF-1.7\nStructaDoc end-to-end execution sample\n%%EOF"u8.ToArray());
+            PdfTestDocument.Create(2, (0, null, "Cover", null), (1, "/D", null, 1)));
         content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/pdf");
         using var multipart = new MultipartFormDataContent();
         multipart.Add(content, "file", "parse-run.pdf");

@@ -41,7 +41,7 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | [API Description](./development/api-description.md) | The OpenAPI document, what it says about authentication and scopes, and the page that browses it |
 | [Administration Audit](./development/administration-audit.md) | Record points, control-plane storage, sensitive-content boundary, and retention for management audit |
 | [Authentication](./development/authentication.md) | Local administration, generic OIDC, API keys, bootstrap, and antiforgery |
-| [Canonical Result Persistence](./development/canonical-result-persistence.md) | Bundle validation, storage verification, and idempotent success transactions |
+| [Canonical Result Persistence](./development/canonical-result-persistence.md) | Bundle validation, printed page labels, storage verification, and idempotent success transactions |
 | [Continuous Integration](./development/continuous-integration.md) | Build, database contracts, production container, and browser validation |
 | [Database Support](./development/database-support.md) | Providers, migrations, configuration, and verification matrix |
 | [Document Reading](./development/document-reading.md) | Listing, detail, download, caching, and Range semantics |

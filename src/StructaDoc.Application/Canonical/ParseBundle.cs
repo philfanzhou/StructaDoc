@@ -14,7 +14,9 @@ public sealed record ParsePage(
     double? Width = null,
     double? Height = null,
     string? Unit = null,
-    string? SourceLocatorJson = null);
+    string? SourceLocatorJson = null,
+    string? Label = null,
+    string? LabelSource = null);
 
 public sealed record ParseBlock(
     Guid Id,

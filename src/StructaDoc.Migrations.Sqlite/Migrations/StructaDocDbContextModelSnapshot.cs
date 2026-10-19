@@ -546,6 +546,17 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                         .HasColumnType("REAL")
                         .HasColumnName("height");
 
+                    b.Property<string>("Label")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("label");
+
+                    b.Property<string>("LabelSource")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("label_source");
+
                     b.Property<string>("SourceLocatorJson")
                         .HasColumnType("TEXT")
                         .HasColumnName("source_locator_json");

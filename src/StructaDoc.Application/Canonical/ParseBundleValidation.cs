@@ -17,7 +17,7 @@ public sealed record ParseBundleValidationResult(
 
 public static class ParseBundleValidator
 {
-    public const string CurrentSchemaVersion = "1.0";
+    public const string CurrentSchemaVersion = "1.1";
     public const int MaxPages = 10_000;
     public const int MaxBlocks = 100_000;
     public const int MaxAssets = 10_000;
@@ -105,6 +105,17 @@ public static class ParseBundleValidator
             if (!IsOptionalToken(page.Unit, 32))
             {
                 return Invalid("invalid-page-unit", "The Page unit is invalid.");
+            }
+
+            if ((page.Label is null) != (page.LabelSource is null))
+            {
+                return Invalid("invalid-page-label", "A Page label and its source must be present together.");
+            }
+
+            if (page.Label is not null
+                && (!PageLabelSources.IsValidLabel(page.Label) || !PageLabelSources.IsKnown(page.LabelSource)))
+            {
+                return Invalid("invalid-page-label", "A Page label must be printable text of at most 256 characters from a known source.");
             }
 
             var sourceLocator = ValidateOptionalJsonObject(
@@ -314,6 +325,8 @@ public static class ParseBundleValidator
             WriteNullableNumber(writer, "height", page.Height);
             WriteNullableString(writer, "unit", page.Unit);
             WriteJsonProperty(writer, "sourceLocator", page.SourceLocatorJson);
+            WriteNullableString(writer, "label", page.Label);
+            WriteNullableString(writer, "labelSource", page.LabelSource);
             writer.WriteEndObject();
         }
 
