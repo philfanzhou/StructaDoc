@@ -551,6 +551,17 @@ namespace StructaDoc.Migrations.MySql.Migrations
                         .HasColumnType("double")
                         .HasColumnName("height");
 
+                    b.Property<string>("Label")
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)")
+                        .HasColumnName("label");
+
+                    b.Property<string>("LabelSource")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("label_source");
+
                     b.Property<string>("SourceLocatorJson")
                         .HasColumnType("longtext")
                         .HasColumnName("source_locator_json");

@@ -219,7 +219,8 @@ internal static class ParseRunLeaseContract
         var bundle = new ParseBundle(
             ParseBundleValidator.CurrentSchemaVersion,
             resultLease.ParseRunId,
-            [new ParsePage(1, 1000, 1400, "pixel")],
+            // A non-ASCII label checks that every database stores the column as Unicode text.
+            [new ParsePage(1, 1000, 1400, "pixel", Label: "Anhang-\u00e4 \u2167", LabelSource: PageLabelSources.PdfPageLabels)],
             [new ParseBlock(Guid.NewGuid(), 0, 1, "text", Content: "Contract result")],
             [],
             [new ParseArtifact(
@@ -372,7 +373,9 @@ internal static class ParseRunLeaseContract
             && parseRun.ConversionJson == conversion.ToJson()
             && parseRun.ResultSchemaVersion == ParseBundleValidator.CurrentSchemaVersion
             && parseRun.ResultSha256 == ParseBundleValidator.ComputeFingerprint(bundle));
-        Assert.Single(await verificationContext.ParsePages.ToListAsync());
+        var persistedPage = Assert.Single(await verificationContext.ParsePages.ToListAsync());
+        Assert.Equal("Anhang-\u00e4 \u2167", persistedPage.Label);
+        Assert.Equal(PageLabelSources.PdfPageLabels, persistedPage.LabelSource);
         Assert.Single(await verificationContext.ParseBlocks.ToListAsync());
         Assert.Equal(2, await verificationContext.ParseArtifacts.CountAsync());
 

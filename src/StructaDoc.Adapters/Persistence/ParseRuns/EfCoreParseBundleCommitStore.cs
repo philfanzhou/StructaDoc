@@ -143,6 +143,8 @@ public sealed class EfCoreParseBundleCommitStore(
                     Height = page.Height,
                     Unit = page.Unit,
                     SourceLocatorJson = page.SourceLocatorJson,
+                    Label = page.Label,
+                    LabelSource = page.LabelSource,
                 }));
                 dbContext.ParseAssets.AddRange(bundle.Assets.Select(asset => new ParseAssetEntity
                 {

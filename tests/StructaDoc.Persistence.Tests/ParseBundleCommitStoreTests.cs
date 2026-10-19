@@ -71,6 +71,14 @@ public sealed class ParseBundleCommitStoreTests
             Assert.Equal(1, imageBlock.PageNumber);
             Assert.Equal(0.1, imageBlock.BoundingBoxX0);
             Assert.Equal(0.95, imageBlock.Confidence);
+
+            var pages = await dbContext.ParsePages
+                .AsNoTracking()
+                .OrderBy(page => page.Number)
+                .ToListAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(
+                [("Anhang-\u00e4", PageLabelSources.PdfPageLabels), (null, null)],
+                pages.Select(page => (page.Label, page.LabelSource)));
         }
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
@@ -427,7 +435,14 @@ public sealed class ParseBundleCommitStoreTests
                 ParseBundleValidator.CurrentSchemaVersion,
                 parseRunId,
                 [
-                    new ParsePage(1, 1000, 1400, "pixel", "{\"sourcePage\":0}"),
+                    new ParsePage(
+                        1,
+                        1000,
+                        1400,
+                        "pixel",
+                        "{\"sourcePage\":0}",
+                        "Anhang-\u00e4",
+                        PageLabelSources.PdfPageLabels),
                     new ParsePage(2, 1000, 1400, "pixel"),
                 ],
                 [

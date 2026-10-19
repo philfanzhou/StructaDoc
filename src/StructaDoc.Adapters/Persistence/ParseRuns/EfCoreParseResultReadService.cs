@@ -33,7 +33,7 @@ public sealed class EfCoreParseResultReadService(
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
         return await dbContext.ParsePages.AsNoTracking().Where(page => page.ParseRunId == parseRunId).OrderBy(page => page.Number)
-            .Select(page => new ParsePageRecord(page.Number, page.Width, page.Height, page.Unit)).ToListAsync(cancellationToken);
+            .Select(page => new ParsePageRecord(page.Number, page.Width, page.Height, page.Unit, page.Label, page.LabelSource)).ToListAsync(cancellationToken);
     }
 
     public async Task<ParseBlockPage?> ListBlocksAsync(Guid parseRunId, ResourceAccessContext access, int limit, int? afterSequence = null, int? pageNumber = null, CancellationToken cancellationToken = default)

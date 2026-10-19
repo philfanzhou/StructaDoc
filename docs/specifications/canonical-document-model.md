@@ -1,7 +1,7 @@
 # Canonical Document Model
 
 - Status: Implemented specification
-- Version: 1.0-draft
+- Version: 1.1
 - Last updated: 2026-10-19
 - Pending transition: ADR-0009 actor persistence is target behavior until #35 is
   implemented
@@ -131,6 +131,10 @@ This snapshot explains and resumes conversion; it never permits caller-supplied 
 | `height` | No | Provider-reported height |
 | `unit` | No | Original dimension unit such as `point` or `pixel` |
 | `sourceLocator` | No | Sheet, slide, section, or Provider-native page location |
+| `label` | No | Printed page label, such as `iv` or `21` (added in 1.1) |
+| `labelSource` | No | Where `label` came from: `pdf-page-labels` or `page-number-blocks` (added in 1.1) |
+
+`number` stays the physical one-based page and remains the only page key Blocks use. `label` and `labelSource` are both present or both null.
 
 Not every Office result has a reliable physical page. In that case:
 
@@ -138,6 +142,28 @@ Not every Office result has a reliable physical page. In that case:
 - global Block `sequence` remains mandatory;
 - sheet, slide, or section information belongs in structured `sourceLocator`;
 - the normalizer does not invent a physical page.
+
+### 7.1 Printed Page Labels
+
+Printed books and reports often number pages differently from their physical order: front matter in roman numerals, the body restarting at 1. `label` carries the printed number so a caller can map a printed table of contents or a human page reference to a Page. It is display and lookup text, not a key: labels may repeat, and a Page may have none.
+
+Labels are added by one Provider-neutral step after normalization, from the document actually submitted to the Provider (the original PDF, or the `normalized-pdf` Artifact for a converted Office file). For a large PDF split into segments, labels are read once from the full PDF, so the result matches the unsplit document. The Provider interface is not involved.
+
+**Source 1, `pdf-page-labels`.** When the submitted document is a PDF with a valid ISO 32000 `/PageLabels` number tree that gives at least one Page a usable label, every Page gets the label of the range containing its zero-based physical index (`number - 1`), and source 2 is not used for any page.
+
+- The tree is read through `/Nums` pairs and `/Kids`, at most 16 levels deep, with at most 10,000 visited nodes and ranges together, and with cycle detection. Each node has exactly one of `/Nums` or `/Kids`.
+- Range start keys are non-negative integers, strictly increasing across the whole tree. Pages before the first range get no label.
+- `/S` is `/D` (decimal), `/R` or `/r` (upper or lower roman), `/A` or `/a` (upper or lower letters: A to Z, then AA to ZZ, and so on), or absent (prefix only). `/St` is an integer of at least 1, defaulting to 1. `/P` is a text-string prefix.
+- Any other type, a decreasing or repeated key, an unknown style, a cycle, or an exceeded limit makes the tree malformed. A malformed tree, or a PDF that cannot be parsed (corrupt, encrypted, unsupported), never fails the Parse Run: one warning without document content or paths is logged and source 2 is tried. A storage failure while reading the document keeps the Parse Run's ordinary transient failure and retry.
+- Roman numerals are produced only up to 3999. A page whose formatted label is empty or only whitespace, longer than 256 characters, or contains a control character or an unpaired surrogate gets no label.
+
+**Source 2, `page-number-blocks`.** Used only when source 1 gives no usable label: the submitted document is not a PDF, the PDF has no `/PageLabels`, or the tree is unusable.
+
+- For each Page, the text of its `page-number` Blocks is trimmed of whitespace and of the decoration characters `-`, `–`, `—`, `.`, `(`, `)`, `[`, `]`. The rest must be 1 to 5 ASCII digits or a canonical roman numeral (any case) up to 3999; otherwise that Block is ignored.
+- A Page whose accepted values disagree is skipped. Equal values count once, and the label is the trimmed text of the first such Block in reading order (for example `iv` or `21`), not a reformatted number.
+- The accepted values must be consistent: every roman value comes before every arabic value in page order, and within each style `value - number` is the same for every accepted Page. At least two accepted values are required. Otherwise every label is null.
+
+There is no interpolation: a Page without a label in the chosen source keeps a null label, even between two labeled Pages. The rules are deterministic, so the same inputs always give the same bundle fingerprint.
 
 ## 8. Block
 
@@ -247,7 +273,7 @@ A Parse Bundle is an internal normalization exchange object, not one database ta
 
 ```json
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "parseRunId": "00000000-0000-0000-0000-000000000000",
   "pages": [],
   "blocks": [],
@@ -269,6 +295,14 @@ The complete bundle must validate and persist before the Parse Run becomes `succ
 - Removed fields or changed field, coordinate, or ordering meaning requires a major version.
 - API and Parse Bundle majors may evolve independently, but the API declares the semantics it returns.
 - Raw Artifacts have no structural compatibility promise; record their Provider and version facts.
+- A Parse Run keeps the `schemaVersion` it was committed with. New bundles use the current version; stored runs with an older minor version stay readable through every result endpoint, and no read path checks the stored version.
+
+### Version History
+
+| Version | Changes |
+|---|---|
+| 1.0 | Initial model |
+| 1.1 | Optional Page `label` and `labelSource` (section 7.1); the registered `page-number` Block type. Runs committed under 1.0 keep that version and have null labels; re-parse a document to get labels |
 
 ## 14. Validation Requirements
 
@@ -277,6 +311,7 @@ At minimum, a normalized result satisfies:
 - referenced Document and Parse Run exist;
 - Block sequence is unique, contiguous, and in reading order;
 - `pageNumber` is `null` or at least 1;
+- a Page `label` and `labelSource` are both null or both set; a label is non-empty printable text of at most 256 characters, and `labelSource` is a registered value;
 - every bounding box and confidence value satisfies its normalized range;
 - `assetId` references an Asset in the same Parse Run;
 - a conversion Artifact ID references a same-run `normalized-pdf`;

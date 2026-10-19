@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using StructaDoc.Adapters.Persistence;
@@ -252,11 +253,20 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             failSubmission: false,
             maxPages: 2,
             segmentContentLists: true);
+        var labeledPdf = PdfTestDocument.Create(
+            5,
+            (0, "/r", null, null),
+            (2, "/D", null, 1),
+            (4, "/A", "App-", null));
 
         var result = await ExecuteAsync(
             provider,
             largePdfPageCount: 5,
-            executeLargePdfThroughExecutor: true);
+            executeLargePdfThroughExecutor: true,
+            sourceBytesOverride: labeledPdf);
+        var unsplit = await ExecuteAsync(
+            new TestParseProvider(failSubmission: false, segmentContentLists: true),
+            sourceBytesOverride: labeledPdf);
 
         Assert.Equal(ParseRunStatuses.Succeeded, result.Status);
         Assert.Null(result.ErrorCode);
@@ -271,6 +281,115 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             segment => Assert.Equal(new SegmentResult(1, 3, 4, "normalized"), segment),
             segment => Assert.Equal(new SegmentResult(2, 5, 5, "normalized"), segment));
         Assert.True(result.ArtifactCount >= 4);
+
+        // Labels are read once from the full PDF after the merge: the segment PDFs carry no
+        // page-label tree, and their page numbers restart at 1.
+        Assert.Equal(
+            [
+                new PageResult(1, "i", PageLabelSources.PdfPageLabels),
+                new PageResult(2, "ii", PageLabelSources.PdfPageLabels),
+                new PageResult(3, "1", PageLabelSources.PdfPageLabels),
+                new PageResult(4, "2", PageLabelSources.PdfPageLabels),
+                new PageResult(5, "App-A", PageLabelSources.PdfPageLabels),
+            ],
+            result.Pages);
+        Assert.Equal(ParseRunStatuses.Succeeded, unsplit.Status);
+        Assert.Empty(unsplit.Segments);
+        Assert.Equal(result.Pages, unsplit.Pages);
+    }
+
+    [Fact]
+    public async Task Executor_labels_pages_from_the_submitted_pdf_page_label_tree()
+    {
+        var provider = new TestParseProvider(failSubmission: false, segmentContentLists: true);
+
+        var result = await ExecuteAsync(
+            provider,
+            sourceBytesOverride: PdfTestDocument.Create(
+                8,
+                (0, "/r", null, null),
+                (3, "/D", null, 1),
+                (6, "/A", "App-", null)));
+
+        Assert.Equal(ParseRunStatuses.Succeeded, result.Status);
+        Assert.Equal(
+            ["i", "ii", "iii", "1", "2", "3", "App-A", "App-B"],
+            result.Pages.Select(page => page.Label));
+        Assert.All(result.Pages, page => Assert.Equal(PageLabelSources.PdfPageLabels, page.LabelSource));
+    }
+
+    [Theory]
+    [InlineData("corrupt", "unreadable-pdf")]
+    [InlineData("malformed", "malformed-page-label-tree")]
+    public async Task Executor_commits_without_pdf_labels_and_warns_once_when_the_pdf_cannot_supply_them(
+        string scenario,
+        string expectedProblem)
+    {
+        var logs = new RecordingLoggerProvider();
+        var malformed = scenario == "malformed";
+        var provider = new TestParseProvider(failSubmission: false, segmentContentLists: malformed);
+        var sourceBytes = malformed
+            ? PdfTestDocument.Create(2, (0, "/Q", "Secret-", null))
+            : "%PDF-1.7\nprivate document text"u8.ToArray();
+
+        var result = await ExecuteAsync(
+            provider,
+            sourceBytesOverride: sourceBytes,
+            configureServices: services => services.AddSingleton<ILoggerProvider>(logs));
+
+        Assert.Equal(ParseRunStatuses.Succeeded, result.Status);
+        Assert.Null(result.ErrorCode);
+        Assert.All(result.Pages, page =>
+        {
+            Assert.Null(page.Label);
+            Assert.Null(page.LabelSource);
+        });
+        Assert.Equal(malformed ? 2 : 0, result.Pages.Count);
+        var warning = Assert.Single(
+            logs.Entries,
+            entry => entry.Category == typeof(ParseRunExecutor).FullName
+                && entry.Level == LogLevel.Warning);
+        Assert.Contains(result.ParseRunId.ToString(), warning.Message, StringComparison.Ordinal);
+        Assert.Contains(expectedProblem, warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("private document text", warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Secret-", warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(result.DocumentStorageRef, warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("executor-test", warning.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Executor_keeps_the_transient_failure_when_the_source_cannot_be_read_for_labels()
+    {
+        var provider = new TestParseProvider(failSubmission: false);
+        var failures = 0;
+
+        var result = await ExecuteAsync(
+            provider,
+            configureServices: services =>
+            {
+                services.RemoveAll<IFileStorage>();
+                services.AddSingleton<IFileStorage>(serviceProvider =>
+                    new CallbackFileStorage(
+                        new LocalFileStorage(serviceProvider.GetRequiredService<FileStorageOptions>()),
+                        operation =>
+                        {
+                            // The page-label step is the only reader of the submitted PDF on this
+                            // path; the first read fails the way an unavailable store does.
+                            if (operation.Kind == FileStorageOperationKind.OpenRead
+                                && operation.StorageRef.StartsWith("documents/", StringComparison.Ordinal)
+                                && Interlocked.Increment(ref failures) == 1)
+                            {
+                                throw new IOException("The storage backend is unavailable.");
+                            }
+                        }));
+            });
+
+        Assert.True(Volatile.Read(ref failures) >= 1, "The page-label step did not read the source.");
+        Assert.Equal(1, provider.ResultCount);
+        Assert.Equal(ParseRunStatuses.RetryWait, result.Status);
+        Assert.Equal("parse-run-execution-error", result.ErrorCode);
+        Assert.Null(result.ResultSha256);
+        Assert.Empty(result.Pages);
     }
 
     [Fact]
@@ -625,7 +744,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         bool executeLargePdfThroughExecutor = false,
         CancellationTokenSource? executionCancellationSource = null,
         Func<IServiceProvider, Guid, byte[], Task>? seedExecution = null,
-        Func<IServiceProvider, Guid, Task>? afterExecution = null)
+        Func<IServiceProvider, Guid, Task>? afterExecution = null,
+        byte[]? sourceBytesOverride = null)
     {
         var executionCancellationToken = executionCancellationSource?.Token
             ?? TestContext.Current.CancellationToken;
@@ -653,11 +773,11 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         var parseRunId = Guid.NewGuid();
         var sourceExtension = GetSourceExtension(sourceMediaType);
         var sourceStorageRef = $"documents/{parseRunId:N}/source{sourceExtension}";
-        var sourceBytes = sourceMediaType == "application/pdf"
+        var sourceBytes = sourceBytesOverride ?? (sourceMediaType == "application/pdf"
             ? largePdfPageCount.HasValue
                 ? PdfTestDocument.Create(largePdfPageCount.Value)
                 : "%PDF-1.7\nexecutor-test"u8.ToArray()
-            : CreateSourceBytes(sourceMediaType);
+            : CreateSourceBytes(sourceMediaType));
         StoredFile storedSource;
 
         await using (var scope = application.Services.CreateAsyncScope())
@@ -851,6 +971,12 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                     segment.EndPage,
                     segment.Status))
                 .ToListAsync();
+            var pages = await dbContext.ParsePages
+                .AsNoTracking()
+                .Where(page => page.ParseRunId == parseRunId)
+                .OrderBy(page => page.Number)
+                .Select(page => new PageResult(page.Number, page.Label, page.LabelSource))
+                .ToListAsync();
             return new ExecutionResult(
                 parseRunId,
                 run.Status,
@@ -869,7 +995,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 document.Sha256,
                 string.Equals(document.Sha256, originalSha256, StringComparison.Ordinal),
                 segments,
-                mergedBundle);
+                mergedBundle,
+                pages);
         }
     }
 
@@ -1122,6 +1249,43 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         }
     }
 
+    private sealed record LogEntry(string Category, LogLevel Level, string Message);
+
+    private sealed class RecordingLoggerProvider : ILoggerProvider
+    {
+        private readonly ConcurrentQueue<LogEntry> entries = new();
+
+        public IReadOnlyList<LogEntry> Entries => entries.ToList();
+
+        public ILogger CreateLogger(string categoryName) => new RecordingLogger(categoryName, entries);
+
+        public void Dispose()
+        {
+        }
+
+        private sealed class RecordingLogger(
+            string category,
+            ConcurrentQueue<LogEntry> entries) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                if (logLevel >= LogLevel.Information)
+                {
+                    entries.Enqueue(new LogEntry(category, logLevel, formatter(state, exception)));
+                }
+            }
+        }
+    }
+
     private sealed class LeaseLosingSegmentStore : IParseSegmentMutationStore
     {
         public Task<ParseRunLease?> TryCreateAsync(
@@ -1222,7 +1386,13 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         string DocumentSha256,
         bool OriginalSourcePreserved,
         IReadOnlyList<SegmentResult> Segments,
-        ParseBundle? MergedBundle);
+        ParseBundle? MergedBundle,
+        IReadOnlyList<PageResult> Pages);
+
+    private sealed record PageResult(
+        int Number,
+        string? Label,
+        string? LabelSource);
 
     private sealed record SegmentResult(
         int Index,

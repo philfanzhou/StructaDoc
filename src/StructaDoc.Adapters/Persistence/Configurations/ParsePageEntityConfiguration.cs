@@ -17,6 +17,8 @@ internal sealed class ParsePageEntityConfiguration : IEntityTypeConfiguration<Pa
         builder.Property(page => page.Height).HasColumnName("height");
         builder.Property(page => page.Unit).HasColumnName("unit").HasMaxLength(32).IsUnicode(false);
         builder.Property(page => page.SourceLocatorJson).HasColumnName("source_locator_json");
+        builder.Property(page => page.Label).HasColumnName("label").HasMaxLength(256);
+        builder.Property(page => page.LabelSource).HasColumnName("label_source").HasMaxLength(32).IsUnicode(false);
 
         builder.HasOne(page => page.ParseRun)
             .WithMany(parseRun => parseRun.Pages)

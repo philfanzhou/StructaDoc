@@ -84,6 +84,8 @@ Equal content reuses a key; different content conflicts without overwrite. Block
 
 Archive limits and aggregate Parse Bundle limits apply in addition.
 
+Printed page labels are not Provider output and are not read here: one Provider-neutral step adds them after normalization, partly from the `page-number` Blocks this normalizer produces. See [Canonical Result Persistence](./canonical-result-persistence.md#page-labels).
+
 ## Remaining Work
 
 - more observed MinerU layout versions, image media types, and structured fields;
