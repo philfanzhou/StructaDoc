@@ -12,7 +12,8 @@ internal sealed record MinerUProviderOptions(
     string? Effort,
     bool? ImageAnalysis,
     int? StartPage,
-    int? EndPage)
+    int? EndPage,
+    IReadOnlySet<string> PresentProperties)
 {
     private static readonly HashSet<string> KnownProperties = new(StringComparer.Ordinal)
     {
@@ -99,7 +100,8 @@ internal sealed record MinerUProviderOptions(
                 effort,
                 imageAnalysis,
                 startPage,
-                endPage);
+                endPage,
+                seenProperties);
         }
         catch (JsonException exception)
         {
@@ -118,6 +120,31 @@ internal sealed record MinerUProviderOptions(
             throw InvalidOptions(
                 "Options 'parseMethod', 'effort', and 'imageAnalysis' are only supported by MinerU Local.");
         }
+    }
+
+    public string? ValidateForLocalV4(string mediaType)
+    {
+        if (PresentProperties.Overlaps(["formula", "table", "language", "effort", "imageAnalysis"]))
+        {
+            throw InvalidOptions("MinerU Local v4 does not support formula, table, language, effort, or imageAnalysis options.");
+        }
+
+        if (!StartPage.HasValue && !EndPage.HasValue)
+        {
+            return null;
+        }
+
+        if (!string.Equals(mediaType, "application/pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            throw InvalidOptions("MinerU Local v4 page ranges require a PDF source.");
+        }
+
+        if (StartPage == int.MaxValue || EndPage == int.MaxValue)
+        {
+            throw InvalidOptions("MinerU Local v4 page indexes exceed the supported range.");
+        }
+
+        return FormattableString.Invariant($"{(StartPage ?? 0) + 1}-{(EndPage.HasValue ? (EndPage.Value + 1).ToString(System.Globalization.CultureInfo.InvariantCulture) : "r1")}");
     }
 
     private static bool? ReadOptionalBoolean(JsonElement root, string name)

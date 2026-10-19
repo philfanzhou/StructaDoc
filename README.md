@@ -39,7 +39,7 @@ StructaDoc is in early development, but the main end-to-end platform is implemen
 - SQLite, PostgreSQL, MySQL, and MariaDB persistence;
 - immutable Provider configuration versions and durable Parse Runs;
 - atomic claims, leases, heartbeats, retries, cancellation, and crash recovery;
-- MinerU Cloud signed upload and MinerU Local multipart adapters;
+- MinerU Cloud signed upload and MinerU Local 3.x multipart / opt-in 4.x task adapters;
 - constrained LibreOffice Office-to-PDF fallback;
 - resumable large-PDF segmentation and deterministic result merging;
 - bounded Provider ZIP intake and deterministic canonical normalization;
@@ -244,7 +244,7 @@ GET    /api/v1/parse-runs/{parseRunId}/exports/{format}
 
 Content is retrieved through authorized endpoints; internal `storageRef` values never appear in public DTOs. `markdown` returns the stored Markdown Artifact and `markdown/preview` returns it rendered as a self-contained page for display. Parse Run creation supports `Idempotency-Key`. Block listing uses stable sequence pagination. Deletion returns an accepted lifecycle transition and is completed by a durable cleanup job.
 
-Cancellation is best-effort and idempotent: it stops local processing and durably completes as `cancelled`, which is also how a Document is released for deletion when its Parse Run will never finish on its own. Because the current MinerU protocols expose no single-task cancellation contract, work already submitted to an online Provider may keep consuming remote resources.
+Cancellation is best-effort and idempotent: it stops local processing and durably completes as `cancelled`, which is also how a Document is released for deletion when its Parse Run will never finish on its own. StructaDoc does not yet propagate upstream cancellation, including to MinerU versions that expose a task cancellation route, so submitted work may keep consuming remote resources.
 
 The API-client surface is published as an OpenAPI 3.1 document at `GET /api/v1/openapi.json`, with stable operation IDs and explicit multipart, idempotency, authentication, pagination, caching, and range contracts suitable for SDK generation. Browser-only administration and session routes are separated into `GET /api/v1-browser/openapi.json`; `/api/v1/docs` browses both. See [API Description](./docs/development/api-description.md).
 

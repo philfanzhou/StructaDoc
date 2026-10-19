@@ -7,7 +7,7 @@ using StructaDoc.Application.Providers;
 
 namespace StructaDoc.Persistence.Tests;
 
-public sealed class MinerUParseProviderTests
+public sealed partial class MinerUParseProviderTests
 {
     [Fact]
     public async Task Local_capabilities_match_the_native_input_contract()

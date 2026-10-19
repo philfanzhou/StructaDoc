@@ -22,7 +22,7 @@ using StructaDoc.Host.Workers;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factory)
+public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactory factory)
     : IClassFixture<StructaDocWebApplicationFactory>
 {
     [Fact]
@@ -751,7 +751,7 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
     }
 
     private async Task<ExecutionResult> ExecuteAsync(
-        TestParseProvider provider,
+        IParseProvider provider,
         string sourceMediaType = "application/pdf",
         IDocumentConverter? converter = null,
         bool seedConversion = false,
@@ -762,7 +762,9 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         CancellationTokenSource? executionCancellationSource = null,
         Func<IServiceProvider, Guid, byte[], Task>? seedExecution = null,
         Func<IServiceProvider, Guid, Task>? afterExecution = null,
-        byte[]? sourceBytesOverride = null)
+        byte[]? sourceBytesOverride = null,
+        string providerBaseUrl = "https://provider.example/",
+        string? backend = null)
     {
         var executionCancellationToken = executionCancellationSource?.Token
             ?? TestContext.Current.CancellationToken;
@@ -859,7 +861,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                 Id = versionId,
                 ProviderConfigId = configId,
                 VersionNumber = 1,
-                BaseUrl = "https://provider.example/",
+                BaseUrl = providerBaseUrl,
+                Backend = backend,
                 CreatedAtUtc = nowUtc,
             });
             dbContext.ParseRuns.Add(new ParseRunEntity

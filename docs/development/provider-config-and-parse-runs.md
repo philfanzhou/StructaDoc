@@ -31,6 +31,20 @@ Deletion exists because a configuration created by mistake would otherwise stay 
 
 A Parse Run records its configuration by ID rather than through a foreign key, so nothing in the schema would stop a run created while an administrator is deciding. The check and the delete therefore share one transaction.
 
+For Local, a blank backend or any existing backend without `v4:` retains MinerU
+3.x multipart requests. Exact `v4:flash`, `v4:basic`, `v4:standard`, and
+`v4:advanced` values opt that immutable version into MinerU 4.x and select its
+tier. Use the service root as base URL, without `/v1`; malformed reserved
+selectors fail before outbound work. Both administrator forms show this guidance.
+See [HTTP options and limits](./mineru-http-providers.md#opt-in-mineru-4).
+
+These new backend values require an image with v4 support. Older images treat
+them as legacy backend strings and the matching v4 server rejects the root
+`/tasks` request; they do not become usable automatically. Before rolling back,
+create/select a working 3.x configuration for new runs or disable the v4
+configuration, and finish or cancel its non-final runs on the newer image. Old
+snapshots stay immutable; changing the current backend never reroutes them.
+
 ## The Official Endpoint
 
 A deployment that has no Provider at all configures one on startup: `official`, type `mineru-cloud`, the hosted service's published base URL, model `vlm`, enabled and default. Assembling that first configuration out of an address, a model token, and a default marker is the step a first-run administrator has no way to get right, and getting it wrong is indistinguishable from a service that cannot parse.
@@ -76,7 +90,7 @@ Every field the API accepts is reachable from `/admin`: name, type, base URL, mo
 
 Enabled is the exception, and it is not offered as a field. Filling the form in is the administrator saying they want this Provider used, so saving enables it; asking them to confirm that with a second tick adds a way to leave a finished configuration switched off and nothing else. Whether the credential is right is not knowable from the form and is not what this decides. Retiring a Provider is still possible and is the row's own action, deliberately outside the form — and because saving re-enables, the editor says so while the Provider it is editing is disabled.
 
-Choosing the hosted type fills the base URL with the published address of the hosted service. It has exactly one, so requiring an administrator to retype it is requiring them to get it wrong; a typed or corrected address is left alone, and switching back to the self-hosted type removes the suggestion rather than leaving a wrong address that looks deliberate. `model` and `backend` are each read by one type and ignored by the other, so the form offers only the one that has an effect and states what a blank field produces: Cloud sends the advertised default, Local sends nothing and the MinerU service decides. These come from `provider-types` rather than from the browser bundle, because the defaults belong to the adapters and a copy in the form would go on naming the old one after an adapter changed.
+Choosing the hosted type fills the base URL with the published address of the hosted service. It has exactly one, so requiring an administrator to retype it is requiring them to get it wrong; a typed or corrected address is left alone, and switching back to the self-hosted type removes the suggestion rather than leaving a wrong address that looks deliberate. `model` and `backend` are each read by one type and ignored by the other, so the form offers only the one that has an effect and states what a blank field produces: Cloud sends the advertised default, blank Local keeps 3.x and sends no backend, while exact `v4:<tier>` selects 4.x. These come from `provider-types` rather than from the browser bundle, because the defaults belong to the adapters and a copy in the form would go on naming the old one after an adapter changed.
 
 The credential field starts empty on an edit, because the service never sends a stored credential back. An empty field means the stored value is kept; erasing one is a separate checkbox that sends `clearCredential`.
 
