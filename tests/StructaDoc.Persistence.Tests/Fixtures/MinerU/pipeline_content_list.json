@@ -1,0 +1,20 @@
+[
+  {"type": "header", "text": "Synthetic Field Guide", "bbox": [118, 42, 512, 61], "page_idx": 0},
+  {"type": "text", "text": "Chapter 1 Getting Started", "text_level": 1, "bbox": [118, 96, 604, 131], "page_idx": 0},
+  {"type": "text", "text": "This paragraph is synthetic sample text for the MinerU fixture.", "anchor": "sample-anchor-1", "bbox": [118, 150, 880, 212], "page_idx": 0},
+  {"type": "equation", "img_path": "images/2f6c0d1e9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d.jpg", "text": "$$\nE = m c ^ {2}\n$$", "text_format": "latex", "bbox": [402, 230, 598, 262], "page_idx": 0},
+  {"type": "list", "sub_type": "text", "list_items": ["First synthetic item", "Second synthetic item"], "bbox": [138, 280, 860, 342], "page_idx": 0},
+  {"type": "page_footnote", "text": "1 A synthetic page footnote.", "bbox": [118, 890, 700, 908], "page_idx": 0},
+  {"type": "page_number", "text": "1", "bbox": [490, 940, 510, 956], "page_idx": 0},
+  {"type": "image", "img_path": "images/7d1e4a0b3c6f9e2d5a8b1c4f7e0d3a6b9c2f5e8d1a4b7c0f3e6d9a2b5c8f1e4d.jpg", "image_caption": ["Figure 1 A synthetic figure"], "image_footnote": [], "bbox": [180, 70, 820, 410], "page_idx": 1},
+  {"type": "table", "img_path": "images/a3b6c9d2e5f8a1b4c7d0e3f6a9b2c5d8e1f4a7b0c3d6e9f2a5b8c1d4e7f0a3b6.jpg", "table_caption": ["Table 1 Synthetic values"], "table_footnote": ["Values are illustrative."], "table_body": "<table><tr><td>Name</td><td>Value</td></tr><tr><td>Alpha</td><td>1</td></tr></table>", "bbox": [150, 440, 850, 612], "page_idx": 1},
+  {"type": "chart", "img_path": "images/c8f1e4d7a0b3c6f9e2d5a8b1c4f7e0d3a6b9c2f5e8d1a4b7c0f3e6d9a2b5c8f1.jpg", "content": "A synthetic bar chart rising from left to right.", "chart_caption": ["Chart 1 Synthetic growth"], "chart_footnote": [], "sub_type": "bar", "bbox": [200, 630, 800, 860], "page_idx": 1},
+  {"type": "aside_text", "text": "Synthetic margin note", "bbox": [902, 300, 960, 520], "page_idx": 1},
+  {"type": "footer", "text": "Synthetic Field Guide footer", "bbox": [118, 918, 600, 934], "page_idx": 1},
+  {"type": "page_number", "text": "2", "bbox": [490, 940, 510, 956], "page_idx": 1},
+  {"type": "code", "sub_type": "code", "code_body": "def add(a, b):\n    return a + b", "code_caption": ["Listing 1 Synthetic code"], "code_footnote": [], "bbox": [140, 80, 760, 160], "page_idx": 2},
+  {"type": "code", "sub_type": "algorithm", "code_body": "Algorithm 1 Synthetic steps\n1: start\n2: stop", "code_caption": [], "code_footnote": [], "bbox": [140, 180, 760, 290], "page_idx": 2},
+  {"type": "text", "text": "Index", "text_level": 2, "bbox": [118, 320, 260, 344], "page_idx": 2},
+  {"type": "index", "list_items": ["Alpha, 2", "Beta, 3"], "bbox": [118, 360, 520, 420], "page_idx": 2},
+  {"type": "page_number", "text": "3", "bbox": [490, 940, 510, 956], "page_idx": 2}
+]

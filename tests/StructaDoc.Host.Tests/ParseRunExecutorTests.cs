@@ -182,7 +182,10 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
     [Fact]
     public async Task Large_pdf_orchestrator_segments_and_merges_a_real_multi_page_pdf()
     {
-        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+        var provider = new TestParseProvider(
+            failSubmission: false,
+            maxPages: 2,
+            segmentContentLists: true);
         var storageOperations = new ConcurrentQueue<FileStorageOperation>();
 
         var result = await ExecuteAsync(
@@ -216,6 +219,20 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             3,
             bundle.Artifacts.Count(artifact => artifact.Type == ArtifactTypes.SourceSegment));
         Assert.Single(bundle.Artifacts, artifact => artifact.Type == ArtifactTypes.Markdown);
+        // Each segment's content list numbers its own pages from page_idx 0; the merge offsets
+        // them by the segment's start page, so the run reads as one continuous document.
+        Assert.Equal([1, 2, 3, 4, 5], bundle.Pages.Select(page => page.Number));
+        Assert.Equal(
+            [
+                ("segment page 1", 1),
+                ("segment page 2", 2),
+                ("segment page 1", 3),
+                ("segment page 2", 4),
+                ("segment page 1", 5),
+            ],
+            bundle.Blocks.Select(block => (block.Content, block.PageNumber)));
+        Assert.Equal([0, 1, 2, 3, 4], bundle.Blocks.Select(block => block.Sequence));
+        Assert.True(ParseBundleValidator.Validate(bundle).IsValid);
         Assert.Equal(
             3,
             storageOperations.Count(operation =>
@@ -231,7 +248,10 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
     [Fact]
     public async Task Executor_commits_a_real_segmented_pdf_without_a_run_external_task()
     {
-        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+        var provider = new TestParseProvider(
+            failSubmission: false,
+            maxPages: 2,
+            segmentContentLists: true);
 
         var result = await ExecuteAsync(
             provider,
@@ -955,8 +975,11 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         bool useCheckpoint = false,
         bool stayRunning = false,
         int? maxPages = null,
-        IReadOnlyCollection<string>? supportedMediaTypes = null) : IParseProvider
+        IReadOnlyCollection<string>? supportedMediaTypes = null,
+        bool segmentContentLists = false) : IParseProvider
     {
+        private readonly ConcurrentDictionary<string, int> pageCountsByTask = new(StringComparer.Ordinal);
+
         public string ProviderType => useCheckpoint
             ? ProviderTypes.MinerUCloud
             : ProviderTypes.MinerULocal;
@@ -1003,7 +1026,7 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                     : null);
         }
 
-        public Task<ProviderSubmission> SubmitAsync(
+        public async Task<ProviderSubmission> SubmitAsync(
             ProviderExecutionConfiguration configuration,
             Guid parseRunId,
             ProviderDocumentSource source,
@@ -1022,8 +1045,15 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
                     ProviderFailureCategory.Transient);
             }
 
-            return Task.FromResult(new ProviderSubmission(
-                useCheckpoint ? "cloud-batch-1" : "local-task-1"));
+            if (segmentContentLists)
+            {
+                // Each segment gets its own task so its result can describe exactly its pages.
+                var taskId = $"local-task-{SubmitCount}";
+                pageCountsByTask[taskId] = await CountPdfPagesAsync(source, cancellationToken);
+                return new ProviderSubmission(taskId);
+            }
+
+            return new ProviderSubmission(useCheckpoint ? "cloud-batch-1" : "local-task-1");
         }
 
         public Task<ProviderTaskStatus> GetStatusAsync(
@@ -1043,7 +1073,8 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
         {
             ResultCount++;
             return Task.FromResult(new ProviderResultContent(
-                CreateResultArchive(),
+                CreateResultArchive(
+                    segmentContentLists ? pageCountsByTask[externalTaskId] : null),
                 "application/zip",
                 "result.zip"));
         }
@@ -1053,14 +1084,37 @@ public sealed class ParseRunExecutorTests(StructaDocWebApplicationFactory factor
             string externalTaskId,
             CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        private static Stream CreateResultArchive()
+        private static async Task<int> CountPdfPagesAsync(
+            ProviderDocumentSource source,
+            CancellationToken cancellationToken)
+        {
+            await using var content = await source.OpenReadAsync(cancellationToken);
+            using var buffer = new MemoryStream();
+            await content.CopyToAsync(buffer, cancellationToken);
+            buffer.Position = 0;
+            using var pdf = PdfReader.Open(buffer, PdfDocumentOpenMode.Import);
+            return pdf.PageCount;
+        }
+
+        private static Stream CreateResultArchive(int? pageCount)
         {
             var stream = new MemoryStream();
             using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
             {
                 var markdown = archive.CreateEntry("full.md");
-                using var writer = new StreamWriter(markdown.Open());
-                writer.Write("# Executor result");
+                using (var writer = new StreamWriter(markdown.Open()))
+                {
+                    writer.Write("# Executor result");
+                }
+
+                if (pageCount.HasValue)
+                {
+                    // Zero-based page_idx per segment, as MinerU writes it for each submitted file.
+                    var items = Enumerable.Range(0, pageCount.Value).Select(index =>
+                        $$"""{"type":"text","text":"segment page {{index + 1}}","bbox":[100,100,900,200],"page_idx":{{index}}}""");
+                    using var writer = new StreamWriter(archive.CreateEntry("content_list.json").Open());
+                    writer.Write($"[{string.Join(',', items)}]");
+                }
             }
 
             stream.Position = 0;

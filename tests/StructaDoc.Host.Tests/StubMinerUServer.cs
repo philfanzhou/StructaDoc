@@ -152,9 +152,9 @@ internal sealed class StubMinerUServer : IAsyncDisposable
                 "content_list.json",
                 Encoding.UTF8.GetBytes($$"""
                 [
-                  { "type": "text", "text": "{{MarkdownHeading}}", "text_level": 1, "page_id": 0 },
-                  { "type": "text", "text": "{{MarkdownBody}}", "page_id": 0 },
-                  { "type": "image", "img_path": "images/figure-1.png", "page_id": 1 }
+                  { "type": "text", "text": "{{MarkdownHeading}}", "text_level": 1, "page_idx": 0 },
+                  { "type": "text", "text": "{{MarkdownBody}}", "page_idx": 0 },
+                  { "type": "image", "img_path": "images/figure-1.png", "page_idx": 1 }
                 ]
                 """));
             Write(archive, "images/figure-1.png", png);

@@ -1,5 +1,8 @@
 using System.IO.Compression;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
 using StructaDoc.Adapters.ProviderResults;
 using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Canonical;
@@ -11,33 +14,46 @@ namespace StructaDoc.Persistence.Tests;
 
 public sealed class MinerUResultNormalizerTests
 {
+    // Fields the fixture carries that the normalizer deliberately does not read. Captions and
+    // footnotes need new Block fields (#163); anchor has no canonical field. Both stay available
+    // in the retained content-list Artifact.
+    private static readonly IReadOnlySet<string> IgnoredContentListFields = new HashSet<string>(
+        [
+            "image_caption",
+            "image_footnote",
+            "table_caption",
+            "table_footnote",
+            "chart_caption",
+            "chart_footnote",
+            "code_caption",
+            "code_footnote",
+            "anchor",
+        ],
+        StringComparer.Ordinal);
+
+    private const string TableHtml =
+        "<table><tr><td>Name</td><td>Value</td></tr><tr><td>Alpha</td><td>1</td></tr></table>";
+
     [Fact]
-    public async Task Normalizes_verified_mineru_artifacts_assets_and_blocks_idempotently()
+    public async Task Normalizes_the_mineru_pipeline_fixture_idempotently()
     {
         using var environment = new NormalizerTestEnvironment();
         var parseRunId = Guid.NewGuid();
-        var contentList = """
-            [
-              {"type":"text","page_id":0,"text":"Heading","text_level":1,"bbox":[100,200,300,400],"score":0.95},
-              {"type":"table","page_id":0,"body":"<table><tr><td>x</td></tr></table>"},
-              {"type":"equation","page_id":1,"text":"E=mc^2"},
-              {"type":"image","page_id":1,"img_path":"images/figure.png","bbox":[0.1,0.2,0.3,0.4]},
-              {"type":"future_widget","content":{"value":42}}
-            ]
-            """;
+        var contentList = ReadPipelineFixture();
         var archive = await environment.StoreArchiveAsync(
             parseRunId,
-            ("full.md", "# Heading\n\n![figure](images/figure.png)"u8.ToArray()),
-            ("content_list.json", Encoding.UTF8.GetBytes(contentList)),
-            ("content_list_v2.json", "[]"u8.ToArray()),
-            ("layout.json", "{}"u8.ToArray()),
-            ("model.json", "{}"u8.ToArray()),
-            ("images/figure.png", PngBytes()));
+            [
+                ("full.md", "# Chapter 1 Getting Started"u8.ToArray()),
+                ("content_list.json", contentList),
+                ("content_list_v2.json", "[]"u8.ToArray()),
+                ("layout.json", "{}"u8.ToArray()),
+                ("model.json", "{}"u8.ToArray()),
+                .. PipelineFixtureImagePaths(contentList).Select(path => (path, JpegBytes())),
+            ]);
         var request = new ProviderResultNormalizationRequest(
             parseRunId,
             ProviderTypes.MinerUCloud,
             archive,
-            "vlm",
             "pipeline");
 
         var first = await environment.Normalizer.NormalizeAsync(
@@ -53,10 +69,8 @@ public sealed class MinerUResultNormalizerTests
         Assert.Equal(first.Blocks.Select(block => block.Id), replay.Blocks.Select(block => block.Id));
         Assert.Equal(first.Assets.Select(asset => asset.Id), replay.Assets.Select(asset => asset.Id));
         Assert.True(ParseBundleValidator.Validate(first).IsValid);
-        Assert.Equal([1, 2], first.Pages.Select(page => page.Number));
-        Assert.Single(first.Assets);
-        Assert.Equal("image/png", first.Assets[0].MediaType);
-        Assert.Equal("figure.png", first.Assets[0].Name);
+        Assert.Equal(4, first.Assets.Count);
+        Assert.All(first.Assets, asset => Assert.Equal("image/jpeg", asset.MediaType));
         Assert.Equal(6, first.Artifacts.Count);
         Assert.Contains(first.Artifacts, artifact => artifact.Type == ArtifactTypes.ProviderArchive);
         Assert.Contains(first.Artifacts, artifact => artifact.Type == ArtifactTypes.Markdown);
@@ -64,41 +78,91 @@ public sealed class MinerUResultNormalizerTests
         Assert.Contains(first.Artifacts, artifact => artifact.Type == ArtifactTypes.Layout);
         Assert.Contains(first.Artifacts, artifact => artifact.Type == ArtifactTypes.ModelOutput);
 
+        // One Page per distinct page_idx, and every fixture item carries a page.
+        Assert.Equal([1, 2, 3], first.Pages.Select(page => page.Number));
+        Assert.Equal(
+            ["{\"providerPageId\":0}", "{\"providerPageId\":1}", "{\"providerPageId\":2}"],
+            first.Pages.Select(page => page.SourceLocatorJson));
+        Assert.All(first.Blocks, block => Assert.NotNull(block.PageNumber));
+        Assert.Equal(Enumerable.Range(0, first.Blocks.Count), first.Blocks.Select(block => block.Sequence));
+
+        var assetIds = first.Assets.Select(asset => asset.Id).ToHashSet();
         Assert.Collection(
             first.Blocks,
+            block => AssertBlock(block, 1, "header", null, "Synthetic Field Guide", "plain"),
             block =>
             {
-                Assert.Equal("title", block.Type);
-                Assert.Equal("heading-1", block.Subtype);
-                Assert.Equal("plain", block.ContentFormat);
-                Assert.Equal(0.1, block.BoundingBox!.X0, 10);
-                Assert.Equal(0.95, block.Confidence);
+                AssertBlock(block, 1, "title", "heading-1", "Chapter 1 Getting Started", "plain");
+                Assert.Equal(0.118, block.BoundingBox!.X0, 10);
+                Assert.Equal(0.131, block.BoundingBox.Y1, 10);
+                Assert.Null(block.Confidence);
+            },
+            block => AssertBlock(
+                block,
+                1,
+                "text",
+                null,
+                "This paragraph is synthetic sample text for the MinerU fixture.",
+                "plain"),
+            block =>
+            {
+                AssertBlock(block, 1, "formula", null, "$$\nE = m c ^ {2}\n$$", "latex");
+                Assert.Contains(block.AssetId!.Value, assetIds);
+            },
+            block => AssertBlock(
+                block,
+                1,
+                "list",
+                "text",
+                "First synthetic item\nSecond synthetic item",
+                "plain"),
+            block => AssertBlock(block, 1, "footnote", null, "1 A synthetic page footnote.", "plain"),
+            block => AssertBlock(block, 1, "page-number", null, "1", "plain"),
+            block =>
+            {
+                AssertBlock(block, 2, "image", null, null, null);
+                Assert.Contains(block.AssetId!.Value, assetIds);
             },
             block =>
             {
-                Assert.Equal("table", block.Type);
-                Assert.Equal("html", block.ContentFormat);
+                AssertBlock(block, 2, "table", null, TableHtml, "html");
+                Assert.Contains(block.AssetId!.Value, assetIds);
             },
             block =>
             {
-                Assert.Equal("formula", block.Type);
-                Assert.Equal("latex", block.ContentFormat);
+                AssertBlock(
+                    block,
+                    2,
+                    "image",
+                    "chart",
+                    "A synthetic bar chart rising from left to right.",
+                    "plain");
+                Assert.Contains(block.AssetId!.Value, assetIds);
             },
-            block =>
-            {
-                Assert.Equal("image", block.Type);
-                Assert.Equal(first.Assets[0].Id, block.AssetId);
-                Assert.Equal(0.1, block.BoundingBox!.X0, 10);
-            },
-            block =>
-            {
-                Assert.Equal("unknown", block.Type);
-                Assert.Equal("future-widget", block.Subtype);
-                Assert.Equal("{\"value\":42}", block.Content);
-                Assert.Null(block.PageNumber);
-            });
+            block => AssertBlock(block, 2, "unknown", "aside-text", "Synthetic margin note", "plain"),
+            block => AssertBlock(block, 2, "footer", null, "Synthetic Field Guide footer", "plain"),
+            block => AssertBlock(block, 2, "page-number", null, "2", "plain"),
+            block => AssertBlock(
+                block,
+                3,
+                "code",
+                "code",
+                "def add(a, b):\n    return a + b",
+                "plain"),
+            block => AssertBlock(
+                block,
+                3,
+                "code",
+                "algorithm",
+                "Algorithm 1 Synthetic steps\n1: start\n2: stop",
+                "plain"),
+            block => AssertBlock(block, 3, "title", "heading-2", "Index", "plain"),
+            block => AssertBlock(block, 3, "unknown", "index", "Alpha, 2\nBeta, 3", "plain"),
+            block => AssertBlock(block, 3, "page-number", null, "3", "plain"));
+        Assert.Equal(4, first.Blocks.Count(block => block.AssetId is not null));
         Assert.Contains("\"providerType\":\"mineru-cloud\"", first.ProviderMetadataJson);
         Assert.DoesNotContain("StorageRef", first.ProviderMetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(environment.Logger.Entries);
 
         var markdownArtifact = Assert.Single(
             first.Artifacts,
@@ -107,8 +171,217 @@ public sealed class MinerUResultNormalizerTests
             markdownArtifact.StorageRef,
             TestContext.Current.CancellationToken);
         using var reader = new StreamReader(markdownContent, Encoding.UTF8);
-        Assert.Equal("# Heading\n\n![figure](images/figure.png)", await reader.ReadToEndAsync(
+        Assert.Equal("# Chapter 1 Getting Started", await reader.ReadToEndAsync(
             TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public void Pipeline_fixture_fields_are_all_mapped_or_deliberately_ignored()
+    {
+        Assert.Empty(RecognizedAndIgnoredOverlap());
+        Assert.Empty(FindUnaccountedFields(ReadPipelineFixture()));
+
+        // The same check against a copy with one extra field proves the guard can fail.
+        var refreshed = JsonNode.Parse(ReadPipelineFixture())!.AsArray();
+        refreshed[0]!["table_summary"] = "synthetic";
+        Assert.Equal(
+            ["table_summary"],
+            FindUnaccountedFields(Encoding.UTF8.GetBytes(refreshed.ToJsonString())));
+    }
+
+    [Fact]
+    public async Task Keeps_reading_legacy_page_id_body_and_score_fields()
+    {
+        using var environment = new NormalizerTestEnvironment();
+        var parseRunId = Guid.NewGuid();
+        var contentList = """
+            [
+              {"type":"text","page_id":0,"text":"Heading","text_level":1,"bbox":[100,200,300,400],"score":0.95},
+              {"type":"table","page_id":0,"body":"<table><tr><td>x</td></tr></table>"},
+              {"type":"page_header","page_id":1,"text":"Running head"},
+              {"type":"image","page_id":1,"img_path":"images/figure.png","bbox":[0.1,0.2,0.3,0.4]},
+              {"type":"future_widget","page_id":1,"content":{"value":42}}
+            ]
+            """;
+        var archive = await environment.StoreArchiveAsync(
+            parseRunId,
+            ("full.md", "# Heading\n\n![figure](images/figure.png)"u8.ToArray()),
+            ("content_list.json", Encoding.UTF8.GetBytes(contentList)),
+            ("images/figure.png", PngBytes()));
+
+        var bundle = await environment.Normalizer.NormalizeAsync(new(
+            parseRunId,
+            ProviderTypes.MinerUCloud,
+            archive),
+        TestContext.Current.CancellationToken);
+
+        Assert.True(ParseBundleValidator.Validate(bundle).IsValid);
+        Assert.Equal([1, 2], bundle.Pages.Select(page => page.Number));
+        Assert.Equal("figure.png", Assert.Single(bundle.Assets).Name);
+        Assert.Collection(
+            bundle.Blocks,
+            block =>
+            {
+                AssertBlock(block, 1, "title", "heading-1", "Heading", "plain");
+                Assert.Equal(0.1, block.BoundingBox!.X0, 10);
+                Assert.Equal(0.95, block.Confidence);
+            },
+            block => AssertBlock(block, 1, "table", null, "<table><tr><td>x</td></tr></table>", "html"),
+            block => AssertBlock(block, 2, "header", null, "Running head", "plain"),
+            block =>
+            {
+                AssertBlock(block, 2, "image", null, null, null);
+                Assert.Equal(bundle.Assets[0].Id, block.AssetId);
+                Assert.Equal(0.1, block.BoundingBox!.X0, 10);
+            },
+            block => AssertBlock(block, 2, "unknown", "future-widget", "{\"value\":42}", "plain"));
+    }
+
+    [Fact]
+    public async Task Page_idx_is_authoritative_over_page_id()
+    {
+        using var environment = new NormalizerTestEnvironment();
+        var parseRunId = Guid.NewGuid();
+        var archive = await environment.StoreArchiveAsync(
+            parseRunId,
+            ("full.md", "markdown"u8.ToArray()),
+            (
+                "content_list.json",
+                """
+                [
+                  {"type":"text","text":"zero","page_idx":0},
+                  {"type":"text","text":"both","page_idx":2,"page_id":0},
+                  {"type":"text","text":"legacy","page_id":1}
+                ]
+                """u8.ToArray()));
+
+        var bundle = await environment.Normalizer.NormalizeAsync(new(
+            parseRunId,
+            ProviderTypes.MinerULocal,
+            archive),
+        TestContext.Current.CancellationToken);
+
+        Assert.Equal([1, 3, 2], bundle.Blocks.Select(block => block.PageNumber));
+        Assert.Equal([1, 2, 3], bundle.Pages.Select(page => page.Number));
+        Assert.True(ParseBundleValidator.Validate(bundle).IsValid);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"text","text":"x","page_idx":-1}""")]
+    [InlineData("""{"type":"text","text":"x","page_idx":1.5}""")]
+    [InlineData("""{"type":"text","text":"x","page_idx":null}""")]
+    [InlineData("""{"type":"text","text":"x","page_idx":"0"}""")]
+    [InlineData("""{"type":"text","text":"x","page_idx":-1,"page_id":0}""")]
+    [InlineData("""{"type":"text","text":"x","page_idx":null,"page_id":0}""")]
+    public async Task Rejects_an_invalid_page_idx_even_when_page_id_is_valid(string item)
+    {
+        using var environment = new NormalizerTestEnvironment();
+        var parseRunId = Guid.NewGuid();
+        var archive = await environment.StoreArchiveAsync(
+            parseRunId,
+            ("full.md", "markdown"u8.ToArray()),
+            ("content_list.json", Encoding.UTF8.GetBytes($"[{item}]")));
+
+        var exception = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+            environment.Normalizer.NormalizeAsync(new(
+                parseRunId,
+                ProviderTypes.MinerUCloud,
+                archive),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal("mineru-result-page-invalid", exception.ErrorCode);
+        Assert.Equal(ProviderFailureCategory.Permanent, exception.Category);
+    }
+
+    [Fact]
+    public async Task Keeps_non_string_list_items_as_json_text()
+    {
+        using var environment = new NormalizerTestEnvironment();
+        var parseRunId = Guid.NewGuid();
+        var archive = await environment.StoreArchiveAsync(
+            parseRunId,
+            ("full.md", "markdown"u8.ToArray()),
+            (
+                "content_list.json",
+                """[{"type":"list","list_items":["one",{"nested":2}],"page_idx":0}]"""u8.ToArray()));
+
+        var bundle = await environment.Normalizer.NormalizeAsync(new(
+            parseRunId,
+            ProviderTypes.MinerUCloud,
+            archive),
+        TestContext.Current.CancellationToken);
+
+        AssertBlock(
+            Assert.Single(bundle.Blocks),
+            1,
+            "list",
+            null,
+            "[\"one\",{\"nested\":2}]",
+            "plain");
+    }
+
+    [Fact]
+    public async Task Warns_once_without_content_when_most_items_lack_a_page_field()
+    {
+        using var environment = new NormalizerTestEnvironment();
+        var parseRunId = Guid.NewGuid();
+        var archive = await environment.StoreArchiveAsync(
+            parseRunId,
+            ("full.md", "markdown"u8.ToArray()),
+            (
+                "content_list.json",
+                """
+                [
+                  {"type":"text","text":"Private paragraph","page_idx":0},
+                  {"type":"image","img_path":"images/private-figure.png","pg":3},
+                  {"type":"table","table_body":"<table><tr><td>secret-cell</td></tr></table>"}
+                ]
+                """u8.ToArray()));
+
+        var bundle = await environment.Normalizer.NormalizeAsync(new(
+            parseRunId,
+            ProviderTypes.MinerUCloud,
+            archive),
+        TestContext.Current.CancellationToken);
+
+        Assert.Equal([1, null, null], bundle.Blocks.Select(block => block.PageNumber));
+        var entry = Assert.Single(environment.Logger.Entries);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Equal(
+            new (string, object?)[]
+            {
+                ("ParseRunId", parseRunId),
+                ("ProviderType", ProviderTypes.MinerUCloud),
+                ("ItemsWithoutPage", 2),
+                ("ItemCount", 3),
+            },
+            entry.Properties.Where(property => property.Key != "{OriginalFormat}")
+                .Select(property => (property.Key, property.Value)));
+        foreach (var forbidden in new[] { "Private paragraph", "private-figure", "images/", "secret-cell" })
+        {
+            Assert.DoesNotContain(forbidden, entry.Message, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [InlineData("""[{"type":"text","text":"a","page_idx":0},{"type":"text","text":"b"}]""")]
+    [InlineData("[]")]
+    public async Task Does_not_warn_when_at_most_half_of_the_items_lack_a_page_field(string contentList)
+    {
+        using var environment = new NormalizerTestEnvironment();
+        var parseRunId = Guid.NewGuid();
+        var archive = await environment.StoreArchiveAsync(
+            parseRunId,
+            ("full.md", "markdown"u8.ToArray()),
+            ("content_list.json", Encoding.UTF8.GetBytes(contentList)));
+
+        await environment.Normalizer.NormalizeAsync(new(
+            parseRunId,
+            ProviderTypes.MinerUCloud,
+            archive),
+        TestContext.Current.CancellationToken);
+
+        Assert.Empty(environment.Logger.Entries);
     }
 
     [Fact]
@@ -166,7 +439,7 @@ public sealed class MinerUResultNormalizerTests
             ("report/auto/report.md", "# Local result"u8.ToArray()),
             (
                 "report/auto/report_content_list.json",
-                "[{\"type\":\"image\",\"page_id\":0,\"img_path\":\"images/figure.png\"}]"u8.ToArray()),
+                "[{\"type\":\"image\",\"page_idx\":0,\"img_path\":\"images/figure.png\"}]"u8.ToArray()),
             ("report/auto/report_middle.json", "{}"u8.ToArray()),
             ("report/auto/report_model.json", "{}"u8.ToArray()),
             ("report/auto/images/figure.png", PngBytes()));
@@ -361,7 +634,8 @@ public sealed class MinerUResultNormalizerTests
         var temporaryPath = Path.Combine(environment.RootPath, "normalizer-temp");
         var normalizer = new MinerUResultNormalizer(
             new NonSeekableReadStorage(environment.Storage),
-            new ProviderResultNormalizationOptions { TemporaryPath = temporaryPath });
+            new ProviderResultNormalizationOptions { TemporaryPath = temporaryPath },
+            new CapturingLogger());
 
         var bundle = await normalizer.NormalizeAsync(new(
             parseRunId,
@@ -375,6 +649,59 @@ public sealed class MinerUResultNormalizerTests
 
     private static byte[] PngBytes() =>
         [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4];
+
+    private static byte[] JpegBytes() =>
+        [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01];
+
+    private static byte[] ReadPipelineFixture() =>
+        File.ReadAllBytes(Path.Combine(
+            AppContext.BaseDirectory,
+            "Fixtures",
+            "MinerU",
+            "pipeline_content_list.json"));
+
+    private static string[] PipelineFixtureImagePaths(byte[] contentList)
+    {
+        using var document = JsonDocument.Parse(contentList);
+        return document.RootElement.EnumerateArray()
+            .Where(item => item.TryGetProperty("img_path", out _))
+            .Select(item => item.GetProperty("img_path").GetString()!)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> RecognizedAndIgnoredOverlap() =>
+        MinerUResultNormalizer.RecognizedContentListFields
+            .Intersect(IgnoredContentListFields, StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+    private static IReadOnlyList<string> FindUnaccountedFields(byte[] contentList)
+    {
+        using var document = JsonDocument.Parse(contentList);
+        return document.RootElement.EnumerateArray()
+            .SelectMany(item => item.EnumerateObject().Select(property => property.Name))
+            .Where(name =>
+                !MinerUResultNormalizer.RecognizedContentListFields.Contains(name)
+                && !IgnoredContentListFields.Contains(name))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static void AssertBlock(
+        ParseBlock block,
+        int? pageNumber,
+        string type,
+        string? subtype,
+        string? content,
+        string? contentFormat)
+    {
+        Assert.Equal(pageNumber, block.PageNumber);
+        Assert.Equal(type, block.Type);
+        Assert.Equal(subtype, block.Subtype);
+        Assert.Equal(content, block.Content);
+        Assert.Equal(contentFormat, block.ContentFormat);
+    }
 
     private sealed class NormalizerTestEnvironment : IDisposable
     {
@@ -406,10 +733,13 @@ public sealed class MinerUResultNormalizerTests
                     MaxJsonBytes = 1024 * 1024,
                     MaxAssetBytes = 1024 * 1024,
                     TemporaryPath = Path.Combine(RootPath, "normalizer-temp"),
-                });
+                },
+                Logger);
         }
 
         public string RootPath { get; }
+
+        public CapturingLogger Logger { get; } = new();
 
         public LocalFileStorage Storage { get; }
 
@@ -441,6 +771,45 @@ public sealed class MinerUResultNormalizerTests
         public void Dispose()
         {
             Directory.Delete(RootPath, recursive: true);
+        }
+    }
+
+    private sealed record LogEntry(
+        LogLevel Level,
+        string Message,
+        IReadOnlyList<KeyValuePair<string, object?>> Properties);
+
+    private sealed class CapturingLogger : ILogger<MinerUResultNormalizer>
+    {
+        private readonly List<LogEntry> entries = [];
+
+        public IReadOnlyList<LogEntry> Entries
+        {
+            get
+            {
+                lock (entries)
+                {
+                    return entries.ToArray();
+                }
+            }
+        }
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            var properties = state as IReadOnlyList<KeyValuePair<string, object?>> ?? [];
+            lock (entries)
+            {
+                entries.Add(new LogEntry(logLevel, formatter(state, exception), properties.ToArray()));
+            }
         }
     }
 

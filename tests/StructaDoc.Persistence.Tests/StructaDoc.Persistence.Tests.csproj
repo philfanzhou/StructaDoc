@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <None Update="Fixtures\LibreOffice\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures\MinerU\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
