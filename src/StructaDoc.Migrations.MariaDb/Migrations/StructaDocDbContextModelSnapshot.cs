@@ -475,6 +475,10 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
                         .HasColumnType("double")
                         .HasColumnName("bbox_y1");
 
+                    b.Property<string>("Caption")
+                        .HasColumnType("longtext")
+                        .HasColumnName("caption");
+
                     b.Property<double?>("Confidence")
                         .HasColumnType("double")
                         .HasColumnName("confidence");
@@ -488,6 +492,10 @@ namespace StructaDoc.Migrations.MariaDb.Migrations
                         .IsUnicode(false)
                         .HasColumnType("varchar(32)")
                         .HasColumnName("content_format");
+
+                    b.Property<string>("Footnote")
+                        .HasColumnType("longtext")
+                        .HasColumnName("footnote");
 
                     b.Property<int?>("PageNumber")
                         .HasColumnType("int")

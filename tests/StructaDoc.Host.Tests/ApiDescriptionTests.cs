@@ -439,19 +439,33 @@ public sealed class ApiDescriptionTests
     public async Task Page_labels_are_described_as_optional_strings()
     {
         using var document = await ReadDescriptionAsync();
-        var page = document.RootElement
+        AssertOptionalNullableStrings(document, "ParsePageResponse", "label", "labelSource");
+    }
+
+    [Fact]
+    public async Task Block_captions_and_footnotes_are_described_as_optional_strings()
+    {
+        using var document = await ReadDescriptionAsync();
+        AssertOptionalNullableStrings(document, "ParseBlockResponse", "caption", "footnote");
+    }
+
+    // Fields added within /api/v1 must be optional, so a client generated against the previous
+    // description keeps working.
+    private static void AssertOptionalNullableStrings(JsonDocument document, string schemaName, params string[] fields)
+    {
+        var schema = document.RootElement
             .GetProperty("components")
             .GetProperty("schemas")
-            .GetProperty("ParsePageResponse");
-        var required = page.TryGetProperty("required", out var requiredNames)
+            .GetProperty(schemaName);
+        var required = schema.TryGetProperty("required", out var requiredNames)
             ? requiredNames.EnumerateArray().Select(name => name.GetString()).ToArray()
             : [];
 
-        foreach (var field in new[] { "label", "labelSource" })
+        foreach (var field in fields)
         {
             Assert.True(
-                page.GetProperty("properties").TryGetProperty(field, out var property),
-                $"Page field '{field}' is missing.");
+                schema.GetProperty("properties").TryGetProperty(field, out var property),
+                $"Field '{field}' is missing from '{schemaName}'.");
             var types = property.GetProperty("type");
             var typeNames = types.ValueKind == JsonValueKind.Array
                 ? types.EnumerateArray().Select(type => type.GetString()).ToArray()

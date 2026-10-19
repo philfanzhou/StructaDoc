@@ -470,6 +470,10 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                         .HasColumnType("REAL")
                         .HasColumnName("bbox_y1");
 
+                    b.Property<string>("Caption")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("caption");
+
                     b.Property<double?>("Confidence")
                         .HasColumnType("REAL")
                         .HasColumnName("confidence");
@@ -483,6 +487,10 @@ namespace StructaDoc.Migrations.Sqlite.Migrations
                         .IsUnicode(false)
                         .HasColumnType("TEXT")
                         .HasColumnName("content_format");
+
+                    b.Property<string>("Footnote")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("footnote");
 
                     b.Property<int?>("PageNumber")
                         .HasColumnType("INTEGER")

@@ -14,19 +14,10 @@ namespace StructaDoc.Persistence.Tests;
 
 public sealed class MinerUResultNormalizerTests
 {
-    // Fields the fixture carries that the normalizer deliberately does not read. Captions and
-    // footnotes need new Block fields (#163); anchor has no canonical field. Both stay available
-    // in the retained content-list Artifact.
+    // Fields the fixture carries that the normalizer deliberately does not read. anchor has no
+    // canonical field; it stays available in the retained content-list Artifact.
     private static readonly IReadOnlySet<string> IgnoredContentListFields = new HashSet<string>(
         [
-            "image_caption",
-            "image_footnote",
-            "table_caption",
-            "table_footnote",
-            "chart_caption",
-            "chart_footnote",
-            "code_caption",
-            "code_footnote",
             "anchor",
         ],
         StringComparer.Ordinal);
@@ -159,6 +150,22 @@ public sealed class MinerUResultNormalizerTests
             block => AssertBlock(block, 3, "title", "heading-2", "Index", "plain"),
             block => AssertBlock(block, 3, "unknown", "index", "Alpha, 2\nBeta, 3", "plain"),
             block => AssertBlock(block, 3, "page-number", null, "3", "plain"));
+
+        // Captions and footnotes stay on the figure, table, chart, or code Block they describe;
+        // an empty array gives null, and every other Block has neither.
+        (string?, string?) none = (null, null);
+        Assert.Equal(
+            [
+                none, none, none, none, none, none, none,
+                ("Figure 1 A synthetic figure", null),
+                ("Table 1 Synthetic values", "Values are illustrative."),
+                ("Chart 1 Synthetic growth", null),
+                none, none, none,
+                ("Listing 1 Synthetic code", null),
+                none,
+                none, none, none,
+            ],
+            first.Blocks.Select(block => (block.Caption, block.Footnote)));
         Assert.Equal(4, first.Blocks.Count(block => block.AssetId is not null));
         Assert.Contains("\"providerType\":\"mineru-cloud\"", first.ProviderMetadataJson);
         Assert.DoesNotContain("StorageRef", first.ProviderMetadataJson, StringComparison.OrdinalIgnoreCase);
@@ -318,6 +325,61 @@ public sealed class MinerUResultNormalizerTests
             null,
             "[\"one\",{\"nested\":2}]",
             "plain");
+    }
+
+    [Fact]
+    public async Task Keeps_caption_and_footnote_values_on_their_block_without_failing()
+    {
+        using var environment = new NormalizerTestEnvironment();
+        var parseRunId = Guid.NewGuid();
+        var contentList = """
+            [
+              {"type":"table","page_idx":0,"table_body":"<table></table>","table_caption":["Table 2","(continued)"],"table_footnote":["  ","Source: survey"]},
+              {"type":"image","page_idx":0,"image_caption":[],"image_footnote":["   "]},
+              {"type":"image","page_idx":0,"image_caption":null,"image_footnote":7},
+              {"type":"image","page_idx":0,"image_caption":{"text":"x"},"image_footnote":true},
+              {"type":"chart","page_idx":0,"chart_caption":"Chart 2 $x^2$","chart_footnote":"  "},
+              {"type":"code","page_idx":0,"code_body":"x","code_caption":[1,"Listing 2",null,"",{"a":1}," indented "]},
+              {"type":"figure","page_idx":0,"img_caption":["Legacy caption"],"img_footnote":["Legacy note"]},
+              {"type":"image","page_idx":0,"image_caption":[],"img_caption":["Not read"],"img_footnote":["Legacy only"]},
+              {"type":"image","page_idx":0,"table_caption":["Wrong type"],"code_footnote":["Wrong type"]},
+              {"type":"text","page_idx":0,"text":"Body","image_caption":["Not a figure"],"table_footnote":["Not a table"]},
+              {"type":"algorithm","page_idx":0,"code_body":"y","code_caption":["Algorithm 1"],"code_footnote":["Steps"]}
+            ]
+            """;
+        var archive = await environment.StoreArchiveAsync(
+            parseRunId,
+            ("full.md", "markdown"u8.ToArray()),
+            ("content_list.json", Encoding.UTF8.GetBytes(contentList)));
+
+        var bundle = await environment.Normalizer.NormalizeAsync(new(
+            parseRunId,
+            ProviderTypes.MinerUCloud,
+            archive),
+        TestContext.Current.CancellationToken);
+
+        Assert.True(ParseBundleValidator.Validate(bundle).IsValid);
+        Assert.Equal(
+            [
+                ("Table 2\n(continued)", "Source: survey"),
+                (null, null),
+                (null, null),
+                (null, null),
+                ("Chart 2 $x^2$", null),
+                ("Listing 2\n indented ", null),
+                ("Legacy caption", "Legacy note"),
+                (null, "Legacy only"),
+                (null, null),
+                (null, null),
+                ("Algorithm 1", "Steps"),
+            ],
+            bundle.Blocks.Select(block => (block.Caption, block.Footnote)));
+        // Annotations never become content or separate Blocks.
+        Assert.Equal(11, bundle.Blocks.Count);
+        Assert.Equal("<table></table>", bundle.Blocks[0].Content);
+        Assert.Null(bundle.Blocks[1].Content);
+        Assert.Equal("Body", bundle.Blocks[9].Content);
+        Assert.Empty(environment.Logger.Entries);
     }
 
     [Fact]

@@ -37,4 +37,8 @@ public sealed class ParseBlockEntity
     public string? SourceLocatorJson { get; set; }
 
     public string? ProviderDataJson { get; set; }
+
+    public string? Caption { get; set; }
+
+    public string? Footnote { get; set; }
 }

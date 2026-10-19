@@ -92,6 +92,10 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
         Assert.Equal(2, blocks.Items[2].PageNumber);
         // The image Block resolves to a stored Asset rather than to a Provider path.
         Assert.NotNull(blocks.Items[2].AssetId);
+        // The image's caption and footnote stay on its Block; the text Blocks have neither.
+        Assert.Equal(
+            [(null, null), (null, null), (StubMinerUServer.ImageCaption, StubMinerUServer.ImageFootnote)],
+            blocks.Items.Select(block => (block.Caption, block.Footnote)));
         Assert.Equal(2, pages!.Length);
         // The uploaded PDF declares printed page labels; they reach the API through the
         // Provider-neutral step after normalization.

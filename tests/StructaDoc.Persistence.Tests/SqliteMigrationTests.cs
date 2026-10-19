@@ -71,6 +71,50 @@ public sealed class SqliteMigrationTests
     }
 
     [Fact]
+    public async Task Adding_block_annotations_keeps_existing_blocks_with_null_values()
+    {
+        var testDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "structadoc-tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDirectory);
+
+        try
+        {
+            var options = CreateOptions(Path.Combine(testDirectory, "structadoc.db"));
+            var blockId = Guid.NewGuid();
+
+            await using var dbContext = new StructaDocDbContext(options);
+            // One open connection keeps the foreign-key pragma for the whole test, so a Block row
+            // can stand in for a stored result without building its Document and Parse Run.
+            await dbContext.Database.OpenConnectionAsync(TestContext.Current.CancellationToken);
+            await dbContext.GetService<IMigrator>().MigrateAsync(
+                "20261019064110_AddParsePageLabels",
+                TestContext.Current.CancellationToken);
+            await dbContext.Database.ExecuteSqlRawAsync(
+                "PRAGMA foreign_keys = OFF;",
+                TestContext.Current.CancellationToken);
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO parse_blocks (id, parse_run_id, sequence, type, content)
+                VALUES ({blockId}, {Guid.NewGuid()}, {0}, {"table"}, {"<table></table>"})
+                """, TestContext.Current.CancellationToken);
+
+            await dbContext.Database.MigrateAsync(TestContext.Current.CancellationToken);
+
+            var preserved = await dbContext.ParseBlocks.AsNoTracking().SingleAsync(
+                block => block.Id == blockId,
+                TestContext.Current.CancellationToken);
+            Assert.Equal("<table></table>", preserved.Content);
+            Assert.Null(preserved.Caption);
+            Assert.Null(preserved.Footnote);
+        }
+        finally
+        {
+            Directory.Delete(testDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Initial_migration_supports_core_records_and_optimistic_concurrency()
     {
         var testDirectory = Path.Combine(

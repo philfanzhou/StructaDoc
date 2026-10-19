@@ -19,7 +19,7 @@ public interface IParseResultReadService
 
 public sealed record ParsePageRecord(int Number, double? Width, double? Height, string? Unit, string? Label = null, string? LabelSource = null);
 
-public sealed record ParseBlockRecord(Guid Id, int Sequence, int? PageNumber, string Type, string? Subtype, string? Content, string? ContentFormat, BoundingBoxRecord? BoundingBox, double? Confidence, Guid? AssetId);
+public sealed record ParseBlockRecord(Guid Id, int Sequence, int? PageNumber, string Type, string? Subtype, string? Content, string? ContentFormat, BoundingBoxRecord? BoundingBox, double? Confidence, Guid? AssetId, string? Caption = null, string? Footnote = null);
 
 public sealed record BoundingBoxRecord(double X0, double Y0, double X1, double Y1);
 

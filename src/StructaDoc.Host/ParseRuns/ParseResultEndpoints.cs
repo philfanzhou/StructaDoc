@@ -48,7 +48,7 @@ public static class ParseResultEndpoints
         if (take is < 1 or > 1000) return Results.ValidationProblem(new Dictionary<string, string[]> { ["limit"] = ["Limit must be between 1 and 1000."] });
         if (afterSequence is < 0 || pageNumber is < 1) return Results.ValidationProblem(new Dictionary<string, string[]> { ["cursor"] = ["Sequence must be non-negative and page number must be positive."] });
         var page = await service.ListBlocksAsync(parseRunId, ResourceAccessContextFactory.Create(context.User), take, afterSequence, pageNumber, cancellationToken);
-        return page is null ? NotFound(parseRunId) : Results.Ok(new ParseBlockListResponse(page.Items.Select(block => new ParseBlockResponse(block.Id, block.Sequence, block.PageNumber, block.Type, block.Subtype, block.Content, block.ContentFormat, block.BoundingBox is null ? null : new BoundingBoxResponse(block.BoundingBox.X0, block.BoundingBox.Y0, block.BoundingBox.X1, block.BoundingBox.Y1), block.Confidence, block.AssetId)).ToArray(), page.NextSequence));
+        return page is null ? NotFound(parseRunId) : Results.Ok(new ParseBlockListResponse(page.Items.Select(block => new ParseBlockResponse(block.Id, block.Sequence, block.PageNumber, block.Type, block.Subtype, block.Content, block.ContentFormat, block.BoundingBox is null ? null : new BoundingBoxResponse(block.BoundingBox.X0, block.BoundingBox.Y0, block.BoundingBox.X1, block.BoundingBox.Y1), block.Confidence, block.AssetId) { Caption = block.Caption, Footnote = block.Footnote }).ToArray(), page.NextSequence));
     }
 
     private static async Task<IResult> ListAssetsAsync(Guid parseRunId, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken)

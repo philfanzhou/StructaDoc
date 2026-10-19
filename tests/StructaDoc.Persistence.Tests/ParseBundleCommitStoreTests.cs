@@ -71,6 +71,15 @@ public sealed class ParseBundleCommitStoreTests
             Assert.Equal(1, imageBlock.PageNumber);
             Assert.Equal(0.1, imageBlock.BoundingBoxX0);
             Assert.Equal(0.95, imageBlock.Confidence);
+            Assert.Equal("Figure 1 \u00e4 $x$", imageBlock.Caption);
+            Assert.Equal("Line one\nLine two", imageBlock.Footnote);
+            var titleBlock = await dbContext.ParseBlocks
+                .AsNoTracking()
+                .SingleAsync(
+                    block => block.AssetId == null,
+                    cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Null(titleBlock.Caption);
+            Assert.Null(titleBlock.Footnote);
 
             var pages = await dbContext.ParsePages
                 .AsNoTracking()
@@ -321,6 +330,92 @@ public sealed class ParseBundleCommitStoreTests
             ParseBundleValidator.Validate(sensitiveData).ErrorCode);
     }
 
+    [Theory]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(null, "")]
+    [InlineData(null, "\n\t")]
+    public void Validator_rejects_blank_captions_and_footnotes(string? caption, string? footnote)
+    {
+        var result = ParseBundleValidator.Validate(BlockBundle(
+            new ParseBlock(Guid.NewGuid(), 0, 1, "table", Caption: caption, Footnote: footnote)));
+
+        Assert.Equal("invalid-block-annotation", result.ErrorCode);
+    }
+
+    [Fact]
+    public void Validator_accepts_captions_and_footnotes_up_to_the_block_content_limit()
+    {
+        var limit = new string('x', ParseBundleValidator.MaxBlockContentCharacters);
+        var accepted = BlockBundle(
+            new ParseBlock(Guid.NewGuid(), 0, 1, "image", Caption: limit, Footnote: "\u00e4 $x$ <b>"));
+
+        Assert.True(ParseBundleValidator.Validate(accepted).IsValid);
+        foreach (var block in new[]
+        {
+            new ParseBlock(Guid.NewGuid(), 0, 1, "image", Caption: limit + "x"),
+            new ParseBlock(Guid.NewGuid(), 0, 1, "image", Footnote: limit + "x"),
+        })
+        {
+            Assert.Equal(
+                "block-content-too-large",
+                ParseBundleValidator.Validate(BlockBundle(block)).ErrorCode);
+        }
+    }
+
+    [Fact]
+    public void Captions_and_footnotes_count_toward_the_aggregate_content_limit()
+    {
+        // Sixteen full Blocks reach the aggregate limit exactly; one more caption or footnote
+        // character crosses it. The same string instance keeps the test's memory small.
+        var full = new string('x', ParseBundleValidator.MaxBlockContentCharacters);
+        var blocks = Enumerable.Range(0, 16)
+            .Select(index => new ParseBlock(Guid.NewGuid(), index, 1, "text", Content: full))
+            .ToList();
+
+        Assert.True(ParseBundleValidator.Validate(BlockBundle([.. blocks])).IsValid);
+        foreach (var extra in new[]
+        {
+            new ParseBlock(Guid.NewGuid(), 16, 1, "table", Caption: "x"),
+            new ParseBlock(Guid.NewGuid(), 16, 1, "table", Footnote: "x"),
+        })
+        {
+            Assert.Equal(
+                "bundle-content-too-large",
+                ParseBundleValidator.Validate(BlockBundle([.. blocks, extra])).ErrorCode);
+        }
+    }
+
+    [Fact]
+    public void Captions_and_footnotes_are_part_of_the_fingerprint()
+    {
+        var blockId = Guid.Parse("4f7a9c2e-1b3d-4e5f-8a6b-7c8d9e0f1a2b");
+        var plain = BlockBundle(new ParseBlock(blockId, 0, 1, "table"));
+        var captioned = BlockBundle(new ParseBlock(blockId, 0, 1, "table", Caption: "Table 1"));
+        var otherCaption = BlockBundle(new ParseBlock(blockId, 0, 1, "table", Caption: "Table 2"));
+        var footnoted = BlockBundle(new ParseBlock(blockId, 0, 1, "table", Footnote: "Table 1"));
+
+        Assert.Equal(
+            ParseBundleValidator.ComputeFingerprint(captioned),
+            ParseBundleValidator.ComputeFingerprint(BlockBundle(new ParseBlock(blockId, 0, 1, "table", Caption: "Table 1"))));
+        Assert.Equal(
+            4,
+            new[] { plain, captioned, otherCaption, footnoted }
+                .Select(ParseBundleValidator.ComputeFingerprint)
+                .Distinct(StringComparer.Ordinal)
+                .Count());
+    }
+
+    private static ParseBundle BlockBundle(params ParseBlock[] blocks) =>
+        new(
+            ParseBundleValidator.CurrentSchemaVersion,
+            Guid.Parse("2c4e6a8b-0d1f-4a3b-9c5d-7e9f1a3b5c7d"),
+            [new ParsePage(1)],
+            blocks,
+            [],
+            [],
+            "{\"providerType\":\"test\"}");
+
     private sealed class BundleTestDatabase : IAsyncDisposable
     {
         private readonly string directoryPath;
@@ -462,7 +557,9 @@ public sealed class ParseBundleCommitStoreTests
                         BoundingBox: new NormalizedBoundingBox(0.1, 0.2, 0.8, 0.9),
                         Confidence: 0.95,
                         AssetId: assetId,
-                        ProviderDataJson: "{\"providerBlockId\":\"block-1\"}"),
+                        ProviderDataJson: "{\"providerBlockId\":\"block-1\"}",
+                        Caption: "Figure 1 \u00e4 $x$",
+                        Footnote: "Line one\nLine two"),
                 ],
                 [
                     new ParseAsset(

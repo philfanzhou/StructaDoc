@@ -27,6 +27,8 @@ internal sealed class ParseBlockEntityConfiguration : IEntityTypeConfiguration<P
         builder.Property(block => block.AssetId).HasColumnName("asset_id");
         builder.Property(block => block.SourceLocatorJson).HasColumnName("source_locator_json");
         builder.Property(block => block.ProviderDataJson).HasColumnName("provider_data_json");
+        builder.Property(block => block.Caption).HasColumnName("caption");
+        builder.Property(block => block.Footnote).HasColumnName("footnote");
 
         builder.HasOne(block => block.ParseRun)
             .WithMany(parseRun => parseRun.Blocks)
