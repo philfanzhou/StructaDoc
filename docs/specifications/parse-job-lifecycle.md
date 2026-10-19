@@ -230,7 +230,7 @@ The same linked execution token covers local large-PDF reads, seekable copies, S
 
 Completion clears the stage, claim, lease, and encrypted submission continuation, and sets `completedAt`. Maintenance and execution are separate Workers, so cancellation completes on a Host whose execution slots are all busy. Error facts from the last attempt are retained for diagnosis; `status` remains the only authority on finality.
 
-The complete upstream cancellation path remains an implementation gap because the current MinerU protocols do not expose a stable single-task cancellation contract. Until then, a run submitted to an online Provider may continue consuming remote resources after StructaDoc reports `cancelled`, and the user-facing workspace states this explicitly.
+The complete upstream cancellation path remains an implementation gap in StructaDoc. Some MinerU versions expose a task cancellation route, but the adapters do not yet propagate it and still report cancellation as unsupported. Until then, a run submitted to an online Provider may continue consuming remote resources after StructaDoc reports `cancelled`, and the user-facing workspace states this explicitly.
 
 ## 14. Deletion Interaction
 

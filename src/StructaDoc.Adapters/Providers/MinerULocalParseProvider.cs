@@ -25,14 +25,21 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         maxPages: null,
         supportsCancellation: false);
 
+    private static readonly ProviderCapabilities V4Capabilities = new(
+        Capabilities.SupportedMediaTypes,
+        maxFileBytes: 200L * 1024 * 1024,
+        maxPages: null,
+        supportsCancellation: false);
+
     public string ProviderType => ProviderTypes.MinerULocal;
 
     public Task<ProviderCapabilities> GetCapabilitiesAsync(
         ProviderExecutionConfiguration configuration,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         MinerUHttpProtocol.ValidateConfiguration(configuration, ProviderType, requireHttps: false);
-        return Task.FromResult(Capabilities);
+        return Task.FromResult(GetTier(configuration) is null ? Capabilities : V4Capabilities);
     }
 
     public Task<ProviderSubmissionCheckpoint?> PrepareSubmissionAsync(
@@ -42,7 +49,13 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         string optionsJson,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         MinerUHttpProtocol.ValidateConfiguration(configuration, ProviderType, requireHttps: false);
+        if (GetTier(configuration) is not null)
+        {
+            ValidateV4Submission(source, optionsJson);
+        }
+
         return Task.FromResult<ProviderSubmissionCheckpoint?>(null);
     }
 
@@ -54,7 +67,9 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         ProviderSubmissionCheckpoint? checkpoint,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         MinerUHttpProtocol.ValidateConfiguration(configuration, ProviderType, requireHttps: false);
+        var tier = GetTier(configuration);
         if (checkpoint is not null)
         {
             throw new ProviderException(
@@ -69,9 +84,10 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         }
 
         ArgumentNullException.ThrowIfNull(source);
-        MinerUHttpProtocol.ValidateSource(source, Capabilities);
+        MinerUHttpProtocol.ValidateSource(source, tier is null ? Capabilities : V4Capabilities);
         var fileName = MinerUHttpProtocol.ValidateFileName(source.FileName);
         var providerOptions = MinerUProviderOptions.Parse(optionsJson);
+        var pageRange = tier is null ? null : providerOptions.ValidateForLocalV4(source.MediaType);
 
         await using var sourceContent = await source.OpenReadAsync(cancellationToken);
         if (!sourceContent.CanRead)
@@ -86,12 +102,38 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         var fileContent = new StreamContent(sourceContent);
         fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(source.MediaType);
         fileContent.Headers.ContentLength = source.SizeBytes;
-        multipart.Add(fileContent, "files", fileName);
-        AddFormFields(multipart, configuration, providerOptions);
+        if (tier is null)
+        {
+            multipart.Add(fileContent, "files", fileName);
+            AddFormFields(multipart, configuration, providerOptions);
+        }
+        else
+        {
+            fileContent.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+            {
+                Name = "files",
+                FileNameStar = fileName,
+            };
+            fileContent.Headers.ContentDisposition.Parameters.Add(new NameValueHeaderValue(
+                "filename", "\"" + fileName.Replace("\"", "\\\"", StringComparison.Ordinal) + "\""));
+            multipart.Add(fileContent);
+        }
+
+        var endpoint = MinerUHttpProtocol.BuildEndpoint(configuration.BaseUri, tier is null ? "tasks" : "v1/tasks");
+        if (tier is not null)
+        {
+            var query = $"tier={Uri.EscapeDataString(tier)}&ocr_mode={providerOptions.ParseMethod ?? (providerOptions.Ocr == true ? "ocr" : "auto")}&output_formats=zip";
+            if (pageRange is not null)
+            {
+                query += $"&page_range={Uri.EscapeDataString(pageRange)}";
+            }
+
+            endpoint = new UriBuilder(endpoint) { Query = query }.Uri;
+        }
 
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            MinerUHttpProtocol.BuildEndpoint(configuration.BaseUri, "tasks"))
+            endpoint)
         {
             Content = multipart,
         };
@@ -129,11 +171,13 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         string externalTaskId,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         MinerUHttpProtocol.ValidateConfiguration(configuration, ProviderType, requireHttps: false);
+        var tier = GetTier(configuration);
         var taskId = MinerUHttpProtocol.ValidateExternalTaskId(externalTaskId);
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            MinerUHttpProtocol.BuildEndpoint(configuration.BaseUri, $"tasks/{taskId}"));
+            MinerUHttpProtocol.BuildEndpoint(configuration.BaseUri, $"{(tier is null ? "tasks" : "v1/tasks")}/{taskId}"));
         MinerUHttpProtocol.AddBearerCredential(
             request,
             configuration.Credential,
@@ -153,6 +197,11 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
 
         var status = ReadRequiredString(payload.RootElement, "status", "local-status");
         var suggestedDelay = ReadSuggestedDelay(payload.RootElement);
+        if (tier is not null)
+        {
+            return ReadV4Status(payload.RootElement, status, suggestedDelay);
+        }
+
         return status switch
         {
             "pending" => new ProviderTaskStatus(
@@ -179,13 +228,19 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         string externalTaskId,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         MinerUHttpProtocol.ValidateConfiguration(configuration, ProviderType, requireHttps: false);
+        var tier = GetTier(configuration);
         var taskId = MinerUHttpProtocol.ValidateExternalTaskId(externalTaskId);
-        using var request = new HttpRequestMessage(
-            HttpMethod.Get,
-            MinerUHttpProtocol.BuildEndpoint(
-                configuration.BaseUri,
-                $"tasks/{taskId}/result"));
+        var endpoint = MinerUHttpProtocol.BuildEndpoint(
+            configuration.BaseUri,
+            $"{(tier is null ? "tasks" : "v1/tasks")}/{taskId}/result");
+        if (tier is not null)
+        {
+            endpoint = new UriBuilder(endpoint) { Query = "response_format=zip" }.Uri;
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
         MinerUHttpProtocol.AddBearerCredential(
             request,
             configuration.Credential,
@@ -244,10 +299,75 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         string externalTaskId,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         MinerUHttpProtocol.ValidateConfiguration(configuration, ProviderType, requireHttps: false);
+        GetTier(configuration);
         MinerUHttpProtocol.ValidateExternalTaskId(externalTaskId);
         return Task.CompletedTask;
     }
+
+    private static string? GetTier(ProviderExecutionConfiguration configuration)
+    {
+        if (configuration.Backend?.StartsWith("v4:", StringComparison.Ordinal) != true)
+        {
+            return null;
+        }
+
+        return configuration.Backend switch
+        {
+            "v4:flash" => "flash",
+            "v4:basic" => "basic",
+            "v4:standard" => "standard",
+            "v4:advanced" => "advanced",
+            _ => throw new ProviderException(
+                "mineru-local-backend-invalid",
+                "The MinerU Local v4 backend must select flash, basic, standard, or advanced.",
+                ProviderFailureCategory.Configuration),
+        };
+    }
+
+    private static void ValidateV4Submission(ProviderDocumentSource source, string optionsJson)
+    {
+        MinerUHttpProtocol.ValidateSource(source, V4Capabilities);
+        MinerUHttpProtocol.ValidateFileName(source.FileName);
+        MinerUProviderOptions.Parse(optionsJson).ValidateForLocalV4(source.MediaType);
+    }
+
+    private static ProviderTaskStatus ReadV4Status(JsonElement root, string status, TimeSpan delay)
+    {
+        if (status == "completed")
+        {
+            if (root.TryGetProperty("files", out var files)
+                && files.ValueKind == JsonValueKind.Array
+                && files.GetArrayLength() == 1
+                && files[0].ValueKind == JsonValueKind.Object
+                && files[0].TryGetProperty("status", out var fileStatus)
+                && fileStatus.ValueKind == JsonValueKind.String
+                && fileStatus.GetString() == "completed")
+            {
+                return new ProviderTaskStatus(ProviderTaskState.Succeeded);
+            }
+
+            return FailedV4Task();
+        }
+
+        return status switch
+        {
+            "queued" => new ProviderTaskStatus(ProviderTaskState.Queued, SuggestedPollDelay: delay),
+            "running" => new ProviderTaskStatus(ProviderTaskState.Running, SuggestedPollDelay: delay),
+            "failed" or "canceled" or "partial" => FailedV4Task(),
+            _ => new ProviderTaskStatus(
+                ProviderTaskState.Unknown,
+                "mineru-local-task-state-unknown",
+                "The MinerU Local task returned an unknown state.",
+                SuggestedPollDelay: delay),
+        };
+    }
+
+    private static ProviderTaskStatus FailedV4Task() => new(
+        ProviderTaskState.Failed,
+        "mineru-local-task-failed",
+        "The MinerU Local task did not complete its single file successfully.");
 
     private static void AddFormFields(
         MultipartFormDataContent multipart,
@@ -287,7 +407,8 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         string name,
         string operation)
     {
-        if (!root.TryGetProperty(name, out var value)
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty(name, out var value)
             || value.ValueKind != JsonValueKind.String
             || string.IsNullOrWhiteSpace(value.GetString()))
         {
@@ -303,6 +424,7 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
     private static TimeSpan ReadSuggestedDelay(JsonElement root)
     {
         if (root.TryGetProperty("queued_ahead", out var queuedAhead)
+            && queuedAhead.ValueKind == JsonValueKind.Number
             && queuedAhead.TryGetInt32(out var queuedCount)
             && queuedCount > 0)
         {

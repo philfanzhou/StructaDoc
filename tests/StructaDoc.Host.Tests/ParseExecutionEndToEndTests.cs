@@ -25,10 +25,12 @@ namespace StructaDoc.Host.Tests;
 public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory factory)
     : IClassFixture<StructaDocWebApplicationFactory>
 {
-    [Fact]
-    public async Task A_parse_run_reaches_canonical_results_through_the_worker_and_a_real_provider()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_parse_run_reaches_canonical_results_through_the_worker_and_a_real_provider(bool v4)
     {
-        await using var provider = await StubMinerUServer.StartAsync();
+        await using var provider = await StubMinerUServer.StartAsync(v4: v4);
         using var application = CreateExecutingHost();
         using var client = application.CreateClient();
         await client.LoginAsAdministratorAsync();
@@ -39,7 +41,7 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
                 "End-to-end MinerU",
                 "mineru-local",
                 provider.BaseUrl,
-                Backend: "pipeline",
+                Backend: v4 ? "v4:flash" : "pipeline",
                 IsDefault: true),
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, createConfig.StatusCode);
@@ -68,7 +70,7 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
         Assert.Equal("parse-run.pdf", provider.ReceivedFileName);
         Assert.Equal("application/pdf", provider.ReceivedContentType);
         Assert.Equal(document.SizeBytes, provider.ReceivedFileBytes);
-        Assert.Equal("pipeline", provider.ReceivedBackend);
+        Assert.Equal(v4 ? "flash" : "pipeline", provider.ReceivedBackend);
 
         var blocks = await client.GetFromJsonAsync<ParseBlockListResponse>(
             $"/api/v1/parse-runs/{parseRun.Id:D}/blocks?limit=100",
@@ -106,7 +108,7 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
         Assert.Equal("image/png", asset.MediaType);
         Assert.Equal(asset.Id, blocks.Items[2].AssetId);
         Assert.Contains(artifacts!, artifact => artifact.Type == "markdown");
-        Assert.Contains(artifacts!, artifact => artifact.Type == "content-list");
+        Assert.Contains(artifacts!, artifact => artifact.Type == (v4 ? "provider-raw" : "content-list"));
         Assert.Contains(artifacts!, artifact => artifact.Type == "provider-archive");
 
         using var markdown = await client.GetAsync(

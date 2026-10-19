@@ -64,7 +64,8 @@ internal sealed class StubMinerUServer : IAsyncDisposable
     /// </param>
     public static async Task<StubMinerUServer> StartAsync(
         int runningResponses = 1,
-        bool rejectSubmission = false)
+        bool rejectSubmission = false,
+        bool v4 = false)
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -72,9 +73,10 @@ internal sealed class StubMinerUServer : IAsyncDisposable
 
         var app = builder.Build();
         StubMinerUServer? server = null;
-        var archive = CreateResultArchive();
+        var archive = CreateResultArchive(v4);
+        var prefix = v4 ? "/v1/tasks" : "/tasks";
 
-        app.MapPost("/tasks", async (HttpRequest request) =>
+        app.MapPost(prefix, async (HttpRequest request) =>
         {
             var current = server!;
             current.SubmitRequests++;
@@ -87,14 +89,18 @@ internal sealed class StubMinerUServer : IAsyncDisposable
 
             var form = await request.ReadFormAsync();
             var file = form.Files["files"];
-            if (file is null || rejectSubmission)
+            if (file is null || rejectSubmission
+                || v4 && (form.Count != 0 || form.Files.Count != 1
+                    || request.Query["tier"] != "flash"
+                    || request.Query["ocr_mode"] != "auto"
+                    || request.Query["output_formats"] != "zip"))
             {
                 return Results.BadRequest();
             }
 
             current.ReceivedFileName = file.FileName;
             current.ReceivedContentType = file.ContentType;
-            current.ReceivedBackend = form["backend"].ToString();
+            current.ReceivedBackend = v4 ? request.Query["tier"].ToString() : form["backend"].ToString();
 
             // Counted rather than trusted from a header, so a body that was announced but never
             // sent cannot pass for a document that arrived.
@@ -111,20 +117,27 @@ internal sealed class StubMinerUServer : IAsyncDisposable
             return Results.Json(new { task_id = TaskId }, statusCode: StatusCodes.Status202Accepted);
         });
 
-        app.MapGet("/tasks/{id}", (string id) =>
+        app.MapGet(prefix + "/{id}", (string id) =>
         {
             var current = server!;
             var attempt = Interlocked.Increment(ref current.statusRequests);
             return id == TaskId
-                ? Results.Json(new { status = attempt <= runningResponses ? "processing" : "completed" })
+                ? Results.Json(new
+                {
+                    task_id = TaskId,
+                    status = attempt <= runningResponses ? (v4 ? "running" : "processing") : "completed",
+                    files = new[] { new { status = attempt <= runningResponses ? "running" : "completed" } },
+                    status_url = "https://untrusted.invalid/status",
+                    result_url = "https://untrusted.invalid/result",
+                })
                 : Results.NotFound();
         });
 
-        app.MapGet("/tasks/{id}/result", (string id) =>
+        app.MapGet(prefix + "/{id}/result", (string id, HttpRequest request) =>
         {
             var current = server!;
             current.ResultRequests++;
-            return id == TaskId
+            return id == TaskId && (!v4 || request.Query["response_format"] == "zip")
                 ? Results.File(archive, "application/zip", "result.zip")
                 : Results.NotFound();
         });
@@ -138,7 +151,7 @@ internal sealed class StubMinerUServer : IAsyncDisposable
     /// The observed MinerU layout the normalizer recognizes: a Markdown rendering, a content list
     /// that becomes Blocks and Pages, and an image an image Block points at.
     /// </summary>
-    private static byte[] CreateResultArchive()
+    internal static byte[] CreateResultArchive(bool v4 = false)
     {
         // A 1x1 PNG. The normalizer identifies an Asset by its signature rather than by extension,
         // so bytes that only claim to be an image would be dropped.
@@ -148,17 +161,32 @@ internal sealed class StubMinerUServer : IAsyncDisposable
         using var buffer = new MemoryStream();
         using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
         {
-            Write(archive, "full.md", Encoding.UTF8.GetBytes($"# {MarkdownHeading}\n\n{MarkdownBody}\n"));
-            Write(
-                archive,
-                "content_list.json",
-                Encoding.UTF8.GetBytes($$"""
+            Write(archive, v4 ? "markdown.md" : "full.md", Encoding.UTF8.GetBytes($"# {MarkdownHeading}\n\n{MarkdownBody}\n"));
+            if (v4)
+            {
+                // Synthetic physical PDF output in the observed 4.0.12 renderer shape; no inference claim.
+                Write(archive, "structured_content.json", Encoding.UTF8.GetBytes($$$"""
+                {"metadata":{"file_suffix":"pdf","document":{"page_count_kind":"physical"}},"pages":[
+                  {"page_idx":0,"blocks":[{"type":"doc_title","level":1,"content":"{{{MarkdownHeading}}}"},{"type":"text","content":"{{{MarkdownBody}}}"}]},
+                  {"page_idx":1,"blocks":[{"type":"image","content":"","image_source":"images/figure-1.png","captions":[{"content":"{{{ImageCaption}}}"}],"footnotes":[{"content":"{{{ImageFootnote}}}"}]}]}
+                ]}
+                """));
+                Write(archive, "middle_json.json", "{}"u8.ToArray());
+                Write(archive, "model_output.json", "{}"u8.ToArray());
+            }
+            else
+            {
+                Write(
+                    archive,
+                    "content_list.json",
+                    Encoding.UTF8.GetBytes($$"""
                 [
                   { "type": "text", "text": "{{MarkdownHeading}}", "text_level": 1, "page_idx": 0 },
                   { "type": "text", "text": "{{MarkdownBody}}", "page_idx": 0 },
                   { "type": "image", "img_path": "images/figure-1.png", "image_caption": ["{{ImageCaption}}"], "image_footnote": ["{{ImageFootnote}}"], "page_idx": 1 }
                 ]
                 """));
+            }
             Write(archive, "images/figure-1.png", png);
         }
 
