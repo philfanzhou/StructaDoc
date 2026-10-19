@@ -1,0 +1,175 @@
+{
+  "pages": [
+    {
+      "page_idx": 2,
+      "blocks": [
+        {
+          "type": "doc_title",
+          "level": 1,
+          "content": "Synthetic document",
+          "bbox": [
+            0.1,
+            0.1,
+            0.9,
+            0.2
+          ]
+        },
+        {
+          "type": "paragraph_title",
+          "level": 120,
+          "content": "Synthetic section"
+        },
+        {
+          "type": "text",
+          "content": "A **synthetic** paragraph."
+        },
+        {
+          "type": "ref_text",
+          "content": "[1] Synthetic reference"
+        },
+        {
+          "type": "list",
+          "content": "- First\n- Second"
+        },
+        {
+          "type": "table",
+          "content": "| Name | Value |\n| --- | --- |\n| A | 1 |",
+          "captions": [
+            {
+              "content": " Table 1 "
+            },
+            {
+              "content": "continued"
+            },
+            {
+              "content": " "
+            }
+          ],
+          "footnotes": [
+            {
+              "content": "Synthetic table note"
+            }
+          ],
+          "image_source": "images/table.png"
+        },
+        {
+          "type": "equation",
+          "content": "E = m c^2",
+          "bbox": [
+            0.2,
+            0.3,
+            0.8,
+            0.4
+          ],
+          "image_source": "images/formula.png"
+        },
+        {
+          "type": "image",
+          "content": "![synthetic](images/figure.png)",
+          "captions": [
+            {
+              "content": "Figure 1"
+            }
+          ],
+          "footnotes": [
+            {
+              "content": "Figure note"
+            }
+          ],
+          "image_source": "images/figure.png",
+          "bbox": [
+            0.1,
+            0.4,
+            0.9,
+            0.7
+          ]
+        },
+        {
+          "type": "chart",
+          "sub_type": "ignored",
+          "content": "![chart](images/chart.png)",
+          "image_source": "images/chart.png",
+          "captions": [
+            {
+              "content": "Chart 1"
+            }
+          ],
+          "footnotes": []
+        },
+        {
+          "type": "code",
+          "sub_type": "code",
+          "content": "```python\nprint(1)\n```",
+          "captions": [
+            {
+              "content": "Listing 1"
+            }
+          ],
+          "footnotes": [
+            {
+              "content": "Code note"
+            }
+          ]
+        },
+        {
+          "type": "code",
+          "sub_type": "algorithm",
+          "content": "1. Start\n2. Stop",
+          "captions": [],
+          "footnotes": []
+        },
+        {
+          "type": "header",
+          "content": "Synthetic header"
+        },
+        {
+          "type": "footer",
+          "content": "Synthetic footer"
+        },
+        {
+          "type": "page_number",
+          "content": "3"
+        },
+        {
+          "type": "page_footnote",
+          "content": "Synthetic page footnote"
+        },
+        {
+          "type": "index",
+          "content": "Alpha, 3",
+          "sub_type": "ignored"
+        },
+        {
+          "type": "aside_text",
+          "content": "Synthetic margin"
+        },
+        {
+          "type": "future_widget",
+          "content": "Future content"
+        }
+      ]
+    },
+    {
+      "page_idx": 4,
+      "blocks": []
+    }
+  ],
+  "metadata": {
+    "file_suffix": "pdf",
+    "producer": {
+      "name": "synthetic-fixture",
+      "version": "1"
+    },
+    "document": {
+      "page_count": 2,
+      "page_count_kind": "physical"
+    }
+  },
+  "extensions": {
+    "synthetic": {
+      "token": "synthetic-raw-only",
+      "path": "/synthetic/raw-only"
+    }
+  },
+  "is_full_document": true
+}

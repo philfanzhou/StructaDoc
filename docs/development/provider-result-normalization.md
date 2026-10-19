@@ -24,7 +24,7 @@ Before reading entries, it reopens the fixed archive and compares entry count, N
 
 Multiple candidates at one priority are an explicit ambiguity error; archive order never chooses the “first.” JSON must be valid UTF-8, and the content-list root must be an array. A missing content list can still produce a valid Markdown-plus-archive bundle.
 
-## Block Mapping
+## Legacy Content List Block Mapping
 
 - Array order becomes a zero-based globally contiguous `sequence`.
 - The zero-based MinerU `page_idx` becomes a one-based Page; the older `page_id` spelling is read only when `page_idx` is absent. When `page_idx` is present it alone decides the page, so an invalid `page_idx` rejects the bundle even if `page_id` is valid. Absent is `null`; a negative, non-integer, or `null` value rejects the bundle with `mineru-result-page-invalid`. The zero-based value is kept in the Page `sourceLocator` as `providerPageId`.
@@ -84,6 +84,76 @@ The test fixture `tests/StructaDoc.Persistence.Tests/Fixtures/MinerU/pipeline_co
 MinerU writes a page on every item. When a content list has items and more than half of them carry neither `page_idx` nor `page_id`, the normalizer logs one warning for that normalization. The warning carries only the Parse Run (or segment) ID, the Provider type, the item count, and the number of items without a page field; it never logs content, file paths, or field values.
 
 Raw JSON is already retained as an Artifact, so Blocks do not copy complete Provider objects into `providerData`. This prevents internal paths and future unknown sensitive fields from entering ordinary public responses.
+
+## MinerU 4 Structured Content
+
+When no legacy `content_list.json` is present, the normalizer recognizes the
+observed MinerU **4.0.12** / docvortex **0.5.16** archive family. A legacy Content
+List always keeps its existing field precedence, mapping, Artifact identities, and
+fingerprint behavior. Without either structure, Markdown-only acceptance remains.
+This reader does not enable v4 HTTP submission or select a tier; that integration
+is tracked separately in [#167](https://github.com/philfanzhou/StructaDoc/issues/167).
+
+| ZIP content | Selection and retention |
+|---|---|
+| `markdown.md` | Exact root first, otherwise the existing Markdown selection; `markdown` Artifact |
+| `structured_content.json` | Exact root first, otherwise one unique nested basename; `provider-raw` Artifact named `structured-content.json` |
+| `middle_json.json` | Same selection, optional; `layout` Artifact named `layout.json` |
+| `model_output.json` | Same selection, optional; `model-output` Artifact named `model-output.json` |
+| Images and original ZIP | The same validated Asset map and `provider-archive` Artifact as legacy results |
+
+Candidates at the same priority are ambiguous and fail deterministically. The
+reader consumes the shipped object shape `pages: [{page_idx, blocks: [...]}]`;
+there is no schema envelope. Each top-level Block must have a nonblank type and a
+string `content`. All top-level Blocks stay in source order, with globally
+contiguous sequences and deterministic IDs. Middle JSON is retained only as a Raw
+Artifact; its arbitrary trees are not interpreted into Blocks.
+
+| MinerU 4 type | Canonical type / subtype | Content format |
+|---|---|---|
+| `doc_title`, `paragraph_title` | `title`; positive `level` gives `heading-{level}`, clamped to 99 | `markdown` |
+| `text`, `ref_text` | `text`; `ref_text` keeps `ref-text` | `markdown` |
+| `list`, `table`, `code` | Same type; valid `sub_type` retained, including code `algorithm` | `markdown` |
+| `equation` | `formula` | `latex` |
+| `image`, `chart` | `image`; chart keeps `chart` | `markdown` when content is nonempty |
+| `header`, `footer`, `page_number`, `page_footnote` | `header`, `footer`, `page-number`, `footnote` | `markdown` |
+| Other nonblank types, including `index` and `aside_text` | `unknown`, normalized source type as subtype | `markdown` |
+
+The v4 renderer has already rendered tables and code; the legacy HTML/plain-text
+format rules do not apply. On image, chart, table, and code Blocks, `captions` and
+`footnotes` are arrays of annotation objects. Each object's nonblank string
+`content` is retained in order and joined with a newline. Malformed optional
+values become null, malformed entries are skipped, and annotations never become
+content or additional Blocks. Their size limits are the Canonical Model 1.1 limits.
+
+Only PDF/OFD (`metadata.file_suffix`) or an explicit
+`metadata.document.page_count_kind: physical` establishes physical page identity.
+Then `page_idx + 1` gives Page/Block page numbers, including empty declared pages.
+Other logical, sheet, slide, spine, declared, or unknown identities give no physical
+Pages and leave Block `pageNumber` null. Every Block keeps only the bounded numeric
+`providerPageId` in its source locator. Page indexes must be nonnegative integers,
+strictly increasing, and smaller than `int.MaxValue`. No dimensions are inferred.
+
+V4 boxes must already be ordered finite 0–1 coordinates; invalid boxes become null
+and are never scaled from 0–1000. `image_source` resolves only safe relative paths
+in the validated Asset map. URI, absolute, traversal, missing, or ambiguous paths
+cannot cause a network or filesystem lookup; unresolved references have null
+`assetId`. Conflicting image aliases retain the existing ambiguity failure.
+
+A present but invalid JSON/structure/Block/page fails permanently with a sanitized
+`mineru-result-json-invalid`, `mineru-result-structured-content-invalid`,
+`mineru-result-block-invalid`, or `mineru-result-page-invalid` code. JSON byte,
+Page/Block count, content/annotation, archive, and Asset limits still apply; there
+is no partial bundle commit. Cancellation propagates, storage I/O remains transient,
+and storage conflicts remain permanent without overwrite. Ordinary and segmented
+execution call this same normalizer. Provider metadata/extensions and unknown raw
+objects are never copied into ordinary DTOs; they stay in authorized Raw Artifacts.
+Callers must continue to treat rendered content and annotations as untrusted.
+
+The checked-in [fixtures](../../tests/StructaDoc.Persistence.Tests/Fixtures/MinerU/README.md#mineru-4-archive-fixtures)
+record the real server ZIP, synthetic source, and hand-authored physical-page cases.
+They cover this observed schema only, without a Python/runtime dependency or a
+promise to accept arbitrary future MinerU/docvortex schemas.
 
 ## Idempotent Storage and Identity
 
