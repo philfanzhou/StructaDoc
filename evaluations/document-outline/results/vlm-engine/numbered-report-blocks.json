@@ -1,0 +1,100 @@
+[
+  {
+    "sequence": 0,
+    "page": 1,
+    "type": "title",
+    "subtype": "heading-1",
+    "content": "1 Introduction"
+  },
+  {
+    "sequence": 1,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "This synthetic paragraph describes ordinary document processing."
+  },
+  {
+    "sequence": 2,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "Files are retained and their pages are read in the stated order."
+  },
+  {
+    "sequence": 3,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "The example contains no private information or external source material."
+  },
+  {
+    "sequence": 4,
+    "page": 1,
+    "type": "title",
+    "subtype": "heading-1",
+    "content": "1.1 Constraints"
+  },
+  {
+    "sequence": 5,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "This synthetic paragraph describes ordinary document processing."
+  },
+  {
+    "sequence": 6,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "Files are retained and their pages are read in the stated order."
+  },
+  {
+    "sequence": 7,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "The example contains no private information or external source material."
+  },
+  {
+    "sequence": 8,
+    "page": 1,
+    "type": "page-number",
+    "subtype": null,
+    "content": "1"
+  },
+  {
+    "sequence": 9,
+    "page": 2,
+    "type": "title",
+    "subtype": "heading-1",
+    "content": "2 Results"
+  },
+  {
+    "sequence": 10,
+    "page": 2,
+    "type": "text",
+    "subtype": null,
+    "content": "This synthetic paragraph describes ordinary document processing."
+  },
+  {
+    "sequence": 11,
+    "page": 2,
+    "type": "text",
+    "subtype": null,
+    "content": "Files are retained and their pages are read in the stated order."
+  },
+  {
+    "sequence": 12,
+    "page": 2,
+    "type": "text",
+    "subtype": null,
+    "content": "The example contains no private information or external source material."
+  },
+  {
+    "sequence": 13,
+    "page": 2,
+    "type": "page-number",
+    "subtype": null,
+    "content": "2"
+  }
+]

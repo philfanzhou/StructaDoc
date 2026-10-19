@@ -1,0 +1,4 @@
+# Preserve generated document bytes and raw Provider Markdown (including hard breaks).
+corpus/*.pdf binary
+corpus/*.docx binary
+results/**/*.md -whitespace

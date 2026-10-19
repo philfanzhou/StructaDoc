@@ -1,0 +1,38 @@
+{
+  "version": "LibreOffice 24.2.7.2 420(Build:2)",
+  "image": "structadoc:local-arm64",
+  "image_id": "sha256:470bfb7711d70f2d5778bb8da92fb11f31d6f5133c77c4ad2034f51c581a8f87",
+  "architecture": "arm64",
+  "exit_code": 0,
+  "native_word_heading_levels": [
+    1,
+    2,
+    1
+  ],
+  "pdf_bookmark_levels": [
+    1,
+    2,
+    1
+  ],
+  "pdf_bookmark_pages": [
+    1,
+    1,
+    2
+  ],
+  "source_retained": true,
+  "warning": "failed to launch javaldx - java may not function correctly",
+  "command": [
+    "libreoffice",
+    "--headless",
+    "--nologo",
+    "--nodefault",
+    "--nolockcheck",
+    "--norestore",
+    "-env:UserInstallation=file:///tmp/outline-3cd6-profile/",
+    "--convert-to",
+    "pdf",
+    "--outdir",
+    "/tmp/outline-output",
+    "/evaluation/heading-styles.docx"
+  ]
+}

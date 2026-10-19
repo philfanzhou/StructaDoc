@@ -1,0 +1,86 @@
+[
+  {
+    "sequence": 0,
+    "page": 1,
+    "type": "title",
+    "subtype": "heading-1",
+    "content": "Opening"
+  },
+  {
+    "sequence": 1,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "This synthetic paragraph describes ordinary document processing."
+  },
+  {
+    "sequence": 2,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "Files are retained and their pages are read in the stated order."
+  },
+  {
+    "sequence": 3,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "The example contains no private information or external source material."
+  },
+  {
+    "sequence": 4,
+    "page": 1,
+    "type": "title",
+    "subtype": "heading-1",
+    "content": "Scope"
+  },
+  {
+    "sequence": 5,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "This synthetic paragraph describes ordinary document processing."
+  },
+  {
+    "sequence": 6,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "Files are retained and their pages are read in the stated order."
+  },
+  {
+    "sequence": 7,
+    "page": 1,
+    "type": "text",
+    "subtype": null,
+    "content": "The example contains no private information or external source material."
+  },
+  {
+    "sequence": 8,
+    "page": 2,
+    "type": "title",
+    "subtype": "heading-1",
+    "content": "Closing"
+  },
+  {
+    "sequence": 9,
+    "page": 2,
+    "type": "text",
+    "subtype": null,
+    "content": "This synthetic paragraph describes ordinary document processing."
+  },
+  {
+    "sequence": 10,
+    "page": 2,
+    "type": "text",
+    "subtype": null,
+    "content": "Files are retained and their pages are read in the stated order."
+  },
+  {
+    "sequence": 11,
+    "page": 2,
+    "type": "text",
+    "subtype": null,
+    "content": "The example contains no private information or external source material."
+  }
+]

@@ -1,0 +1,860 @@
+[
+  {
+    "document": "book",
+    "backend": "pipeline",
+    "source": "pdf-bookmarks",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 3,
+    "correct_start_and_level": 3,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 4
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 9
+      }
+    ],
+    "unresolved": []
+  },
+  {
+    "document": "book",
+    "backend": "pipeline",
+    "source": "printed-toc",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "book",
+    "backend": "pipeline",
+    "source": "generic-numbering",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "printed-toc",
+    "backend": "pipeline",
+    "source": "pdf-bookmarks",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 2,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 2,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 3,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "printed-toc",
+    "backend": "pipeline",
+    "source": "printed-toc",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 3,
+    "correct_start_and_level": 3,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "Opening",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 2
+      },
+      {
+        "title": "Scope",
+        "page": 2,
+        "level": 2,
+        "block_sequence": 6
+      },
+      {
+        "title": "Closing",
+        "page": 3,
+        "level": 1,
+        "block_sequence": 10
+      }
+    ],
+    "unresolved": []
+  },
+  {
+    "document": "printed-toc",
+    "backend": "pipeline",
+    "source": "generic-numbering",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 2,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 2,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 3,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "numbered-report",
+    "backend": "pipeline",
+    "source": "pdf-bookmarks",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "1 Introduction",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "1.1 Constraints",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "2 Results",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "numbered-report",
+    "backend": "pipeline",
+    "source": "printed-toc",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "1 Introduction",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "1.1 Constraints",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "2 Results",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "numbered-report",
+    "backend": "pipeline",
+    "source": "generic-numbering",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 3,
+    "correct_start_and_level": 3,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "1 Introduction",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      },
+      {
+        "title": "1.1 Constraints",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 4
+      },
+      {
+        "title": "2 Results",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 9
+      }
+    ],
+    "unresolved": []
+  },
+  {
+    "document": "heading-styles",
+    "backend": "pipeline",
+    "source": "pdf-bookmarks",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 3,
+    "correct_start_and_level": 3,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 4
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 8
+      }
+    ],
+    "unresolved": []
+  },
+  {
+    "document": "heading-styles",
+    "backend": "pipeline",
+    "source": "printed-toc",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "heading-styles",
+    "backend": "pipeline",
+    "source": "generic-numbering",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "unstructured",
+    "backend": "pipeline",
+    "source": "pdf-bookmarks",
+    "expected": 0,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "unstructured",
+    "backend": "pipeline",
+    "source": "printed-toc",
+    "expected": 0,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "unstructured",
+    "backend": "pipeline",
+    "source": "generic-numbering",
+    "expected": 0,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "book",
+    "backend": "vlm-engine",
+    "source": "pdf-bookmarks",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 3,
+    "correct_start_and_level": 3,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 4
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 9
+      }
+    ],
+    "unresolved": []
+  },
+  {
+    "document": "book",
+    "backend": "vlm-engine",
+    "source": "printed-toc",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "book",
+    "backend": "vlm-engine",
+    "source": "generic-numbering",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "printed-toc",
+    "backend": "vlm-engine",
+    "source": "pdf-bookmarks",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 2,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 2,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 3,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "printed-toc",
+    "backend": "vlm-engine",
+    "source": "printed-toc",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 3,
+    "correct_start_and_level": 3,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "Opening",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 4
+      },
+      {
+        "title": "Scope",
+        "page": 2,
+        "level": 2,
+        "block_sequence": 8
+      },
+      {
+        "title": "Closing",
+        "page": 3,
+        "level": 1,
+        "block_sequence": 12
+      }
+    ],
+    "unresolved": []
+  },
+  {
+    "document": "printed-toc",
+    "backend": "vlm-engine",
+    "source": "generic-numbering",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 2,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 2,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 3,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "numbered-report",
+    "backend": "vlm-engine",
+    "source": "pdf-bookmarks",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "1 Introduction",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "1.1 Constraints",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "2 Results",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "numbered-report",
+    "backend": "vlm-engine",
+    "source": "printed-toc",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "1 Introduction",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "1.1 Constraints",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "2 Results",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "numbered-report",
+    "backend": "vlm-engine",
+    "source": "generic-numbering",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 3,
+    "correct_start_and_level": 3,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "1 Introduction",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      },
+      {
+        "title": "1.1 Constraints",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 4
+      },
+      {
+        "title": "2 Results",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 9
+      }
+    ],
+    "unresolved": []
+  },
+  {
+    "document": "heading-styles",
+    "backend": "vlm-engine",
+    "source": "pdf-bookmarks",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 3,
+    "correct_start_and_level": 3,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 4
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 8
+      }
+    ],
+    "unresolved": []
+  },
+  {
+    "document": "heading-styles",
+    "backend": "vlm-engine",
+    "source": "printed-toc",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "heading-styles",
+    "backend": "vlm-engine",
+    "source": "generic-numbering",
+    "expected": 3,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "unstructured",
+    "backend": "vlm-engine",
+    "source": "pdf-bookmarks",
+    "expected": 0,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "unstructured",
+    "backend": "vlm-engine",
+    "source": "printed-toc",
+    "expected": 0,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  },
+  {
+    "document": "unstructured",
+    "backend": "vlm-engine",
+    "source": "generic-numbering",
+    "expected": 0,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [],
+    "unresolved": []
+  }
+]

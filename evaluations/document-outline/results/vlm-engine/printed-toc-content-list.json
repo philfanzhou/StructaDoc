@@ -1,0 +1,182 @@
+[
+    {
+        "type": "text",
+        "text": "Contents",
+        "text_level": 1,
+        "bbox": [
+            97,
+            64,
+            247,
+            87
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Opening .... 2",
+        "bbox": [
+            97,
+            118,
+            381,
+            136
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Scope .... 2",
+        "bbox": [
+            107,
+            165,
+            371,
+            183
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Closing .... 3",
+        "bbox": [
+            97,
+            212,
+            371,
+            231
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Opening",
+        "text_level": 1,
+        "bbox": [
+            97,
+            65,
+            235,
+            90
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "This synthetic paragraph describes ordinary document processing.",
+        "bbox": [
+            95,
+            108,
+            643,
+            123
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Files are retained and their pages are read in the stated order.",
+        "bbox": [
+            95,
+            128,
+            608,
+            143
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "The example contains no private information or external source material.",
+        "bbox": [
+            95,
+            148,
+            690,
+            164
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Scope",
+        "text_level": 1,
+        "bbox": [
+            97,
+            282,
+            176,
+            303
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "This synthetic paragraph describes ordinary document processing.",
+        "bbox": [
+            95,
+            321,
+            643,
+            338
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Files are retained and their pages are read in the stated order.",
+        "bbox": [
+            95,
+            341,
+            608,
+            357
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "The example contains no private information or external source material.",
+        "bbox": [
+            95,
+            362,
+            690,
+            378
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Closing",
+        "text_level": 1,
+        "bbox": [
+            97,
+            64,
+            223,
+            91
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "This synthetic paragraph describes ordinary document processing.",
+        "bbox": [
+            95,
+            108,
+            645,
+            124
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "Files are retained and their pages are read in the stated order.",
+        "bbox": [
+            95,
+            128,
+            608,
+            143
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "The example contains no private information or external source material.",
+        "bbox": [
+            95,
+            148,
+            692,
+            164
+        ],
+        "page_idx": 2
+    }
+]

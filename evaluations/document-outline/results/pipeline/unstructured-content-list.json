@@ -1,0 +1,101 @@
+[
+    {
+        "type": "text",
+        "text": "This synthetic paragraph describes ordinary document processing.",
+        "bbox": [
+            95,
+            72,
+            647,
+            90
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Files are retained and their pages are read in the stated order.",
+        "bbox": [
+            95,
+            96,
+            613,
+            112
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "The example contains no private information or external source material.",
+        "bbox": [
+            95,
+            120,
+            695,
+            136
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "This synthetic paragraph describes ordinary document processing.",
+        "bbox": [
+            95,
+            143,
+            648,
+            160
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Files are retained and their pages are read in the stated order.",
+        "bbox": [
+            95,
+            167,
+            613,
+            184
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "The example contains no private information or external source material.",
+        "bbox": [
+            95,
+            192,
+            695,
+            208
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "This synthetic paragraph describes ordinary document processing.",
+        "bbox": [
+            95,
+            215,
+            648,
+            231
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Files are retained and their pages are read in the stated order.",
+        "bbox": [
+            95,
+            239,
+            613,
+            255
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "The example contains no private information or external source material.",
+        "bbox": [
+            95,
+            262,
+            695,
+            279
+        ],
+        "page_idx": 0
+    }
+]
