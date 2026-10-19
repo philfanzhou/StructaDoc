@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Providers;
@@ -11,9 +12,33 @@ namespace StructaDoc.Adapters.ProviderResults;
 
 public sealed class MinerUResultNormalizer(
     IFileStorage fileStorage,
-    ProviderResultNormalizationOptions options) : IProviderResultNormalizer
+    ProviderResultNormalizationOptions options,
+    ILogger<MinerUResultNormalizer> logger) : IProviderResultNormalizer
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    // Content fields in lookup order: the first present, non-null field supplies Block content.
+    private static readonly string[] ContentProperties =
+        ["text", "content", "table_body", "code_body", "list_items", "body"];
+
+    /// <summary>
+    /// The top-level content-list item fields this normalizer reads. A field that is neither in this
+    /// set nor deliberately ignored would be dropped silently, so tests compare MinerU fixtures with it.
+    /// </summary>
+    public static IReadOnlySet<string> RecognizedContentListFields { get; } = new HashSet<string>(
+        [
+            "type",
+            "sub_type",
+            "text_level",
+            "text_format",
+            .. ContentProperties,
+            "page_idx",
+            "page_id",
+            "bbox",
+            "score",
+            "img_path",
+        ],
+        StringComparer.Ordinal);
 
     public bool Supports(string providerType) =>
         providerType is ProviderTypes.MinerUCloud or ProviderTypes.MinerULocal;
@@ -139,6 +164,11 @@ public sealed class MinerUResultNormalizer(
                 var blocks = contentList is null
                     ? []
                     : CreateBlocks(request.ParseRunId, contentList.RootElement, assetsByEntryPath);
+                if (contentList is not null)
+                {
+                    WarnWhenMostItemsLackPages(request, contentList.RootElement);
+                }
+
                 var pages = CreatePages(blocks);
 
                 var bundle = new ParseBundle(
@@ -515,11 +545,12 @@ public sealed class MinerUResultNormalizer(
             "list" or "list-item" => "list",
             "table" => "table",
             "equation" or "formula" or "inline-equation" or "interline-equation" => "formula",
-            "image" or "figure" => "image",
+            "image" or "figure" or "chart" => "image",
             "code" or "algorithm" => "code",
             "header" or "page-header" => "header",
             "footer" or "page-footer" => "footer",
-            "footnote" => "footnote",
+            "footnote" or "page-footnote" => "footnote",
+            "page-number" => "page-number",
             _ => "unknown",
         };
     }
@@ -535,6 +566,13 @@ public sealed class MinerUResultNormalizer(
             return $"heading-{Math.Min(textLevel.Value, 99)}";
         }
 
+        // A chart keeps its own subtype even when MinerU adds a sub_type, so it stays
+        // distinguishable from a photo or diagram among the image Blocks.
+        if (NormalizeToken(providerType) == "chart")
+        {
+            return "chart";
+        }
+
         var subType = NormalizeOptionalToken(GetString(source, "sub_type"));
         if (subType is not null)
         {
@@ -547,12 +585,17 @@ public sealed class MinerUResultNormalizer(
 
     private static (string? Content, string? SourceProperty) ExtractContent(JsonElement source)
     {
-        foreach (var propertyName in new[] { "text", "content", "body" })
+        foreach (var propertyName in ContentProperties)
         {
             if (!source.TryGetProperty(propertyName, out var value)
                 || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             {
                 continue;
+            }
+
+            if (propertyName == "list_items" && TryJoinStrings(value, out var items))
+            {
+                return (items, propertyName);
             }
 
             return value.ValueKind == JsonValueKind.String
@@ -561,6 +604,21 @@ public sealed class MinerUResultNormalizer(
         }
 
         return (null, null);
+    }
+
+    // MinerU writes list entries as an array of strings; anything else keeps the compact JSON text
+    // that other non-string content gets, so no value is lost.
+    private static bool TryJoinStrings(JsonElement value, out string? joined)
+    {
+        joined = null;
+        if (value.ValueKind != JsonValueKind.Array
+            || value.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String))
+        {
+            return false;
+        }
+
+        joined = string.Join('\n', value.EnumerateArray().Select(item => item.GetString()));
+        return true;
     }
 
     private static string? MapContentFormat(
@@ -580,7 +638,7 @@ public sealed class MinerUResultNormalizer(
             return "latex";
         }
 
-        if (sourceProperty == "body"
+        if (sourceProperty is "table_body" or "body"
             && content?.TrimStart().StartsWith('<') == true)
         {
             return "html";
@@ -589,9 +647,12 @@ public sealed class MinerUResultNormalizer(
         return content is null ? null : "plain";
     }
 
+    // MinerU writes the zero-based page as page_idx; page_id is an older spelling. When page_idx is
+    // present it alone decides the page, so an invalid page_idx is never masked by a valid page_id.
     private static int? MapPageNumber(JsonElement source)
     {
-        if (!source.TryGetProperty("page_id", out var page))
+        if (!source.TryGetProperty("page_idx", out var page)
+            && !source.TryGetProperty("page_id", out page))
         {
             return null;
         }
@@ -607,6 +668,36 @@ public sealed class MinerUResultNormalizer(
         }
 
         return providerPageId + 1;
+    }
+
+    private static bool HasPageField(JsonElement source) =>
+        source.ValueKind == JsonValueKind.Object
+        && (source.TryGetProperty("page_idx", out _) || source.TryGetProperty("page_id", out _));
+
+    // MinerU writes a page on every item, so a content list where most items have none is a layout
+    // this normalizer does not recognize. The log carries counts only: no content, paths, or values.
+    private void WarnWhenMostItemsLackPages(
+        ProviderResultNormalizationRequest request,
+        JsonElement contentList)
+    {
+        var itemCount = contentList.GetArrayLength();
+        if (itemCount == 0)
+        {
+            return;
+        }
+
+        var itemsWithoutPage = contentList.EnumerateArray().Count(item => !HasPageField(item));
+        if (itemsWithoutPage * 2 <= itemCount)
+        {
+            return;
+        }
+
+        logger.LogWarning(
+            "MinerU content list for Parse Run {ParseRunId} from {ProviderType} has {ItemsWithoutPage} of {ItemCount} items without a page field; their Blocks have no page number.",
+            request.ParseRunId,
+            request.ProviderType,
+            itemsWithoutPage,
+            itemCount);
     }
 
     private static NormalizedBoundingBox? MapBoundingBox(JsonElement source)

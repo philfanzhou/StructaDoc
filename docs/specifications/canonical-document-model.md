@@ -2,7 +2,7 @@
 
 - Status: Implemented specification
 - Version: 1.0-draft
-- Last updated: 2026-08-25
+- Last updated: 2026-10-19
 - Pending transition: ADR-0009 actor persistence is target behavior until #35 is
   implemented
 
@@ -171,7 +171,10 @@ A Block is the main structured content unit in the public API.
 - `header`
 - `footer`
 - `footnote`
+- `page-number`
 - `unknown`
+
+`page-number` marks a printed page number on the page itself, as text content; it is a Block, not the Page's own `number`.
 
 The set may grow within the same API major version. Consumers treat unknown types as displayable or ignorable Blocks rather than failing deserialization.
 
