@@ -437,6 +437,31 @@ jobs:
         if: always()
         run: docker rm --force structadoc-ci >/dev/null 2>&1 || true
 
+  container-platforms:
+    name: Build AMD64 and ARM64 images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.2.0
+
+      # Build both complete runtime images on pull requests before a release needs them.
+      # A multi-platform build stays in BuildKit cache; load:true requires a different image store.
+      - name: Build both platforms without publishing
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+          cache-from: type=gha
+
   publish-image:
     name: Publish image to GitHub Container Registry
     runs-on: ubuntu-24.04
@@ -450,7 +475,7 @@ jobs:
     # `build-and-test` and would otherwise have quietly stopped gating anything, which is the one
     # way this split could have made the pipeline weaker: an image carrying a high-severity advisory
     # is exactly what should not acquire a registry tag.
-    needs: [audit-web, build-and-test, libreoffice-integration, sdk-generation, database-contracts, container-and-browser]
+    needs: [audit-web, build-and-test, libreoffice-integration, sdk-generation, database-contracts, container-and-browser, container-platforms]
     # Two things publish and they publish different kinds of name. A release tag produces the names a
     # deployment is pinned to. A push to the default branch produces `edge`, which is one mutable name
     # meaning whatever `main` currently is; it exists so that a change can be pulled and tried before
@@ -483,6 +508,9 @@ jobs:
             refs/tags/v*) version="${GITHUB_REF#refs/tags/v}" ;;
           esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4.2.0
@@ -530,6 +558,7 @@ jobs:
         uses: docker/build-push-action@v7.3.0
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}

@@ -13,7 +13,7 @@ public sealed class ContainerImageContractTests
     public void Runtime_image_contains_libreoffice_without_python_or_sdk()
     {
         Assert.Contains(
-            "FROM ${DOTNET_REGISTRY}/sdk:${DOTNET_VERSION}-noble AS build",
+            "FROM --platform=$BUILDPLATFORM ${DOTNET_REGISTRY}/sdk:${DOTNET_VERSION}-noble AS build",
             Dockerfile,
             StringComparison.Ordinal);
         Assert.Contains(
