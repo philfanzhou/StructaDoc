@@ -1,15 +1,19 @@
+# Compile static web assets and framework-dependent .NET assemblies on the build host.
+# UseAppHost=false and no RuntimeIdentifier keep the output portable; the final
+# runtime image and its OS packages are selected separately for each target platform.
+
 ARG DOTNET_VERSION=10.0
 ARG DOTNET_REGISTRY=mcr.microsoft.com/dotnet
 ARG NODE_VERSION=24
 
-FROM node:${NODE_VERSION}-bookworm-slim AS web-build
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS web-build
 WORKDIR /source/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
 RUN npm run build -- --outDir /web-dist
 
-FROM ${DOTNET_REGISTRY}/sdk:${DOTNET_VERSION}-noble AS build
+FROM --platform=$BUILDPLATFORM ${DOTNET_REGISTRY}/sdk:${DOTNET_VERSION}-noble AS build
 ARG BUILD_CONFIGURATION=Release
 ARG NUGET_SOURCE=https://api.nuget.org/v3/index.json
 WORKDIR /source
