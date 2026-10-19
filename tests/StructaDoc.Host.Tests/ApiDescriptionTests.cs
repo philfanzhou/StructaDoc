@@ -435,6 +435,33 @@ public sealed class ApiDescriptionTests
         }
     }
 
+    [Fact]
+    public async Task Page_labels_are_described_as_optional_strings()
+    {
+        using var document = await ReadDescriptionAsync();
+        var page = document.RootElement
+            .GetProperty("components")
+            .GetProperty("schemas")
+            .GetProperty("ParsePageResponse");
+        var required = page.TryGetProperty("required", out var requiredNames)
+            ? requiredNames.EnumerateArray().Select(name => name.GetString()).ToArray()
+            : [];
+
+        foreach (var field in new[] { "label", "labelSource" })
+        {
+            Assert.True(
+                page.GetProperty("properties").TryGetProperty(field, out var property),
+                $"Page field '{field}' is missing.");
+            var types = property.GetProperty("type");
+            var typeNames = types.ValueKind == JsonValueKind.Array
+                ? types.EnumerateArray().Select(type => type.GetString()).ToArray()
+                : [types.GetString()];
+            Assert.Contains("string", typeNames);
+            Assert.Contains("null", typeNames);
+            Assert.DoesNotContain(field, required);
+        }
+    }
+
     [Theory]
     [InlineData("/api/v1/parse-runs/{parseRunId}/markdown", "get", "Returns the stored Markdown Artifact without rendering it.")]
     [InlineData("/api/v1/parse-runs/{parseRunId}/markdown/preview", "get", "The Markdown result rendered as a self-contained HTML page, for display rather than for saving.")]

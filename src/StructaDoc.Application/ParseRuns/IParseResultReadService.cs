@@ -17,7 +17,7 @@ public interface IParseResultReadService
     Task<ParseResultContent?> OpenMarkdownAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default);
 }
 
-public sealed record ParsePageRecord(int Number, double? Width, double? Height, string? Unit);
+public sealed record ParsePageRecord(int Number, double? Width, double? Height, string? Unit, string? Label = null, string? LabelSource = null);
 
 public sealed record ParseBlockRecord(Guid Id, int Sequence, int? PageNumber, string Type, string? Subtype, string? Content, string? ContentFormat, BoundingBoxRecord? BoundingBox, double? Confidence, Guid? AssetId);
 

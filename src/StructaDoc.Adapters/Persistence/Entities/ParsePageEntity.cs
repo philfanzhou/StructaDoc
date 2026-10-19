@@ -15,4 +15,8 @@ public sealed class ParsePageEntity
     public string? Unit { get; set; }
 
     public string? SourceLocatorJson { get; set; }
+
+    public string? Label { get; set; }
+
+    public string? LabelSource { get; set; }
 }

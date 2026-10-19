@@ -551,6 +551,17 @@ namespace StructaDoc.Migrations.PostgreSql.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("height");
 
+                    b.Property<string>("Label")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("label");
+
+                    b.Property<string>("LabelSource")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("label_source");
+
                     b.Property<string>("SourceLocatorJson")
                         .HasColumnType("text")
                         .HasColumnName("source_locator_json");

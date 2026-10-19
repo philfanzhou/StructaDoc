@@ -34,7 +34,7 @@ public static class ParseResultEndpoints
     private static async Task<IResult> ListPagesAsync(Guid parseRunId, HttpContext context, IParseResultReadService service, CancellationToken cancellationToken)
     {
         var records = await service.ListPagesAsync(parseRunId, ResourceAccessContextFactory.Create(context.User), cancellationToken);
-        return records is null ? NotFound(parseRunId) : Results.Ok(records.Select(page => new ParsePageResponse(page.Number, page.Width, page.Height, page.Unit)));
+        return records is null ? NotFound(parseRunId) : Results.Ok(records.Select(page => new ParsePageResponse(page.Number, page.Width, page.Height, page.Unit) { Label = page.Label, LabelSource = page.LabelSource }));
     }
 
     /// <summary>Lists Blocks in stable reading order.</summary>
