@@ -1,0 +1,320 @@
+[
+  {
+    "document": "book",
+    "backend": "pipeline",
+    "status": "measured",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 1,
+    "correct_start_and_level": 1,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 0
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 4
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 2,
+        "block_sequence": 9
+      }
+    ]
+  },
+  {
+    "document": "printed-toc",
+    "backend": "pipeline",
+    "status": "measured",
+    "expected": 3,
+    "found": 4,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 1,
+    "correct_start_and_level": 1,
+    "misses": [],
+    "false_positives": [
+      {
+        "title": "Contents",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 0
+      }
+    ],
+    "nodes": [
+      {
+        "title": "Contents",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 0
+      },
+      {
+        "title": "Opening",
+        "page": 2,
+        "level": 2,
+        "block_sequence": 2
+      },
+      {
+        "title": "Scope",
+        "page": 2,
+        "level": 2,
+        "block_sequence": 6
+      },
+      {
+        "title": "Closing",
+        "page": 3,
+        "level": 2,
+        "block_sequence": 10
+      }
+    ]
+  },
+  {
+    "document": "numbered-report",
+    "backend": "pipeline",
+    "status": "measured",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 1,
+    "correct_start_and_level": 1,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "1 Introduction",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 0
+      },
+      {
+        "title": "1.1 Constraints",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 4
+      },
+      {
+        "title": "2 Results",
+        "page": 2,
+        "level": 2,
+        "block_sequence": 9
+      }
+    ]
+  },
+  {
+    "document": "heading-styles",
+    "backend": "pipeline",
+    "status": "measured",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 1,
+    "correct_start_and_level": 1,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 0
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2,
+        "block_sequence": 4
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 2,
+        "block_sequence": 8
+      }
+    ]
+  },
+  {
+    "document": "unstructured",
+    "backend": "pipeline",
+    "status": "measured",
+    "expected": 0,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [],
+    "false_positives": [],
+    "nodes": []
+  },
+  {
+    "document": "book",
+    "backend": "vlm-engine",
+    "status": "measured",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 2,
+    "correct_start_and_level": 2,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 4
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 9
+      }
+    ]
+  },
+  {
+    "document": "printed-toc",
+    "backend": "vlm-engine",
+    "status": "measured",
+    "expected": 3,
+    "found": 4,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 2,
+    "correct_start_and_level": 2,
+    "misses": [],
+    "false_positives": [
+      {
+        "title": "Contents",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      }
+    ],
+    "nodes": [
+      {
+        "title": "Contents",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      },
+      {
+        "title": "Opening",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 4
+      },
+      {
+        "title": "Scope",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 8
+      },
+      {
+        "title": "Closing",
+        "page": 3,
+        "level": 1,
+        "block_sequence": 12
+      }
+    ]
+  },
+  {
+    "document": "numbered-report",
+    "backend": "vlm-engine",
+    "status": "measured",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 2,
+    "correct_start_and_level": 2,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "1 Introduction",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      },
+      {
+        "title": "1.1 Constraints",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 4
+      },
+      {
+        "title": "2 Results",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 9
+      }
+    ]
+  },
+  {
+    "document": "heading-styles",
+    "backend": "vlm-engine",
+    "status": "measured",
+    "expected": 3,
+    "found": 3,
+    "matched_titles": 3,
+    "correct_start": 3,
+    "correct_level": 2,
+    "correct_start_and_level": 2,
+    "misses": [],
+    "false_positives": [],
+    "nodes": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 0
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 1,
+        "block_sequence": 4
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1,
+        "block_sequence": 8
+      }
+    ]
+  },
+  {
+    "document": "unstructured",
+    "backend": "vlm-engine",
+    "status": "measured",
+    "expected": 0,
+    "found": 0,
+    "matched_titles": 0,
+    "correct_start": 0,
+    "correct_level": 0,
+    "correct_start_and_level": 0,
+    "misses": [],
+    "false_positives": [],
+    "nodes": []
+  }
+]

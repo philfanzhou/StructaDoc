@@ -1,0 +1,67 @@
+{
+  "python": "3.12.15",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "packages": {
+    "mineru": "3.4.5",
+    "torch": "2.14.1",
+    "transformers": "4.57.6",
+    "mlx": "0.31.1",
+    "mlx-vlm": "0.3.9",
+    "reportlab": "5.0.1",
+    "pypdf": "6.21.1",
+    "python-docx": "1.2.0"
+  },
+  "models": [
+    {
+      "repository": "opendatalab/MinerU2.5-Pro-2605-1.2B",
+      "revision": "08aaea840498d49ce16247b6263196cf02814885",
+      "files": 13,
+      "bytes": 2328028751,
+      "paths": [
+        ".gitattributes",
+        "README.md",
+        "added_tokens.json",
+        "chat_template.jinja",
+        "config.json",
+        "generation_config.json",
+        "merges.txt",
+        "model.safetensors",
+        "preprocessor_config.json",
+        "special_tokens_map.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "vocab.json"
+      ]
+    },
+    {
+      "repository": "opendatalab/PDF-Extract-Kit-1.0",
+      "revision": "ed6b654c018d742e65a17671e379c5e6ecc87ec9",
+      "files": 15,
+      "bytes": 1082446509,
+      "paths": [
+        "models/Layout/PP-DocLayoutV2/config.json",
+        "models/Layout/PP-DocLayoutV2/model.safetensors",
+        "models/Layout/PP-DocLayoutV2/preprocessor_config.json",
+        "models/MFR/unimernet_hf_small_2503/README.md",
+        "models/MFR/unimernet_hf_small_2503/config.json",
+        "models/MFR/unimernet_hf_small_2503/generation_config.json",
+        "models/MFR/unimernet_hf_small_2503/model.safetensors",
+        "models/MFR/unimernet_hf_small_2503/special_tokens_map.json",
+        "models/MFR/unimernet_hf_small_2503/tokenizer.json",
+        "models/MFR/unimernet_hf_small_2503/tokenizer_config.json",
+        "models/OCR/paddleocr_torch/ch_PP-OCRv6_small_det_infer.safetensors",
+        "models/OCR/paddleocr_torch/ch_PP-OCRv6_small_rec_infer.safetensors",
+        "models/TabCls/paddle_table_cls/PP-LCNet_x1_0_table_cls.onnx",
+        "models/TabRec/SlanetPlus/slanet-plus.onnx",
+        "models/TabRec/UnetStructure/unet.onnx"
+      ]
+    }
+  ],
+  "pipeline_device": "mps",
+  "vlm_engines": [
+    "mlx-engine"
+  ],
+  "engine_evidence": "Selected engines read from actual MinerU CLI runtime logs.",
+  "cpu": "Apple M4",
+  "memory_bytes": 17179869184
+}

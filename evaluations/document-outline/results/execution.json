@@ -1,0 +1,177 @@
+[
+  {
+    "document": "book",
+    "backend": "pipeline",
+    "elapsed_seconds": 73.877,
+    "exit_code": 0,
+    "timed_out": false,
+    "timeout_seconds": 600,
+    "command": [
+      "mineru",
+      "-p",
+      "corpus/book.pdf",
+      "-o",
+      "<work>/output/pipeline",
+      "-b",
+      "pipeline"
+    ]
+  },
+  {
+    "document": "heading-styles",
+    "backend": "pipeline",
+    "elapsed_seconds": 11.989,
+    "exit_code": 0,
+    "timed_out": false,
+    "timeout_seconds": 600,
+    "command": [
+      "mineru",
+      "-p",
+      "corpus/heading-styles.pdf",
+      "-o",
+      "<work>/output/pipeline",
+      "-b",
+      "pipeline"
+    ]
+  },
+  {
+    "document": "numbered-report",
+    "backend": "pipeline",
+    "elapsed_seconds": 10.883,
+    "exit_code": 0,
+    "timed_out": false,
+    "timeout_seconds": 600,
+    "command": [
+      "mineru",
+      "-p",
+      "corpus/numbered-report.pdf",
+      "-o",
+      "<work>/output/pipeline",
+      "-b",
+      "pipeline"
+    ]
+  },
+  {
+    "document": "printed-toc",
+    "backend": "pipeline",
+    "elapsed_seconds": 13.469,
+    "exit_code": 0,
+    "timed_out": false,
+    "timeout_seconds": 600,
+    "command": [
+      "mineru",
+      "-p",
+      "corpus/printed-toc.pdf",
+      "-o",
+      "<work>/output/pipeline",
+      "-b",
+      "pipeline"
+    ]
+  },
+  {
+    "document": "unstructured",
+    "backend": "pipeline",
+    "elapsed_seconds": 11.239,
+    "exit_code": 0,
+    "timed_out": false,
+    "timeout_seconds": 600,
+    "command": [
+      "mineru",
+      "-p",
+      "corpus/unstructured.pdf",
+      "-o",
+      "<work>/output/pipeline",
+      "-b",
+      "pipeline"
+    ]
+  },
+  {
+    "document": "book",
+    "backend": "vlm-engine",
+    "elapsed_seconds": 81.237,
+    "exit_code": 0,
+    "timed_out": false,
+    "timeout_seconds": 600,
+    "command": [
+      "mineru",
+      "-p",
+      "corpus/book.pdf",
+      "-o",
+      "<work>/output/vlm-engine",
+      "-b",
+      "vlm-engine"
+    ]
+  },
+  {
+    "document": "heading-styles",
+    "backend": "vlm-engine",
+    "elapsed_seconds": 26.899,
+    "exit_code": 0,
+    "timed_out": false,
+    "timeout_seconds": 600,
+    "command": [
+      "mineru",
+      "-p",
+      "corpus/heading-styles.pdf",
+      "-o",
+      "<work>/output/vlm-engine",
+      "-b",
+      "vlm-engine"
+    ]
+  },
+  {
+    "document": "numbered-report",
+    "backend": "vlm-engine",
+    "elapsed_seconds": 29.418,
+    "exit_code": 0,
+    "timed_out": false,
+    "timeout_seconds": 600,
+    "command": [
+      "mineru",
+      "-p",
+      "corpus/numbered-report.pdf",
+      "-o",
+      "<work>/output/vlm-engine",
+      "-b",
+      "vlm-engine"
+    ]
+  },
+  {
+    "document": "printed-toc",
+    "backend": "vlm-engine",
+    "elapsed_seconds": 315.811,
+    "exit_code": 0,
+    "timed_out": false,
+    "timeout_seconds": 600,
+    "command": [
+      "mineru",
+      "-p",
+      "corpus/printed-toc.pdf",
+      "-o",
+      "<work>/output/vlm-engine",
+      "-b",
+      "vlm-engine"
+    ],
+    "timing_note": "Wall time includes suspending only the batch coordinator to yield heavy to issue169 after this MinerU subprocess finished. Inference was not interrupted. This elapsed time is not an inference-speed comparison.",
+    "resource_yield_utc": {
+      "released": "2026-10-19T08:20:35Z",
+      "reacquired": "2026-10-19T08:24:59Z"
+    }
+  },
+  {
+    "document": "unstructured",
+    "backend": "vlm-engine",
+    "elapsed_seconds": 21.129,
+    "exit_code": 0,
+    "timed_out": false,
+    "timeout_seconds": 600,
+    "command": [
+      "mineru",
+      "-p",
+      "corpus/unstructured.pdf",
+      "-o",
+      "<work>/output/vlm-engine",
+      "-b",
+      "vlm-engine"
+    ]
+  }
+]

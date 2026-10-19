@@ -1,0 +1,75 @@
+{
+  "definition": "Authored before any MinerU run. A start is the exact normalized title on its physical one-based page; distinct titles disambiguate positions on the same page. Level is authored hierarchy. Provider Block sequence is measured, never guessed.",
+  "documents": {
+    "book": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "printed-toc": [
+      {
+        "title": "Opening",
+        "page": 2,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 2,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 3,
+        "level": 1
+      }
+    ],
+    "numbered-report": [
+      {
+        "title": "1 Introduction",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "1.1 Constraints",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "2 Results",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "heading-styles": [
+      {
+        "title": "Opening",
+        "page": 1,
+        "level": 1
+      },
+      {
+        "title": "Scope",
+        "page": 1,
+        "level": 2
+      },
+      {
+        "title": "Closing",
+        "page": 2,
+        "level": 1
+      }
+    ],
+    "unstructured": []
+  },
+  "hierarchy_note": "In each nonempty document, Opening/1 Introduction and Closing/2 Results are roots; Scope/1.1 Constraints is a child of the first root. End boundaries are not measured by this issue; no provider-specific Block sequence is part of the authored truth."
+}
