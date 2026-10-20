@@ -1,5 +1,10 @@
 export type Session = { authenticated: boolean; subjectType?: string; subjectId?: string; issuer?: string; displayName?: string; email?: string; isAdministrator: boolean; oidcEnabled: boolean; setupRequired: boolean }
 export type DocumentItem = { id: string; originalFileName: string; mediaType: string; extension: string; sizeBytes: number; sha256: string; createdAt: string; latestParseStatus?: string; ownedByCurrentUser: boolean }
+// `nextCursor` is the server's opaque cursor for the page after `items` and is null on the last one.
+// Callers send it back unchanged as the next request's `cursor` and never parse, construct, or
+// store it as a durable bookmark; a caller that reads only `items` sees the first page and no sign
+// that traversal stopped.
+export type DocumentList = { items: DocumentItem[]; nextCursor?: string }
 export type ParseRun = { id: string; documentId: string; status: string; stage?: string; providerType: string; attemptCount: number; maxAttempts: number; errorCode?: string; errorMessage?: string; createdAt: string; completedAt?: string }
 export type BoundingBox = { x0: number; y0: number; x1: number; y1: number }
 export type ParseBlock = { id: string; sequence: number; pageNumber?: number; type: string; subtype?: string; content?: string; contentFormat?: string; boundingBox?: BoundingBox; confidence?: number; assetId?: string }

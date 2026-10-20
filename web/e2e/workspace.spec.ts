@@ -202,6 +202,334 @@ test('workspace polling refreshes final document state without a selection and s
   expect(documentRequests).toBe(requestsAfterCompletion)
 })
 
+test('document list navigates cursor pages and returns, keeping the selection', async ({ page }) => {
+  const firstPage = Array.from({ length: 100 }, (_, index) =>
+    documentItem(`nav-page1-${index + 1}`, `nav-first-${String(index + 1).padStart(3, '0')}.pdf`))
+  const secondPage = [documentItem('nav-page2-101', 'nav-second-101.pdf')]
+  const documentRequests: string[] = []
+
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/parse-execution') {
+      return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    }
+    if (path === '/api/v1/documents') {
+      documentRequests.push(url.search)
+      if (url.searchParams.get('cursor') === 'cursor-nav-page-2') {
+        return fulfillJson(route, { items: secondPage, nextCursor: null })
+      }
+      return fulfillJson(route, { items: firstPage, nextCursor: 'cursor-nav-page-2' })
+    }
+    if (path === '/api/v1/documents/nav-page1-1/parse-runs') return fulfillJson(route, [])
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+
+  await page.goto('/')
+  const rows = page.locator('.document-row')
+  await expect(rows).toHaveCount(100)
+  await expect(page.getByText('nav-second-101.pdf', { exact: true })).toHaveCount(0)
+
+  // The controls state what is actually possible: no page before the first, a next page because the
+  // server handed back a cursor, and the number of pages walked rather than a promised total.
+  const pagination = page.getByRole('navigation', { name: '文档列表分页' })
+  const previousPage = pagination.getByRole('button', { name: '上一页' })
+  const nextPage = pagination.getByRole('button', { name: '下一页' })
+  await expect(previousPage).toBeDisabled()
+  await expect(nextPage).toBeEnabled()
+  await expect(pagination.getByText('第 1 页')).toBeVisible()
+
+  await rows.first().click()
+  await expect(page.getByRole('heading', { name: 'nav-first-001.pdf' })).toBeVisible()
+
+  await nextPage.click()
+  await expect(rows).toHaveCount(1)
+  await expect(page.getByText('nav-second-101.pdf', { exact: true })).toBeVisible()
+  await expect(nextPage).toBeDisabled()
+  await expect(previousPage).toBeEnabled()
+  await expect(pagination.getByText('第 2 页')).toBeVisible()
+  // Walking the list never disturbs what is open beside it.
+  await expect(page.getByRole('heading', { name: 'nav-first-001.pdf' })).toBeVisible()
+
+  await previousPage.click()
+  await expect(rows).toHaveCount(100)
+  await expect(page.locator('.document-row.selected')).toHaveCount(1)
+  await expect(previousPage).toBeDisabled()
+  await expect(nextPage).toBeEnabled()
+
+  expect(documentRequests).toEqual(['?limit=100', '?limit=100&cursor=cursor-nav-page-2', '?limit=100'])
+})
+
+test('document filters, manual refresh, and upload restart the list from the first page', async ({ page }) => {
+  const alphaFirst = Array.from({ length: 100 }, (_, index) =>
+    documentItem(`filter-alpha-${index + 1}`, `alpha-${String(index + 1).padStart(3, '0')}.pdf`))
+  const alphaSecond = [documentItem('filter-alpha-101', 'alpha-101.pdf')]
+  const betaFirst = Array.from({ length: 100 }, (_, index) =>
+    documentItem(`filter-beta-${index + 1}`, `beta-${String(index + 1).padStart(3, '0')}.pdf`))
+  const betaSecond = [documentItem('filter-beta-101', 'beta-101.pdf')]
+  const documentRequests: string[] = []
+  let uploads = 0
+
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/admin/antiforgery') {
+      return fulfillJson(route, { requestToken: 'test-token', headerName: 'X-CSRF-TOKEN' })
+    }
+    if (path === '/api/v1/parse-execution') {
+      return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    }
+    if (path === '/api/v1/documents' && route.request().method() === 'POST') {
+      uploads += 1
+      return fulfillJson(route, documentItem('uploaded-document', 'uploaded.pdf'), 201)
+    }
+    if (path === '/api/v1/documents') {
+      documentRequests.push(url.search)
+      const cursor = url.searchParams.get('cursor')
+      if (url.searchParams.get('fileName') === 'alpha') {
+        if (cursor === 'cursor-alpha-2') return fulfillJson(route, { items: alphaSecond, nextCursor: null })
+        return fulfillJson(route, { items: alphaFirst, nextCursor: 'cursor-alpha-2' })
+      }
+      if (cursor === 'cursor-beta-2') return fulfillJson(route, { items: betaSecond, nextCursor: null })
+      return fulfillJson(route, { items: betaFirst, nextCursor: 'cursor-beta-2' })
+    }
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+
+  await page.goto('/')
+  const pagination = page.getByRole('navigation', { name: '文档列表分页' })
+  const previousPage = pagination.getByRole('button', { name: '上一页' })
+  const nextPage = pagination.getByRole('button', { name: '下一页' })
+  const rows = page.locator('.document-row')
+  await expect(rows).toHaveCount(100)
+
+  const fileNameInput = page.getByPlaceholder('按文件名筛选')
+  await fileNameInput.fill('alpha')
+  await fileNameInput.press('Enter')
+  await expect(page.getByText('alpha-001.pdf', { exact: true })).toBeVisible()
+
+  // Both filters travel with every page request, and changing either one restarts the walk from the
+  // first page under the new filter rather than continuing a cursor collected under the old one.
+  await page.locator('.toolbar select').selectOption('succeeded')
+  await expect(page.getByText('alpha-001.pdf', { exact: true })).toBeVisible()
+  await expect(pagination.getByText('第 1 页')).toBeVisible()
+  await nextPage.click()
+  await expect(page.getByText('alpha-101.pdf', { exact: true })).toBeVisible()
+
+  await fileNameInput.fill('beta')
+  await fileNameInput.press('Enter')
+  await expect(page.getByText('beta-001.pdf', { exact: true })).toBeVisible()
+  await expect(page.getByText('beta-101.pdf', { exact: true })).toHaveCount(0)
+  await expect(previousPage).toBeDisabled()
+
+  // A refresh the user asked for also starts over, so leading documents are reachable again.
+  await nextPage.click()
+  await expect(page.getByText('beta-101.pdf', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect(page.getByText('beta-001.pdf', { exact: true })).toBeVisible()
+  await expect(pagination.getByText('第 1 页')).toBeVisible()
+
+  // A successful upload does the same: the new document sorts to the front, above any cursor page.
+  await nextPage.click()
+  await expect(page.getByText('beta-101.pdf', { exact: true })).toBeVisible()
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'upload-reset.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n% StructaDoc cursor navigation sample\n%%EOF\n'),
+  })
+  await expect(page.getByText('已上传 1 个文档')).toBeVisible()
+  await expect(page.getByText('beta-001.pdf', { exact: true })).toBeVisible()
+  await expect(page.getByText('beta-101.pdf', { exact: true })).toHaveCount(0)
+  await expect(pagination.getByText('第 1 页')).toBeVisible()
+  expect(uploads).toBe(1)
+
+  expect(documentRequests).toEqual([
+    '?limit=100',
+    '?limit=100&fileName=alpha',
+    '?limit=100&fileName=alpha&parseStatus=succeeded',
+    '?limit=100&cursor=cursor-alpha-2&fileName=alpha&parseStatus=succeeded',
+    '?limit=100&fileName=beta&parseStatus=succeeded',
+    '?limit=100&cursor=cursor-beta-2&fileName=beta&parseStatus=succeeded',
+    '?limit=100&fileName=beta&parseStatus=succeeded',
+    '?limit=100&cursor=cursor-beta-2&fileName=beta&parseStatus=succeeded',
+    '?limit=100&fileName=beta&parseStatus=succeeded',
+  ])
+})
+
+test('background polling reloads the current list page and never restores an obsolete cursor', async ({ page }) => {
+  const firstPage = Array.from({ length: 100 }, (_, index) =>
+    documentItem(`poll-page1-${index + 1}`, `poll-first-${String(index + 1).padStart(3, '0')}.pdf`,
+      index === 0 ? 'running' : 'succeeded'))
+  const secondPage = [documentItem('poll-page2-101', 'poll-second-101.pdf', 'running')]
+  const filteredPage = [documentItem('poll-filtered-1', 'poll-filtered.pdf', 'succeeded')]
+  const documentRequests: string[] = []
+  let runRequests = 0
+  const heldStarted = deferred(); const releaseHeld = deferred(); const heldFinished = deferred()
+
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/parse-execution') {
+      return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    }
+    if (path === '/api/v1/documents') {
+      documentRequests.push(url.search)
+      if (url.searchParams.get('fileName') === 'narrow') {
+        return fulfillJson(route, { items: filteredPage, nextCursor: null })
+      }
+      if (url.searchParams.get('cursor') === 'cursor-poll-2') {
+        // The first cursor request is the user's own navigation; later ones are background passes
+        // refreshing the page on screen, and one of those is held to arrive after a reset.
+        if (documentRequests.length > 3) {
+          heldStarted.resolve(); await releaseHeld.promise
+          await fulfillJson(route, { items: secondPage, nextCursor: null })
+          heldFinished.resolve(); return
+        }
+        return fulfillJson(route, { items: secondPage, nextCursor: null })
+      }
+      return fulfillJson(route, { items: firstPage, nextCursor: 'cursor-poll-2' })
+    }
+    if (path.endsWith('/parse-runs')) {
+      runRequests += 1
+      return fulfillJson(route, { title: 'Run list must not be requested without a selection' }, 500)
+    }
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+
+  await page.goto('/')
+  await expect(page.locator('.document-row')).toHaveCount(100)
+  await expect(page.locator('.auto-refresh')).toBeVisible()
+  // Nothing is selected, so the background pass refreshes the list only.
+  await expect.poll(() => documentRequests.length).toBeGreaterThanOrEqual(2)
+  expect(runRequests).toBe(0)
+
+  await page.getByRole('navigation', { name: '文档列表分页' }).getByRole('button', { name: '下一页' }).click()
+  await expect(page.getByText('poll-second-101.pdf', { exact: true })).toBeVisible()
+
+  // The next background pass must ask for the page on screen — the cursor page, not the first one.
+  await heldStarted.promise
+  expect(documentRequests[3]).toBe('?limit=100&cursor=cursor-poll-2')
+
+  // While that pass is in flight, the user narrows the filter and the list restarts from page one.
+  const fileNameInput = page.getByPlaceholder('按文件名筛选')
+  await fileNameInput.fill('narrow')
+  await fileNameInput.press('Enter')
+  await expect(page.getByText('poll-filtered.pdf', { exact: true })).toBeVisible()
+  // One filtered page with no cursor means there is nothing to paginate: the walk restarted from
+  // the first page rather than lingering on page two's history.
+  await expect(page.getByRole('navigation', { name: '文档列表分页' })).toHaveCount(0)
+
+  // The held page-two reply lands after the reset and must be dropped, cursor and all.
+  releaseHeld.resolve(); await heldFinished.promise; await settleUi(page)
+  await expect(page.getByText('poll-filtered.pdf', { exact: true })).toBeVisible()
+  await expect(page.getByText('poll-second-101.pdf', { exact: true })).toHaveCount(0)
+  await expect(page.locator('.toast.error')).toBeHidden()
+
+  // Only finished work remains on screen, so polling stops by itself.
+  const requestsAfterCompletion = documentRequests.length
+  await page.waitForTimeout(3500)
+  expect(documentRequests.length).toBe(requestsAfterCompletion)
+  expect(runRequests).toBe(0)
+})
+
+test('document navigation keeps the current page on failure and ignores stale responses', async ({ page }) => {
+  const firstPage = Array.from({ length: 100 }, (_, index) =>
+    documentItem(`stale-nav-${index + 1}`, `stale-first-${String(index + 1).padStart(3, '0')}.pdf`))
+  const secondPage = [documentItem('stale-nav-101', 'stale-second-101.pdf')]
+  const narrowPage = [documentItem('stale-narrow-1', 'stale-narrow.pdf')]
+  const navigationStarted = deferred(); const releaseNavigation = deferred(); const navigationFinished = deferred()
+  const unmountStarted = deferred(); const releaseUnmount = deferred(); const unmountFinished = deferred()
+  const documentRequests: string[] = []
+  let cursorPageRequests = 0
+  let firstPageRequests = 0
+
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    if (path === '/api/v1/session') return fulfillJson(route, userSession)
+    if (path === '/api/v1/parse-execution') {
+      return fulfillJson(route, { workerEnabled: true, providerCredentialMissing: false })
+    }
+    if (path === '/api/v1/documents') {
+      documentRequests.push(url.search)
+      if (url.searchParams.get('fileName') === 'narrow') {
+        return fulfillJson(route, { items: narrowPage, nextCursor: null })
+      }
+      if (url.searchParams.get('cursor') === 'cursor-stale-2') {
+        cursorPageRequests += 1
+        if (cursorPageRequests === 1) {
+          navigationStarted.resolve(); await releaseNavigation.promise
+          await fulfillJson(route, { items: secondPage, nextCursor: null })
+          navigationFinished.resolve(); return
+        }
+        if (cursorPageRequests === 2) return fulfillJson(route, { title: 'Navigation failed once' }, 500)
+        return fulfillJson(route, { items: secondPage, nextCursor: null })
+      }
+      firstPageRequests += 1
+      // The third first-page request is the "上一页" held across the unmount below; the response
+      // arrives as a failure after the workspace is gone and must reach nobody.
+      if (firstPageRequests === 3) {
+        unmountStarted.resolve(); await releaseUnmount.promise
+        await fulfillJson(route, { title: 'Failure after unmount' }, 500)
+        unmountFinished.resolve(); return
+      }
+      return fulfillJson(route, { items: firstPage, nextCursor: 'cursor-stale-2' })
+    }
+    return fulfillJson(route, { title: 'Unexpected mock request' }, 404)
+  })
+
+  await page.goto('/')
+  const pagination = page.getByRole('navigation', { name: '文档列表分页' })
+  const previousPage = pagination.getByRole('button', { name: '上一页' })
+  const nextPage = pagination.getByRole('button', { name: '下一页' })
+  const rows = page.locator('.document-row')
+  await expect(rows).toHaveCount(100)
+
+  // A navigation response the user has already moved past — here by narrowing the filter — cannot
+  // apply its page. While the request is in flight, both buttons stand down.
+  await nextPage.click()
+  await navigationStarted.promise
+  await expect(previousPage).toBeDisabled()
+  await expect(nextPage).toBeDisabled()
+  const fileNameInput = page.getByPlaceholder('按文件名筛选')
+  await fileNameInput.fill('narrow')
+  await fileNameInput.press('Enter')
+  await expect(page.getByText('stale-narrow.pdf', { exact: true })).toBeVisible()
+  releaseNavigation.resolve(); await navigationFinished.promise; await settleUi(page)
+  await expect(page.getByText('stale-narrow.pdf', { exact: true })).toBeVisible()
+  await expect(page.getByText('stale-second-101.pdf', { exact: true })).toHaveCount(0)
+  // A single filtered page has no pagination at all, which is itself the proof the walk restarted
+  // from the first page instead of staying on the navigated one.
+  await expect(pagination).toHaveCount(0)
+
+  // A navigation that fails leaves the rows, the page, and the history untouched, says why, and can
+  // simply be pressed again.
+  await fileNameInput.fill('')
+  await fileNameInput.press('Enter')
+  await expect(rows).toHaveCount(100)
+  await nextPage.click()
+  await expect(page.locator('.toast.error')).toHaveText('Navigation failed once')
+  await expect(rows).toHaveCount(100)
+  await expect(pagination.getByText('第 1 页')).toBeVisible()
+  await expect(previousPage).toBeDisabled()
+  await expect(nextPage).toBeEnabled()
+  await nextPage.click()
+  await expect(page.getByText('stale-second-101.pdf', { exact: true })).toBeVisible()
+  await expect(pagination.getByText('第 2 页')).toBeVisible()
+
+  // Leaving the workspace in the middle of a navigation drops the reply, success or failure, rather
+  // than reporting on a screen that no longer exists.
+  await previousPage.click()
+  await unmountStarted.promise
+  await page.goto('/admin')
+  await expect(page).toHaveURL(/\/admin\/signin/)
+  releaseUnmount.resolve(); await unmountFinished.promise; await settleUi(page)
+  await expect(page.locator('.toast.error')).toBeHidden()
+})
+
 test('result tabs load and mount on first use, then preserve their state', async ({ page }) => {
   const document = documentItem('lazy-document', 'lazy-result.pdf')
   const run = parseRun('lazy-run', document.id, 'Lazy provider')
