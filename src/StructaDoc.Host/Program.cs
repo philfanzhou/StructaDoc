@@ -105,6 +105,17 @@ reverseProxyOptions.Validate();
 // so an unusable value fails startup rather than becoming a proxy that silently does nothing.
 serviceMantle.AddStructaDocForwardedHeaders(reverseProxyOptions);
 
+// The ZIP export stages the archive it returns on the path below before handing it to the
+// response. That is a deployment fact, not tuning: the browser cannot see the filesystem it would
+// be pointing at, and a supported container bounds the system temporary directory below the size
+// one permitted result can reach, so the staging path belongs with the data volume the deployment
+// provisioned. Read from the raw configuration and kept out of the settings catalog; an
+// architecture test holds that exclusion in place.
+var parseExportOptions = builder.Configuration
+    .GetSection(ParseExportOptions.SectionName)
+    .Get<ParseExportOptions>() ?? new ParseExportOptions();
+parseExportOptions.Validate();
+
 // The key ring has to exist before the stored settings below are decrypted. In the database form
 // it lives in the business database itself, which only works when that database's location does
 // not depend on the ring: the connection string must be pinned by the deployment. A stored
@@ -254,6 +265,7 @@ builder.Services.AddStructaDocApiDescription();
 builder.Services.AddSingleton(oidcOptions);
 builder.Services.AddSingleton(authenticationTuningOptions);
 builder.Services.AddSingleton(workerOptions);
+builder.Services.AddSingleton(parseExportOptions);
 builder.Services.AddSingleton(settingsConfiguration);
 builder.Services.AddSingleton(settingsStartupFault);
 builder.Services.AddSingleton<ISettingSecretProtector>(settingSecretProtector);

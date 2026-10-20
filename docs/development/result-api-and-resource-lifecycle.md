@@ -44,6 +44,8 @@ Provider Markdown references images by the Provider's own archive layout, typica
 
 - **markdown** returns the canonical Markdown Artifact byte for byte. It is the traceable artifact, so it is never rewritten; its links stay Provider-relative.
 - **zip** contains `document.md` plus authorized Assets under `assets/`, with the bundled Markdown's image links pointing at those entries. Colliding Asset file names are disambiguated by Asset ID.
+
+The ZIP is assembled on disk before it is served, because an archive can be as large as its Assets and a streamed assembly would have no way to report a mid-body failure honestly. It is staged on the deployment-configured writable data path — `ParseExports:TemporaryPath`, defaulting to `/data/temp/exports` in the container image and overridable through the `ParseExports__TemporaryPath` environment variable — rather than the system temporary directory, which a supported container deliberately bounds below the size one permitted result can reach. The staged file is removed on every path that stops holding it: completed and disposed responses, generation and hashing failures, and cancellation. The deployment owns the capacity of that path; nothing here refuses an export for lack of disk headroom.
 - **html** renders the Markdown to a single self-contained page with Assets inlined as `data:` URIs, bounded per Asset and in total; Assets beyond the budget and unresolved image sources are omitted rather than fetched.
 - **pdf** returns the `normalized-pdf` Artifact when an Office source required conversion, and otherwise the original Document when it is already a PDF. A Parse Run with neither returns `409`.
 

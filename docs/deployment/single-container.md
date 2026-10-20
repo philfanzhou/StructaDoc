@@ -169,7 +169,7 @@ docker run --detach --name structadoc `
 
 `scripts/start-container.sh` is that command written down for Linux and WSL, using the published image and the repository's own `data` directory. It removes an existing `structadoc` container before starting the current one, so re-running it is how a new image is applied, and it needs root only to give the data directory to UID 1654. It carries no bootstrap credentials, which is why it can live in the repository.
 
-The security flags are part of the supported configuration, not decoration: a read-only root filesystem, dropped Linux capabilities, no privilege escalation, a bounded `/tmp` `tmpfs`, and the non-root UID from the official .NET image. Everything the service writes goes to `/data` or that `tmpfs`.
+The security flags are part of the supported configuration, not decoration: a read-only root filesystem, dropped Linux capabilities, no privilege escalation, a bounded `/tmp` `tmpfs`, and the non-root UID from the official .NET image. Everything the service writes goes to `/data` or that `tmpfs`, and only small, short-lived runtime state uses the `tmpfs`. The one write that can be as large as a result is the ZIP export, which builds its archive under `/data/temp/exports` for exactly that reason: a single permitted Asset already reaches the size of the whole `/tmp` mount, so staging a multi-Asset archive there would fail a download the service itself considers valid. The location is the `ParseExports:TemporaryPath` setting — `/data/temp/exports` in the image, overridable with `ParseExports__TemporaryPath` — and the archive is deleted as soon as the download's response is disposed, whether it completed, failed, or was cancelled. The volume holding `/data` must have room for the exports the deployment expects; see [Runtime Limits](#runtime-limits).
 
 A host-directory bind mount is preferred over a named volume. `/data` is the entire recovery set, and a plain directory can be inspected and copied without Docker-specific tooling.
 
@@ -284,7 +284,8 @@ The image declares `/data` and prepares:
 - `/data/structadoc.db` — SQLite business database and sidecar files;
 - `/data/storage` — originals, Provider archives, segments, Assets, and Artifacts;
 - `/data/keys` — the Data Protection key ring for cookies, antiforgery, Provider credentials, and submission checkpoints;
-- `/data/temp` — bounded temporary space for LibreOffice, ZIP intake, and normalization.
+- `/data/temp` — bounded temporary space for LibreOffice, ZIP intake, normalization, and export staging;
+  export archives are built under `/data/temp/exports` and removed once served.
 
 Named volumes inherit the image's non-root ownership. For bind mounts, grant the image `APP_UID` write access in advance; do not switch back to root to bypass permissions.
 
@@ -314,6 +315,8 @@ That cuts the other way too, and the service says so at every start: `No XML enc
 ## Runtime Limits
 
 Application code bounds conversion concurrency, execution time, file size, archive expansion, and temporary disk. These limits do not replace platform CPU, memory, process, filesystem, and log-rotation quotas. Production deployments should configure those quotas and capacity alerts for `/data`.
+
+One of those capacity facts belongs to the operator rather than the application: a ZIP export stages an archive the size of its Markdown plus its Assets on `/data` (`ParseExports:TemporaryPath`, `/data/temp/exports` in the image) while it is being served, and nothing admits or refuses an export by disk headroom. A deployment whose callers export large results needs free space on `/data` for at least the largest expected archive, and the bounded `/tmp` the container command mounts is never used for it. The setting is deployment-owned — it is not visible or writable from the browser, because the browser cannot see the filesystem it would be pointing at.
 
 The image logs database commands at `Warning`. At `Information` the two Workers alone write a few hundred lines a minute on a service doing nothing, which rotates away whatever an operator went looking for; the failures are what is worth keeping. To get the statements back while diagnosing something, pin `Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command=Information` on the container and recreate it: the pin seeds the console pipeline at that level and then shows as managed by the deployment under `/admin`, so there is one value in force rather than two that disagree. Unset it afterwards. What the page itself can do without a restart is tighten: any of the three `Logging:LogLevel:*` levels it accepts applies from the moment it is written, but it cannot reveal events the deployment's own `Logging:LogLevel` values hold back. See [Observability](../development/observability.md#structured-logging-pipeline).
 
