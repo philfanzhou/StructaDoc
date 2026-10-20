@@ -427,13 +427,16 @@ jobs:
           app_uid="$(docker run --rm --entrypoint /bin/sh structadoc:ci -c 'id -u')"
           mkdir -p "$data/storage"
 
-          document_id="$(uuidgen | tr 'A-Z' 'a-z')"
-          run_id="$(uuidgen | tr 'A-Z' 'a-z')"
-          artifact_id="$(uuidgen | tr 'A-Z' 'a-z')"
-          asset_a_id="$(uuidgen | tr 'A-Z' 'a-z')"
-          asset_b_id="$(uuidgen | tr 'A-Z' 'a-z')"
-          provider_config_id="$(uuidgen | tr 'A-Z' 'a-z')"
-          provider_config_version="$(uuidgen | tr 'A-Z' 'a-z')"
+          # Microsoft.Data.Sqlite binds Guid parameters and stores Guid columns as uppercase
+          # dashed TEXT, and SQLite compares TEXT byte-wise, so the seeded identifiers must be
+          # uppercase or the application's queries will not match the rows.
+          document_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          run_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          artifact_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          asset_a_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          asset_b_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          provider_config_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          provider_config_version="$(uuidgen | tr 'a-z' 'A-Z')"
 
           document_dir="$data/storage/documents/$document_id"
           run_dir="$data/storage/parse-runs/$run_id"
