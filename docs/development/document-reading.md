@@ -1,7 +1,7 @@
 # Document Reading
 
 - Status: Implementation note
-- Last updated: 2026-08-07
+- Last updated: 2026-10-20
 
 ## Authorization
 
@@ -25,6 +25,20 @@ Document reads require one of:
 List limits range from 1 to 200 and default to 50. `nextCursor` is opaque: callers pass it back unchanged and do not parse, construct, or persist it as a durable bookmark. It is `null` when no later page exists.
 
 Pagination uses `(createdAt, id)` keysets backed by a composite index instead of offsets. New uploads do not duplicate already-read items during traversal. Pagination is not a database snapshot; callers see newer documents when they restart from the first page.
+
+### Workspace list navigation
+
+The workspace document list walks this endpoint one page of 100 at a time. “下一页” sends the
+`nextCursor` the previous response returned; “上一页” replays the cursors the browser already used
+for the pages it visited, and the first page is always requested without a cursor. The page number
+shown is how far the user has walked, never a total, because cursor traversal cannot produce one.
+
+Filters (`fileName`, `parseStatus`) are sent with every page request. A filter change, a manual
+refresh, and a successful upload all restart from the first page. A background refresh reloads the
+page currently on screen without changing that navigation history. A delayed list response that no
+longer matches the current page or filter is discarded, and a failed page request keeps the rows,
+page, and history as they were so it can be pressed again. The workspace never parses or constructs
+a cursor itself and keeps none beyond the pages visited in the current list view.
 
 Public summaries expose the StructaDoc ID, sanitized original filename, detected media type and extension, size, SHA-256, ownership/display facts allowed by the DTO, and timestamps. They never expose `storageRef`, internal metadata, or database keys. Resources in `deletion-pending` are unavailable.
 

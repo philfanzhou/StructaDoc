@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { get, mutate, upload, type DocumentItem, type ParseArtifact, type ParseAsset, type ParseBlock, type ParseBlockList, type ParseExecutionStatus, type ParsePage, type ParseRun } from '../api'
+import { get, mutate, upload, type DocumentItem, type DocumentList, type ParseArtifact, type ParseAsset, type ParseBlock, type ParseBlockList, type ParseExecutionStatus, type ParsePage, type ParseRun } from '../api'
 import BlocksResultPanel from '../components/results/BlocksResultPanel.vue'
 import DocumentResultPanel from '../components/results/DocumentResultPanel.vue'
 import LayoutResultPanel from '../components/results/LayoutResultPanel.vue'
@@ -55,14 +55,83 @@ const hasUnfinishedWork = computed(() =>
 function prettyBytes(bytes: number) { if (bytes < 1024) return `${bytes} B`; if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / 1048576).toFixed(1)} MB` }
 function prettyDate(value: string) { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 
+// ---------------------------------------------------------------------------------------------
+// Document-list pages
+//
+// The list endpoint pages through documents with an opaque server cursor, and the workspace shows
+// one page of at most `documentPageSize` rows at a time. Page 1 is requested without a cursor;
+// “下一页” sends the cursor the previous response returned, and “上一页” replays the cursors the
+// browser already used, so going back never asks the server for anything the screen has already
+// seen. The page number is how far the user has walked, not a total: cursor traversal is not a
+// snapshot and never says how many pages exist.
+// ---------------------------------------------------------------------------------------------
+const documentPageSize = 100
+const currentPage = ref(1)
+const nextCursor = ref<string>()
+// cursorHistory[i] is the cursor that produced page i+2; its length is always currentPage - 1.
+const cursorHistory = ref<string[]>([])
+const loadingPage = ref(false)
+const hasNextPage = computed(() => nextCursor.value !== undefined)
+
+// Every list request carries the generation it started in. A user action — navigation, a filter
+// change, a refresh, an upload — claims a new generation, so a delayed response from any earlier
+// request is dropped instead of overwriting the page or filter the user is already looking at.
+let listGeneration = 0
+let listUnmounted = false
+
 // `quiet` is what a background refresh passes. A poll that fails while the user is reading a result
-// must not take over the screen with a toast; a refresh the user asked for still reports.
-async function loadDocuments(quiet = false) {
-  const query = new URLSearchParams({ limit: '100' })
+// must not take over the screen with a toast; a refresh the user asked for still reports. A quiet
+// pass also leaves the generation alone and stands aside while a user request is in flight, so
+// polling reloads the page on screen without ever racing or undoing a navigation.
+async function requestDocumentPage(page: number, history: string[], quiet: boolean) {
+  if (listUnmounted) return false
+  if (quiet && loadingPage.value) return false
+  const generation = quiet ? listGeneration : ++listGeneration
+  const cursor = page <= 1 ? undefined : history[page - 2]
+  const query = new URLSearchParams({ limit: String(documentPageSize) })
+  if (cursor !== undefined) query.set('cursor', cursor)
   if (fileNameFilter.value.trim()) query.set('fileName', fileNameFilter.value.trim())
   if (statusFilter.value) query.set('parseStatus', statusFilter.value)
-  try { documents.value = (await get<{ items: DocumentItem[] }>(`/api/v1/documents?${query}`)).items }
-  catch (e) { if (!quiet) message((e as Error).message, true) }
+  if (!quiet) loadingPage.value = true
+  try {
+    const result = await get<DocumentList>(`/api/v1/documents?${query}`)
+    // The page, its cursor history, and the list itself are committed together only after a
+    // successful, still-current response; a superseded or post-unmount reply changes nothing.
+    if (listUnmounted || generation !== listGeneration) return false
+    documents.value = result.items
+    nextCursor.value = result.nextCursor ?? undefined
+    currentPage.value = page
+    cursorHistory.value = history
+    return true
+  }
+  catch (e) {
+    // A failed navigation keeps the current rows, page, and history exactly as they are, reports
+    // when the user asked for it, and can simply be pressed again.
+    if (!listUnmounted && generation === listGeneration && !quiet) message((e as Error).message, true)
+    return false
+  }
+  finally {
+    if (generation === listGeneration && !quiet) loadingPage.value = false
+  }
+}
+
+async function goToNextPage() {
+  const cursor = nextCursor.value
+  if (cursor === undefined || loadingPage.value) return
+  await requestDocumentPage(currentPage.value + 1, [...cursorHistory.value, cursor], false)
+}
+
+async function goToPreviousPage() {
+  if (currentPage.value <= 1 || loadingPage.value) return
+  await requestDocumentPage(currentPage.value - 1, cursorHistory.value.slice(0, currentPage.value - 2), false)
+}
+
+// A refresh the user asked for starts over from the first page, so a newly uploaded document is
+// visible immediately instead of hiding above whichever cursor page the screen happened to be on.
+// A background refresh stays on the current page and only refreshes what is on screen.
+async function loadDocuments(quiet = false) {
+  if (quiet) return requestDocumentPage(currentPage.value, cursorHistory.value, true)
+  return requestDocumentPage(1, [], false)
 }
 
 async function onFiles(files: FileList | null) {
@@ -475,7 +544,7 @@ watch(hasUnfinishedWork, unfinished => {
   else stopPolling()
 })
 
-onUnmounted(() => { pollingUnmounted = true; stopPolling() })
+onUnmounted(() => { pollingUnmounted = true; listUnmounted = true; stopPolling() })
 
 async function deleteCurrent() {
   if (!selectedDocument.value || !confirm(`确认删除“${selectedDocument.value.originalFileName}”？后台会删除原始文件、所有解析记录、结构化内容、图片和结果文件，删除后无法恢复。`)) return
@@ -513,6 +582,11 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
       <button v-for="document in documents" :key="document.id" class="document-row" :class="{ selected: selectedDocument?.id === document.id }" @click="openDocument(document)">
         <span class="file-type">{{ document.extension.replace('.', '').slice(0, 4).toUpperCase() }}</span><span class="file-copy"><strong>{{ document.originalFileName }}</strong><small>{{ prettyBytes(document.sizeBytes) }} · {{ prettyDate(document.createdAt) }}</small></span><span class="status" :class="document.latestParseStatus">{{ statusText[document.latestParseStatus || ''] || '未解析' }}</span>
       </button>
+      <nav v-if="currentPage > 1 || hasNextPage" class="document-pagination" aria-label="文档列表分页">
+        <button type="button" :disabled="currentPage <= 1 || loadingPage" @click="goToPreviousPage">上一页</button>
+        <span aria-live="polite">第 {{ currentPage }} 页</span>
+        <button type="button" :disabled="!hasNextPage || loadingPage" @click="goToNextPage">下一页</button>
+      </nav>
       <div v-if="!documents.length" class="empty"><strong>还没有符合条件的文档</strong><span>上传一个文件，开始第一次结构化解析。</span></div>
     </section>
     <section class="panel detail" v-if="selectedDocument">
@@ -585,6 +659,9 @@ onMounted(() => Promise.all([loadDocuments(), loadParseExecution()]))
 
 <style scoped>
 .auto-refresh{display:flex;align-items:center;font-size:11px;color:#57816e}
+.document-pagination{display:flex;align-items:center;justify-content:space-between;gap:9px;font-size:11px;color:var(--muted);margin-top:10px}
+.document-pagination button{border:1px solid var(--line);background:#fff;color:var(--green);font-size:11px;padding:5px 9px;border-radius:3px}
+.document-pagination button:disabled{color:#9aa59f;background:#f2f4f2;cursor:default}
 .run-row{display:flex;align-items:center;border:1px solid var(--line);background:#fff;margin-bottom:7px}
 .run-row.selected{border-color:#4d8268;background:#f0f6f2}
 .run-open{flex:1;min-width:0;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;border:0;background:transparent;padding:12px}
