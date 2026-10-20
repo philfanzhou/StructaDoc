@@ -322,14 +322,34 @@ public sealed partial class MinerUResultNormalizerTests
         (string Path, byte[] Content)[] entries = [("full.md", "legacy"u8.ToArray()), ("content_list.json", ReadPipelineFixture()), .. PipelineFixtureImagePaths(ReadPipelineFixture()).Select(path => (path, JpegBytes()))];
         var firstArchive = await environment.StoreArchiveAsync(id, entries);
         var first = await environment.Normalizer.NormalizeAsync(new(id, ProviderTypes.MinerUCloud, firstArchive), TestContext.Current.CancellationToken);
-        // Separate intake identity permits a second ZIP; the normalizer still uses the same run and derived keys.
-        var mixedArchive = await environment.StoreArchiveAsync(Guid.NewGuid(), [.. entries, ("one/structured_content.json", "invalid"u8.ToArray()), ("two/structured_content.json", "invalid"u8.ToArray())]);
-        var mixed = await environment.Normalizer.NormalizeAsync(new(id, ProviderTypes.MinerUCloud, mixedArchive), TestContext.Current.CancellationToken);
+        // The mixed ZIP stores the same legacy content plus ambiguous structured-content
+        // candidates, so the legacy list still owns normalization. It runs under the same run
+        // id in a fresh storage, because the persisted manifest binds one archive digest to
+        // one identity and a second, different ZIP under the same identity now conflicts.
+        using var mixedEnvironment = new NormalizerTestEnvironment();
+        var mixedArchive = await mixedEnvironment.StoreArchiveAsync(Guid.NewGuid(), [.. entries, ("one/structured_content.json", "invalid"u8.ToArray()), ("two/structured_content.json", "invalid"u8.ToArray())]);
+        var mixed = await mixedEnvironment.Normalizer.NormalizeAsync(new(id, ProviderTypes.MinerUCloud, mixedArchive), TestContext.Current.CancellationToken);
         Assert.Equal(first.Blocks, mixed.Blocks);
         Assert.Equal(first.Pages, mixed.Pages);
         Assert.Equal(first.Assets, mixed.Assets);
         var mixedWithSameArchive = mixed with { Artifacts = mixed.Artifacts.Select(artifact => artifact.Type == ArtifactTypes.ProviderArchive ? first.Artifacts.Single(item => item.Type == ArtifactTypes.ProviderArchive) : artifact).ToArray() };
         Assert.Equal(ParseBundleValidator.ComputeFingerprint(first), ParseBundleValidator.ComputeFingerprint(mixedWithSameArchive));
+
+        // A different archive digest under an identity that already owns a durable manifest
+        // conflicts before any further derived write, and the previously stored Markdown keeps
+        // its original content.
+        var conflictArchive = await environment.StoreArchiveAsync(
+            Guid.NewGuid(),
+            [("full.md", "different"u8.ToArray()), ("content_list.json", ReadPipelineFixture()), .. PipelineFixtureImagePaths(ReadPipelineFixture()).Select(path => (path, JpegBytes()))]);
+        var conflict = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+            environment.Normalizer.NormalizeAsync(new(id, ProviderTypes.MinerUCloud, conflictArchive), TestContext.Current.CancellationToken));
+        Assert.Equal("provider-result-derived-storage-conflict", conflict.ErrorCode);
+        Assert.Equal(ProviderFailureCategory.Permanent, conflict.Category);
+        await using var storedMarkdown = await environment.Storage.OpenReadAsync(
+            $"parse-runs/{id:N}/artifacts/markdown.md",
+            TestContext.Current.CancellationToken);
+        using var markdownReader = new StreamReader(storedMarkdown, Encoding.UTF8);
+        Assert.Equal("legacy", await markdownReader.ReadToEndAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]

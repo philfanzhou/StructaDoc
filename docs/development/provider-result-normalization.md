@@ -164,6 +164,8 @@ Derived resources use stable keys:
 
 Equal content reuses a key; different content conflicts without overwrite. Block, Asset, and Artifact UUIDs derive deterministically from Parse Run ID and stable logical origin. A crash after object writes but before bundle commit therefore recreates the same fingerprint on recovery.
 
+Before the first derived write, the normalizer plans every key above from the validated archive and persists an internal deletion manifest at `parse-runs/{identity:N}/provider/derived-manifest.json`, where the identity is the Parse Run or the large-PDF Segment being normalized. The manifest is deterministic and immutable, so replaying the same archive reuses it while a different archive digest under the same identity conflicts before any write. It is cleanup metadata only, never a bundle Artifact; see [File Storage](./file-storage.md) for how deletion consumes it.
+
 ## Configuration
 
 | Key | Default | Meaning |

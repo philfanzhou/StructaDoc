@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -654,6 +656,57 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
         Assert.Equal(3, result.Segments.Count);
         Assert.All(result.Segments, segment => Assert.Equal("normalized", segment.Status));
         Assert.NotNull(result.MergedBundle);
+    }
+
+    [Fact]
+    public async Task Large_pdf_segment_normalization_leaves_durable_segment_derived_manifests()
+    {
+        var provider = new TestParseProvider(failSubmission: false, maxPages: 2);
+
+        var result = await ExecuteAsync(
+            provider,
+            largePdfPageCount: 5,
+            afterExecution: async (services, parseRunId) =>
+            {
+                await using var scope = services.CreateAsyncScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+                var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
+                var segmentIds = await dbContext.ParseSegments
+                    .AsNoTracking()
+                    .Where(segment => segment.ParseRunId == parseRunId)
+                    .OrderBy(segment => segment.Index)
+                    .Select(segment => segment.Id)
+                    .ToListAsync();
+                Assert.Equal(3, segmentIds.Count);
+                foreach (var segmentId in segmentIds)
+                {
+                    await using var stream = await storage.OpenReadAsync(
+                        $"parse-runs/{segmentId:N}/provider/derived-manifest.json",
+                        TestContext.Current.CancellationToken);
+                    using var reader = new StreamReader(stream, Encoding.UTF8);
+                    using var manifest = JsonDocument.Parse(
+                        await reader.ReadToEndAsync(TestContext.Current.CancellationToken));
+                    var root = manifest.RootElement;
+                    Assert.Equal(segmentId.ToString("N"), root.GetProperty("identity").GetString());
+                    Assert.Equal(
+                        [$"parse-runs/{segmentId:N}/artifacts/markdown.md"],
+                        root.GetProperty("outputs").EnumerateArray()
+                            .Select(item => item.GetString())
+                            .ToArray());
+                }
+
+                // The merged parent Markdown keeps its deterministic key outside the segments.
+                await using var merged = await storage.OpenReadAsync(
+                    $"parse-runs/{parseRunId:N}/artifacts/document.md",
+                    TestContext.Current.CancellationToken);
+                using var mergedReader = new StreamReader(merged, Encoding.UTF8);
+                Assert.Contains(
+                    "# Executor result",
+                    await mergedReader.ReadToEndAsync(TestContext.Current.CancellationToken));
+            });
+
+        Assert.Equal(3, result.Segments.Count);
+        Assert.All(result.Segments, segment => Assert.Equal("normalized", segment.Status));
     }
 
     [Fact]

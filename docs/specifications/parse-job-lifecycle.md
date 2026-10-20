@@ -8,7 +8,7 @@
 
 This specification defines persistent Parse Run statuses, diagnostic stages, atomic claims, leases, retries, cancellation, and crash recovery.
 
-The implementation covers creation and idempotent replay, immutable Provider snapshots, status reads, atomic claim/renewal, recovery of expired unstarted claims, `claimed → running`, retry/failure transitions, due-retry requeueing, execution snapshots restricted by a live lease, conditional stage and external-ID persistence, encrypted Cloud submission checkpoints, adoption of running external jobs, serialized heartbeat sessions, capability-driven LibreOffice fallback, bounded Provider result intake, deterministic MinerU normalization, two-phase bundle verification with heartbeats alive and a guarded fresh-time publish decision, idempotent canonical success transactions, large-PDF segment recovery, local cancellation, and durable cleanup jobs.
+The implementation covers creation and idempotent replay, immutable Provider snapshots, status reads, atomic claim/renewal, recovery of expired unstarted claims, `claimed → running`, retry/failure transitions, due-retry requeueing, execution snapshots restricted by a live lease, conditional stage and external-ID persistence, encrypted Cloud submission checkpoints, adoption of running external jobs, serialized heartbeat sessions, capability-driven LibreOffice fallback, bounded Provider result intake, deterministic MinerU normalization with durable derived-output manifests, two-phase bundle verification with heartbeats alive and a guarded fresh-time publish decision, idempotent canonical success transactions, large-PDF segment recovery, local cancellation, and durable cleanup jobs.
 
 Real execution follows a configured Provider with no further switch. Upstream cancellation propagation and richer attempt-history records remain incomplete.
 
@@ -157,14 +157,17 @@ For a two-step protocol, persist the external allocation plus encrypted continua
 
 Success occurs in this order:
 
-1. retain Raw Artifacts and Assets and compute size/hash;
-2. build a canonical Parse Bundle;
-3. validate it against the Canonical Document Model;
-4. verify every referenced object and write Pages, Blocks, Assets, and Artifact metadata idempotently;
-5. in one final database transaction, write the complete result and change the Parse Run to `succeeded` with `completedAt`;
-6. publish any future completion notification only after commit.
+1. plan every deterministic derived key from the validated archive and persist the internal derived-output manifest at a deterministic key under the normalization identity, before any derived write;
+2. retain Raw Artifacts and Assets and compute size/hash;
+3. build a canonical Parse Bundle;
+4. validate it against the Canonical Document Model;
+5. verify every referenced object and write Pages, Blocks, Assets, and Artifact metadata idempotently;
+6. in one final database transaction, write the complete result and change the Parse Run to `succeeded` with `completedAt`;
+7. publish any future completion notification only after commit.
 
 A run cannot be `succeeded` while canonical data is incomplete. If object storage succeeds and database commit fails, retry reuses the same logical keys; later orphan reconciliation handles objects that never obtained a database reference.
+
+The derived-output manifest of step 1 is what makes those uncommitted outputs discoverable. One normalization identity — the Parse Run ID for an ordinary run, the segment ID for each large-PDF Segment — owns one manifest listing every planned artifact and asset key together with a schema version, the identity, and the source archive digest. The manifest is deterministic, immutable, and internal cleanup metadata rather than a public Artifact or Provider payload. Its write precedes the first derived write, and a failed or conflicting manifest write prevents all derived writes, so every output written by the current normalizer is covered from the moment it exists, including after a validation failure, a partial write, cancellation, or a lost lease. Retrying the same archive reuses the same manifest and objects; a different archive digest under the same identity conflicts before further writes. Segmented runs keep two additional deterministic keys outside committed rows by construction — each segment's own Markdown object and the merged parent Markdown written before the final commit — and both are inventoried for deletion independently of any manifest. Historical objects created before this manifest protocol, like segment objects created before their intent protocol, remain outside automatic discovery and are an operator reconciliation responsibility; a missing legacy manifest does not prove that no historical orphan exists. Rolling back to an older binary that ignores manifests loses cleanup coverage for outputs planned under newer ones.
 
 The fenced transition to `persisting` accepts exactly two result shapes. An ordinary run must have
 a Run-level external task ID. A segmented run must have no Run-level external task ID, must still be
@@ -264,6 +267,7 @@ The complete upstream cancellation path remains an implementation gap in Structa
 - Any final Parse Run can be deleted individually, whatever its final status and even as its Document's last one. Its Document survives with its original file and returns to being unparsed.
 - Execution never continues with a revoked storage reference.
 - Deletion marks resources pending and snapshots all objects into a persistent Cleanup Job.
+- The deletion inventory combines committed rows with the deterministic archive keys, the derived-output manifests of each run and segment (their keys and the keys they list), and the segment and merged Markdown keys of segmented runs. Stored manifest JSON is untrusted: version, identity, count, and per-identity output prefixes are validated, so a manifest can never redirect deletion at another run's objects. A malformed, oversized, or identity-mismatched manifest, or a storage outage that makes it unreadable, fails the deletion request before any lifecycle mutation — a genuinely missing manifest is the legacy fallback to committed rows and the known deterministic keys, and a missing object stays distinguishable from an access failure.
 - Cleanup retries object deletion and removes relational rows only after objects are gone.
 - Audit facts must survive according to the audit retention policy rather than disappearing accidentally with business rows.
 
