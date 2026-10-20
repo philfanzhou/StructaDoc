@@ -15,7 +15,7 @@
 }
 ```
 
-Access and secret keys may be omitted to use the AWS SDK default credential chain. Explicit credentials must be supplied together through deployment secrets. Readiness verifies bucket access. Public responses never expose object keys.
+Access and secret keys may be omitted to use the AWS SDK default credential chain. Explicit credentials must be supplied together through deployment secrets. Readiness does not verify bucket access; administrators can test a candidate configuration with the storage test described in [File Storage](./file-storage.md#configuration). Public responses never expose object keys.
 
 ## Large PDFs
 

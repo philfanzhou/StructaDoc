@@ -83,7 +83,7 @@ Every `Storage` key is also settable from `/admin` and follows the precedence in
 
 Explicit S3 access and secret keys must be provided together. Providing them through deployment secrets remains supported and takes precedence; a key pinned that way is reported as managed externally and cannot be written from the browser. When both are omitted, the AWS SDK default credential chain applies.
 
-Readiness probes local staging write/delete or S3 bucket accessibility as appropriate. `POST /api/v1/admin/settings/storage/test` probes a candidate configuration before it is saved by writing and removing one small object under the configured prefix. It writes rather than lists because a bucket that lists but refuses writes accepts every upload attempt and fails each one, and a local path that exists inside a read-only container looks fine until the first document arrives.
+Readiness does not verify storage access. It covers the two databases only and can stay healthy while storage is unreachable; see [Health Endpoints](../deployment/single-container.md#health-endpoints). `POST /api/v1/admin/settings/storage/test` probes a candidate configuration before it is saved by writing and removing one small object under the configured prefix. It writes rather than lists because a bucket that lists but refuses writes accepts every upload attempt and fails each one, and a local path that exists inside a read-only container looks fine until the first document arrives.
 
 Changing storage does not move anything. Objects already written stay where they are, and their `storageRef` values still point into the location they were written to, so a change is a migration to plan rather than a switch to flip.
 
