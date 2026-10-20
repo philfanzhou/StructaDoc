@@ -1,9 +1,15 @@
+using System.Text;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Adapters.Storage;
+using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Settings;
+using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Host.Workers;
 
@@ -157,6 +163,121 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
     }
 
     [Fact]
+    public async Task Verification_outlasting_the_lease_completes_through_heartbeat_renewals()
+    {
+        using var application = CreateGatedStorageHost(out var gatedStorage);
+        using var client = application.CreateClient();
+        var initialLease = await AddRunningParseRunAsync(application.Services, leaseDuration: TimeSpan.FromSeconds(1));
+        var bundle = await CreateStoredBundleAsync(gatedStorage, initialLease.ParseRunId);
+        var heartbeat = application.Services.GetRequiredService<ParseRunLeaseHeartbeat>();
+
+        await using var session = heartbeat.StartSession(
+            initialLease,
+            TestContext.Current.CancellationToken);
+        var baselineVersion = session.CurrentLease.ConcurrencyVersion;
+        var commitTask = session.TryCommitBundleAsync(bundle, TestContext.Current.CancellationToken);
+
+        // Storage verification is now reading result objects and cannot finish until released.
+        await gatedStorage.Opened.WaitAsync(
+                TimeSpan.FromSeconds(10),
+                TestContext.Current.CancellationToken);
+
+        // With a 100 ms heartbeat and a 1 s lease, twelve renewals mean verification stayed in
+        // progress for longer than one whole lease duration — impossible when verification held
+        // the mutation gate, because renewal needs the same gate.
+        var deadlineUtc = DateTime.UtcNow.AddSeconds(15);
+        while (session.CurrentLease.ConcurrencyVersion < baselineVersion + 12
+               && DateTime.UtcNow < deadlineUtc)
+        {
+            await Task.Delay(25, TestContext.Current.CancellationToken);
+        }
+
+        Assert.False(session.IsLeaseLost);
+        Assert.True(
+            session.CurrentLease.ConcurrencyVersion >= baselineVersion + 12,
+            "The heartbeat did not keep renewing the lease while storage verification was blocked.");
+        gatedStorage.Release();
+        var commit = await commitTask;
+
+        Assert.NotNull(commit);
+        Assert.Equal(ParseBundleCommitStatus.Committed, commit.Status);
+        Assert.True(gatedStorage.LastStreamDisposed, "The verified storage stream was not disposed.");
+
+        await using var scope = application.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+        var persistedRun = await dbContext.ParseRuns
+            .AsNoTracking()
+            .SingleAsync(
+                parseRun => parseRun.Id == initialLease.ParseRunId,
+                cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(ParseRunStatuses.Succeeded, persistedRun.Status);
+        Assert.Null(persistedRun.ClaimedBy);
+        Assert.Null(persistedRun.LeaseExpiresAtUtc);
+        Assert.Equal(ParseBundleValidator.ComputeFingerprint(bundle), persistedRun.ResultSha256);
+        Assert.Single(await dbContext.ParseArtifacts
+            .Where(artifact => artifact.ParseRunId == initialLease.ParseRunId)
+            .ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Status_change_during_verification_prevents_publication()
+    {
+        using var application = CreateGatedStorageHost(out var gatedStorage);
+        using var client = application.CreateClient();
+        var initialLease = await AddRunningParseRunAsync(application.Services, leaseDuration: TimeSpan.FromSeconds(30));
+        var bundle = await CreateStoredBundleAsync(gatedStorage, initialLease.ParseRunId);
+        var heartbeat = application.Services.GetRequiredService<ParseRunLeaseHeartbeat>();
+
+        await using var session = heartbeat.StartSession(
+            initialLease,
+            TestContext.Current.CancellationToken);
+        var commitTask = session.TryCommitBundleAsync(bundle, TestContext.Current.CancellationToken);
+        await gatedStorage.Opened.WaitAsync(
+                TimeSpan.FromSeconds(10),
+                TestContext.Current.CancellationToken);
+
+        // A cancellation request stops lease renewal, so the session observes a lost lease and
+        // cancels the in-flight verification instead of publishing from a dead claim.
+        await using (var scope = application.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+            await dbContext.ParseRuns
+                .Where(parseRun => parseRun.Id == initialLease.ParseRunId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(parseRun => parseRun.Status, ParseRunStatuses.CancelRequested)
+                    .SetProperty(
+                        parseRun => parseRun.ConcurrencyVersion,
+                        parseRun => parseRun.ConcurrencyVersion + 1),
+                cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => commitTask);
+        Assert.True(session.IsLeaseLost);
+
+        await using (var scope = application.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+            var persistedRun = await dbContext.ParseRuns
+                .AsNoTracking()
+                .SingleAsync(
+                    parseRun => parseRun.Id == initialLease.ParseRunId,
+                    cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(ParseRunStatuses.CancelRequested, persistedRun.Status);
+            Assert.Null(persistedRun.ResultSha256);
+            Assert.Null(persistedRun.CompletedAtUtc);
+            Assert.Empty(await dbContext.ParsePages
+                .Where(page => page.ParseRunId == initialLease.ParseRunId)
+                .ToListAsync(TestContext.Current.CancellationToken));
+            Assert.Empty(await dbContext.ParseBlocks
+                .Where(block => block.ParseRunId == initialLease.ParseRunId)
+                .ToListAsync(TestContext.Current.CancellationToken));
+            Assert.Empty(await dbContext.ParseArtifacts
+                .Where(artifact => artifact.ParseRunId == initialLease.ParseRunId)
+                .ToListAsync(TestContext.Current.CancellationToken));
+        }
+    }
+
+    [Fact]
     public void Worker_options_require_heartbeat_to_be_shorter_than_the_lease()
     {
         var options = new ParseRunWorkerOptions
@@ -185,14 +306,74 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
                 StringComparison.OrdinalIgnoreCase));
     }
 
-    private async Task<ParseRunLease> AddRunningParseRunAsync()
+    private Task<ParseRunLease> AddRunningParseRunAsync() =>
+        AddRunningParseRunAsync(factory.Services, TimeSpan.FromSeconds(30));
+
+    /// <summary>
+    /// Builds a host whose result-object reads block until released, with a lease short enough
+    /// that a blocked verification would lose the claim without heartbeat renewals.
+    /// </summary>
+    private WebApplicationFactory<Program> CreateGatedStorageHost(out GatedFileStorage gatedStorage)
+    {
+        var application = factory.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Worker:LeaseDuration", "00:00:01");
+            builder.UseSetting("Worker:HeartbeatInterval", "00:00:00.100");
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IFileStorage>();
+                services.AddSingleton<IFileStorage>(serviceProvider => new GatedFileStorage(
+                    new LocalFileStorage(serviceProvider.GetRequiredService<FileStorageOptions>())));
+            });
+        });
+
+        // Accessing Services builds the host, which materializes the singleton storage wrapper.
+        gatedStorage = Assert.IsType<GatedFileStorage>(
+            application.Services.GetRequiredService<IFileStorage>());
+        return application;
+    }
+
+    private static async Task<ParseBundle> CreateStoredBundleAsync(
+        IFileStorage storage,
+        Guid parseRunId)
+    {
+        StoredFile markdown;
+        await using (var content = new MemoryStream(
+            Encoding.UTF8.GetBytes("# Heartbeat verification bundle")))
+        {
+            markdown = await storage.WriteAsync(
+                $"results/{parseRunId:N}/full.md",
+                content,
+                1024 * 1024);
+        }
+
+        return new ParseBundle(
+            ParseBundleValidator.CurrentSchemaVersion,
+            parseRunId,
+            [new ParsePage(1, 1000, 1400, "pixel")],
+            [new ParseBlock(Guid.NewGuid(), 0, 1, "text", Content: "Heartbeat verification bundle")],
+            [],
+            [new ParseArtifact(
+                Guid.NewGuid(),
+                ArtifactTypes.Markdown,
+                "full.md",
+                "text/markdown",
+                markdown.SizeBytes,
+                markdown.Sha256,
+                markdown.StorageRef)],
+            "{\"providerType\":\"test-provider\"}");
+    }
+
+    private static async Task<ParseRunLease> AddRunningParseRunAsync(
+        IServiceProvider services,
+        TimeSpan leaseDuration)
     {
         var nowUtc = DateTime.UtcNow;
         var parseRunId = Guid.NewGuid();
         var workerId = $"heartbeat-worker-{parseRunId:N}";
-        var leaseExpiresAtUtc = nowUtc.AddSeconds(30);
+        var leaseExpiresAtUtc = nowUtc.Add(leaseDuration);
 
-        await using var scope = factory.Services.CreateAsyncScope();
+        await using var scope = services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
         var document = new DocumentEntity
         {
@@ -230,5 +411,95 @@ public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory 
         await dbContext.SaveChangesAsync();
 
         return new ParseRunLease(parseRunId, workerId, 1, leaseExpiresAtUtc);
+    }
+
+    /// <summary>
+    /// Storage wrapper that parks result-object reads until the test releases them, so a
+    /// verification in progress can be observed and steered without timing-sensitive sleeps.
+    /// </summary>
+    private sealed class GatedFileStorage(IFileStorage inner) : IFileStorage
+    {
+        private readonly TaskCompletionSource opened = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource release = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private int lastStreamDisposed;
+
+        public Task Opened => opened.Task;
+
+        public bool LastStreamDisposed => Volatile.Read(ref lastStreamDisposed) != 0;
+
+        public void Release() => release.TrySetResult();
+
+        public Task<StoredFile> WriteAsync(
+            string storageRef,
+            Stream content,
+            long maxBytes,
+            CancellationToken cancellationToken = default) =>
+            inner.WriteAsync(storageRef, content, maxBytes, cancellationToken);
+
+        public async Task<Stream> OpenReadAsync(
+            string storageRef,
+            CancellationToken cancellationToken = default)
+        {
+            opened.TrySetResult();
+            await release.Task.WaitAsync(cancellationToken);
+            var stream = await inner.OpenReadAsync(storageRef, cancellationToken);
+            return new TrackingStream(stream, () => Volatile.Write(ref lastStreamDisposed, 1));
+        }
+
+        public Task DeleteIfExistsAsync(
+            string storageRef,
+            CancellationToken cancellationToken = default) =>
+            inner.DeleteIfExistsAsync(storageRef, cancellationToken);
+
+        private sealed class TrackingStream(Stream inner, Action onDisposed) : Stream
+        {
+            public override bool CanRead => inner.CanRead;
+            public override bool CanSeek => inner.CanSeek;
+            public override bool CanWrite => inner.CanWrite;
+            public override long Length => inner.Length;
+            public override long Position
+            {
+                get => inner.Position;
+                set => inner.Position = value;
+            }
+
+            public override void Flush() => inner.Flush();
+
+            public override int Read(byte[] buffer, int offset, int count) =>
+                inner.Read(buffer, offset, count);
+
+            public override Task<int> ReadAsync(
+                byte[] buffer,
+                int offset,
+                int count,
+                CancellationToken cancellationToken) =>
+                inner.ReadAsync(buffer, offset, count, cancellationToken);
+
+            public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
+
+            public override void SetLength(long value) => inner.SetLength(value);
+
+            public override void Write(byte[] buffer, int offset, int count) =>
+                inner.Write(buffer, offset, count);
+
+            public override async ValueTask DisposeAsync()
+            {
+                await inner.DisposeAsync();
+                onDisposed();
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    inner.Dispose();
+                    onDisposed();
+                }
+
+                base.Dispose(disposing);
+            }
+        }
     }
 }

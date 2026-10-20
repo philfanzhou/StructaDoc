@@ -2,13 +2,13 @@
 
 - Status: Target specification with implemented core lifecycle
 - Version: 1.0-draft
-- Last updated: 2026-08-31
+- Last updated: 2026-10-20
 
 ## 1. Purpose
 
 This specification defines persistent Parse Run statuses, diagnostic stages, atomic claims, leases, retries, cancellation, and crash recovery.
 
-The implementation covers creation and idempotent replay, immutable Provider snapshots, status reads, atomic claim/renewal, recovery of expired unstarted claims, `claimed → running`, retry/failure transitions, due-retry requeueing, execution snapshots restricted by a live lease, conditional stage and external-ID persistence, encrypted Cloud submission checkpoints, adoption of running external jobs, serialized heartbeat sessions, capability-driven LibreOffice fallback, bounded Provider result intake, deterministic MinerU normalization, idempotent canonical success transactions, large-PDF segment recovery, local cancellation, and durable cleanup jobs.
+The implementation covers creation and idempotent replay, immutable Provider snapshots, status reads, atomic claim/renewal, recovery of expired unstarted claims, `claimed → running`, retry/failure transitions, due-retry requeueing, execution snapshots restricted by a live lease, conditional stage and external-ID persistence, encrypted Cloud submission checkpoints, adoption of running external jobs, serialized heartbeat sessions, capability-driven LibreOffice fallback, bounded Provider result intake, deterministic MinerU normalization, two-phase bundle verification with heartbeats alive and a guarded fresh-time publish decision, idempotent canonical success transactions, large-PDF segment recovery, local cancellation, and durable cleanup jobs.
 
 Real execution follows a configured Provider with no further switch. Upstream cancellation propagation and richer attempt-history records remain incomplete.
 
@@ -171,7 +171,25 @@ a Run-level external task ID. A segmented run must have no Run-level external ta
 at `segmenting`, and must have a non-empty persisted Segment set whose every status is `normalized`.
 Both shapes also require the parent to be `running`, the Worker and lease owner to match, the lease
 to remain unexpired, and the concurrency version to match. A successful transition advances that
-version before the existing fenced bundle-commit transaction runs.
+version before the fenced bundle publication runs.
+
+Result publication is two-phase, and both ordinary and segmented runs use the same path. In the
+first phase, verification validates the bundle, then reads and hashes every referenced storage
+object while holding no lease gate and no database transaction, so lease-heartbeat renewal keeps
+the claim alive during storage I/O and a verification may legitimately outlast one lease duration.
+Verification freezes the bundle into an immutable snapshot bound to its fingerprint and its
+verified object metadata; only that snapshot-bound receipt may enter the second phase, and a
+snapshot changed after verification no longer matches its receipt, so it cannot be published. In
+the second phase, the guarded publish acquires the Worker's mutation gate, renews the lease with
+the session's latest token, and opens one short database transaction that revalidates `running`
+status, Worker ownership, concurrency version, and lease expiry against time read at the guarded
+mutation itself — and read again on every execution-strategy retry — before writing any row. A
+claim that is lost, expired, or superseded at that final decision produces no publication: the
+attempt ends with a lost lease and creates no canonical rows. An identical fingerprint against an
+already `succeeded` run replays as committed without new rows; a different fingerprint conflicts.
+Cancellation, takeover, or a status change during verification stops the publication before the
+guarded phase. A Worker is not guaranteed to finish under arbitrarily unavailable storage or
+database services; the guarantee is that a stale claim never publishes.
 
 Large PDFs use deterministic segment identities and stored per-segment stages/checkpoints. Before writing each Segment object, the Worker computes its expected size and SHA-256 and durably records a `creating` intent with the deterministic storage reference. A successful conditional write advances that intent to `created`. Recovery re-derives the page ranges, rebuilds missing objects, reuses content matching the intent, and permanently rejects conflicting content without overwriting it. Historical objects created before this intent protocol and lacking a relational row remain outside automatic recovery and cleanup.
 
