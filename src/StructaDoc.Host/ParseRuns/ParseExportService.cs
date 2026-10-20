@@ -9,9 +9,7 @@ using StructaDoc.Application.ParseRuns;
 
 namespace StructaDoc.Host.ParseRuns;
 
-public sealed class ParseExportService(
-    IParseResultReadService results,
-    IDocumentReadService documents) : IParseExportService
+public sealed class ParseExportService : IParseExportService
 {
     // Increment this whenever HTML rendering, link rewriting, or asset inlining changes. Existing
     // entity tags must stop validating when the same inputs would render different bytes.
@@ -24,6 +22,29 @@ public sealed class ParseExportService(
     private const long MaximumInlinedAssetBytes = 32L * 1024 * 1024;
 
     private const long MaximumInlinedAssetItemBytes = 8L * 1024 * 1024;
+
+    private readonly IParseResultReadService results;
+    private readonly IDocumentReadService documents;
+
+    // The ZIP export stages its archive on the configured writable data path rather than the
+    // system temporary directory: a supported container bounds /tmp below the size one permitted
+    // result can reach, while the data path is the volume the deployment sized for results. The
+    // directory is created here by the running service, so under the container's non-root UID it
+    // is owned by that UID, and a path the process cannot use fails the first export that needs it.
+    private readonly string temporaryPath;
+
+    public ParseExportService(
+        IParseResultReadService results,
+        IDocumentReadService documents,
+        ParseExportOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+        this.results = results;
+        this.documents = documents;
+        temporaryPath = Path.GetFullPath(options.TemporaryPath);
+        Directory.CreateDirectory(temporaryPath);
+    }
 
     public async Task<string?> GetHtmlEntityTagAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
     {
@@ -120,7 +141,7 @@ public sealed class ParseExportService(
                 ? ExportAssetLinkRewriter.EncodeUriPath($"assets/{name}")
                 : null);
 
-        var path = Path.Combine(Path.GetTempPath(), $"structadoc-export-{Guid.NewGuid():N}.zip");
+        var path = Path.Combine(temporaryPath, $"structadoc-export-{Guid.NewGuid():N}.zip");
         try
         {
             await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 64 * 1024, FileOptions.Asynchronous))
@@ -136,10 +157,23 @@ public sealed class ParseExportService(
                     await using (content.Content) await AddEntryAsync(archive, $"assets/{name}", content.Content, cancellationToken);
                 }
             }
+
+            // DeleteOnClose hands the staged file's removal to response disposal, so a fully
+            // returned export cleans up after itself even when the caller never reads the body.
+            // Until then the handle is the service's only claim on the file, and ownership of it
+            // transfers with the returned content — never before the complete result exists.
             var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
-            var hash = await SHA256.HashDataAsync(stream, cancellationToken);
-            stream.Position = 0;
-            return new ParseResultContent(stream, $"{parseRunId:D}.zip", "application/zip", stream.Length, Convert.ToHexString(hash).ToLowerInvariant());
+            try
+            {
+                var hash = await SHA256.HashDataAsync(stream, cancellationToken);
+                stream.Position = 0;
+                return new ParseResultContent(stream, $"{parseRunId:D}.zip", "application/zip", stream.Length, Convert.ToHexString(hash).ToLowerInvariant());
+            }
+            catch
+            {
+                await stream.DisposeAsync();
+                throw;
+            }
         }
         catch { if (File.Exists(path)) File.Delete(path); throw; }
     }

@@ -24,6 +24,8 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
 
     public string StorageRootPath => Path.Combine(testDirectory, "storage");
 
+    public string ExportStagingPath => Path.Combine(testDirectory, "export-staging");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         Directory.CreateDirectory(testDirectory);
@@ -58,6 +60,9 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
         builder.UseSetting(
             "Storage:RootPath",
             StorageRootPath);
+        // ZIP exports stage on the configured path, so the shared host pins it inside this
+        // factory's own directory: the checkout's ./data tree must not receive test archives.
+        builder.UseSetting("ParseExports:TemporaryPath", ExportStagingPath);
         builder.UseSetting("Database:Provider", "Sqlite");
         builder.UseSetting(
             "Database:ConnectionString",
