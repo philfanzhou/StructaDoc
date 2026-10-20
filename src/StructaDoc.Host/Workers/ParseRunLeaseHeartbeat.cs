@@ -318,6 +318,30 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         using var operationSource = CancellationTokenSource.CreateLinkedTokenSource(
             executionSource.Token,
             cancellationToken);
+
+        // Storage verification reads and hashes every result object and can outlast one lease
+        // duration, so it deliberately runs outside the mutation gate: heartbeat renewal keeps
+        // the claim alive meanwhile, and no database transaction is open across storage I/O. A
+        // lease lost during verification cancels this token and stops the publication here.
+        VerifiedParseBundle verifiedBundle;
+        {
+            await using var scope = serviceScopeFactory.CreateAsyncScope();
+            var verification = await scope.ServiceProvider
+                .GetRequiredService<IParseBundleCommitStore>()
+                .VerifyBundleAsync(bundle, operationSource.Token);
+            if (verification.Status != ParseBundleVerificationStatus.Verified)
+            {
+                if (verification.Status == ParseBundleVerificationStatus.AlreadyCommitted)
+                {
+                    stopSource.Cancel();
+                }
+
+                return ToCommitResult(verification);
+            }
+
+            verifiedBundle = verification.VerifiedBundle!;
+        }
+
         await mutationGate.WaitAsync(operationSource.Token);
 
         try
@@ -327,6 +351,9 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
                 return null;
             }
 
+            // The guarded publish decision uses the session's latest lease and renews it once
+            // more under the gate, so only a currently held claim may write the result. The
+            // commit store then rechecks status, ownership, and expiry with fresh time.
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
             var renewedLease = await scope.ServiceProvider
@@ -347,8 +374,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
                 .GetRequiredService<IParseBundleCommitStore>()
                 .TryCommitAsync(
                     renewedLease,
-                    bundle,
-                    timeProvider.GetUtcNow().UtcDateTime,
+                    verifiedBundle,
                     operationSource.Token);
             if (result.Status == ParseBundleCommitStatus.LeaseLost)
             {
@@ -367,6 +393,25 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             mutationGate.Release();
         }
     }
+
+    private static ParseBundleCommitResult ToCommitResult(
+        ParseBundleVerificationResult verification) =>
+        verification.Status switch
+        {
+            ParseBundleVerificationStatus.AlreadyCommitted => new(ParseBundleCommitStatus.AlreadyCommitted),
+            ParseBundleVerificationStatus.Conflict => new(
+                ParseBundleCommitStatus.Conflict,
+                verification.ErrorCode,
+                verification.ErrorMessage),
+            ParseBundleVerificationStatus.StorageMismatch => new(
+                ParseBundleCommitStatus.StorageMismatch,
+                verification.ErrorCode,
+                verification.ErrorMessage),
+            _ => new(
+                ParseBundleCommitStatus.InvalidBundle,
+                verification.ErrorCode,
+                verification.ErrorMessage),
+        };
 
     /// <summary>
     /// Completes a cancellation this Worker still owns. A cancellation request breaks lease renewal

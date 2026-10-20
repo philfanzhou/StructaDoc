@@ -6,6 +6,7 @@ using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ParseRuns;
+using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Migrations.Sqlite;
 
@@ -32,15 +33,24 @@ public sealed class ParseBundleCommitStoreTests
         ParseBundleCommitResult committed;
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
+            // The guarded mutation stamps every timestamp from its own clock read, so a fixed
+            // clock keeps the persisted completion time deterministic.
+            var clock = new ManualTimeProvider(nowUtc.AddSeconds(2));
+            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage, clock);
+            var verified = await VerifyAsync(store, bundle, TestContext.Current.CancellationToken);
             committed = await store.TryCommitAsync(
                 lease,
-                bundle,
-                nowUtc.AddSeconds(2),
+                verified,
                 TestContext.Current.CancellationToken);
-        }
 
-        Assert.Equal(ParseBundleCommitStatus.Committed, committed.Status);
+            // The same receipt replayed against the finished run is idempotent.
+            var replay = await store.TryCommitAsync(
+                lease,
+                verified,
+                TestContext.Current.CancellationToken);
+            Assert.Equal(ParseBundleCommitStatus.Committed, committed.Status);
+            Assert.Equal(ParseBundleCommitStatus.AlreadyCommitted, replay.Status);
+        }
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
@@ -92,24 +102,22 @@ public sealed class ParseBundleCommitStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
-            var replay = await store.TryCommitAsync(
-                lease,
-                bundle,
-                nowUtc.AddMinutes(1),
+            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage, TimeProvider.System);
+            // Re-verification of an identical result needs no storage I/O and replays as committed;
+            // a different fingerprint conflicts.
+            var replay = await store.VerifyBundleAsync(
+                equivalentBundle,
                 TestContext.Current.CancellationToken);
             var conflictingBundle = bundle with
             {
                 ProviderMetadataJson = "{\"providerType\":\"mineru-local\",\"model\":\"different\"}",
             };
-            var conflict = await store.TryCommitAsync(
-                lease,
+            var conflict = await store.VerifyBundleAsync(
                 conflictingBundle,
-                nowUtc.AddMinutes(1),
                 TestContext.Current.CancellationToken);
 
-            Assert.Equal(ParseBundleCommitStatus.AlreadyCommitted, replay.Status);
-            Assert.Equal(ParseBundleCommitStatus.Conflict, conflict.Status);
+            Assert.Equal(ParseBundleVerificationStatus.AlreadyCommitted, replay.Status);
+            Assert.Equal(ParseBundleVerificationStatus.Conflict, conflict.Status);
         }
     }
 
@@ -129,14 +137,56 @@ public sealed class ParseBundleCommitStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
+            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage, TimeProvider.System);
+            var result = await store.VerifyBundleAsync(
+                bundle,
+                TestContext.Current.CancellationToken);
+            Assert.Equal(ParseBundleVerificationStatus.StorageMismatch, result.Status);
+            Assert.Equal("storage-content-mismatch", result.ErrorCode);
+        }
+
+        await database.AssertTargetRunHasNoResultAsync(ParseRunStatuses.Running);
+    }
+
+    [Fact]
+    public async Task Lease_expiring_during_verification_rejects_the_commit_with_fresh_time()
+    {
+        await using var database = await BundleTestDatabase.CreateAsync();
+        var startUtc = DateTime.UtcNow;
+        var lease = await database.CreateRunningLeaseAsync(startUtc);
+        var bundle = await database.CreateBundleAsync(lease.ParseRunId);
+
+        // The claim expires 500 ms after the clock start. Gated storage simulates slow object
+        // reads by consuming one second of the controllable clock per object, so the lease is
+        // already expired when verification finishes — without a timing-sensitive sleep.
+        var clock = new ManualTimeProvider(startUtc);
+        var storage = new AdvancingFileStorage(database.Storage, clock, TimeSpan.FromSeconds(1));
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            await dbContext.ParseRuns
+                .Where(parseRun => parseRun.Id == lease.ParseRunId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    parseRun => parseRun.LeaseExpiresAtUtc,
+                    startUtc.AddMilliseconds(500)),
+                    cancellationToken: TestContext.Current.CancellationToken);
+            lease = lease with { LeaseExpiresAtUtc = startUtc.AddMilliseconds(500) };
+        }
+
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var store = new EfCoreParseBundleCommitStore(dbContext, storage, clock);
+            var verification = await store.VerifyBundleAsync(
+                bundle,
+                TestContext.Current.CancellationToken);
+            Assert.Equal(ParseBundleVerificationStatus.Verified, verification.Status);
+
+            // The guarded mutation reads the clock again before deciding expiry, so a lease that
+            // expired during the storage reads must not publish a result.
             var result = await store.TryCommitAsync(
                 lease,
-                bundle,
-                nowUtc.AddSeconds(2),
+                verification.VerifiedBundle!,
                 TestContext.Current.CancellationToken);
-            Assert.Equal(ParseBundleCommitStatus.StorageMismatch, result.Status);
-            Assert.Equal("storage-content-mismatch", result.ErrorCode);
+            Assert.Equal(ParseBundleCommitStatus.LeaseLost, result.Status);
         }
 
         await database.AssertTargetRunHasNoResultAsync(ParseRunStatuses.Running);
@@ -149,6 +199,13 @@ public sealed class ParseBundleCommitStoreTests
         var nowUtc = DateTime.UtcNow;
         var lease = await database.CreateRunningLeaseAsync(nowUtc);
         var bundle = await database.CreateBundleAsync(lease.ParseRunId);
+
+        VerifiedParseBundle verified;
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage, TimeProvider.System);
+            verified = await VerifyAsync(store, bundle, TestContext.Current.CancellationToken);
+        }
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
@@ -164,16 +221,95 @@ public sealed class ParseBundleCommitStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
+            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage, TimeProvider.System);
             var result = await store.TryCommitAsync(
                 lease,
-                bundle,
-                nowUtc.AddSeconds(2),
+                verified,
                 TestContext.Current.CancellationToken);
             Assert.Equal(ParseBundleCommitStatus.LeaseLost, result.Status);
         }
 
         await database.AssertTargetRunHasNoResultAsync(ParseRunStatuses.CancelRequested);
+    }
+
+    [Fact]
+    public async Task A_verification_receipt_cannot_publish_changed_data()
+    {
+        await using var database = await BundleTestDatabase.CreateAsync();
+        var nowUtc = DateTime.UtcNow;
+        var lease = await database.CreateRunningLeaseAsync(nowUtc);
+        var bundle = await database.CreateBundleAsync(lease.ParseRunId);
+
+        VerifiedParseBundle verified;
+        ParseBundleCommitResult changedData;
+        ParseBundleCommitResult mutatedSnapshot;
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage, TimeProvider.System);
+            verified = await VerifyAsync(store, bundle, TestContext.Current.CancellationToken);
+
+            // A receipt assembled around different bundle data does not match its own claims.
+            changedData = await store.TryCommitAsync(
+                lease,
+                verified with
+                {
+                    Bundle = bundle with
+                    {
+                        ProviderMetadataJson = "{\"providerType\":\"mineru-local\",\"model\":\"changed\"}",
+                    },
+                },
+                TestContext.Current.CancellationToken);
+
+            // Mutating the frozen snapshot after verification breaks the fingerprint binding.
+            var blocks = (ParseBlock[])verified.Bundle.Blocks;
+            blocks[0] = blocks[0] with { Content = "changed" };
+            mutatedSnapshot = await store.TryCommitAsync(
+                lease,
+                verified,
+                TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(ParseBundleCommitStatus.InvalidBundle, changedData.Status);
+        Assert.Equal("verification-receipt-mismatch", changedData.ErrorCode);
+        Assert.Equal(ParseBundleCommitStatus.InvalidBundle, mutatedSnapshot.Status);
+        Assert.Equal("verification-receipt-mismatch", mutatedSnapshot.ErrorCode);
+        await database.AssertTargetRunHasNoResultAsync(ParseRunStatuses.Running);
+
+        await using (var dbContext = new StructaDocDbContext(database.Options))
+        {
+            // A fresh verification of the unchanged bundle still commits, so the rejections
+            // blocked only the altered receipts.
+            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage, TimeProvider.System);
+            var clean = await VerifyAsync(store, bundle, TestContext.Current.CancellationToken);
+            Assert.Equal(
+                ParseBundleCommitStatus.Committed,
+                (await store.TryCommitAsync(
+                    lease,
+                    clean,
+                    TestContext.Current.CancellationToken)).Status);
+        }
+    }
+
+    [Fact]
+    public async Task Cancellation_during_verification_publishes_nothing()
+    {
+        await using var database = await BundleTestDatabase.CreateAsync();
+        var nowUtc = DateTime.UtcNow;
+        var lease = await database.CreateRunningLeaseAsync(nowUtc);
+        var bundle = await database.CreateBundleAsync(lease.ParseRunId);
+
+        await using var dbContext = new StructaDocDbContext(database.Options);
+        var store = new EfCoreParseBundleCommitStore(
+            dbContext,
+            new CancellingFileStorage(database.Storage),
+            TimeProvider.System);
+        using var cancelledSource = new CancellationTokenSource();
+        await cancelledSource.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => store.VerifyBundleAsync(bundle, cancelledSource.Token));
+
+        await database.AssertTargetRunHasNoResultAsync(ParseRunStatuses.Running);
     }
 
     [Fact]
@@ -232,11 +368,11 @@ public sealed class ParseBundleCommitStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
+            var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage, TimeProvider.System);
+            var verified = await VerifyAsync(store, bundle, TestContext.Current.CancellationToken);
             var result = await store.TryCommitAsync(
                 lease,
-                bundle,
-                nowUtc.AddSeconds(2),
+                verified,
                 TestContext.Current.CancellationToken);
             Assert.Equal(ParseBundleCommitStatus.Conflict, result.Status);
         }
@@ -287,12 +423,12 @@ public sealed class ParseBundleCommitStoreTests
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(parseRun => parseRun.ConversionJson, conversion.ToJson()),
             cancellationToken: TestContext.Current.CancellationToken);
-        var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage);
+        var store = new EfCoreParseBundleCommitStore(dbContext, database.Storage, TimeProvider.System);
 
+        var verified = await VerifyAsync(store, bundle, TestContext.Current.CancellationToken);
         var result = await store.TryCommitAsync(
             lease,
-            bundle,
-            nowUtc.AddSeconds(2),
+            verified,
             TestContext.Current.CancellationToken);
 
         Assert.Equal(ParseBundleCommitStatus.InvalidBundle, result.Status);
@@ -348,7 +484,7 @@ public sealed class ParseBundleCommitStoreTests
     {
         var limit = new string('x', ParseBundleValidator.MaxBlockContentCharacters);
         var accepted = BlockBundle(
-            new ParseBlock(Guid.NewGuid(), 0, 1, "image", Caption: limit, Footnote: "\u00e4 $x$ <b>"));
+            new ParseBlock(Guid.NewGuid(), 0, 1, "image", Caption: limit, Footnote: "\u00e4 $x$ <b> "));
 
         Assert.True(ParseBundleValidator.Validate(accepted).IsValid);
         foreach (var block in new[]
@@ -404,6 +540,80 @@ public sealed class ParseBundleCommitStoreTests
                 .Select(ParseBundleValidator.ComputeFingerprint)
                 .Distinct(StringComparer.Ordinal)
                 .Count());
+    }
+
+    private static async Task<VerifiedParseBundle> VerifyAsync(
+        EfCoreParseBundleCommitStore store,
+        ParseBundle bundle,
+        CancellationToken cancellationToken)
+    {
+        var verification = await store.VerifyBundleAsync(bundle, cancellationToken);
+        Assert.Equal(ParseBundleVerificationStatus.Verified, verification.Status);
+        Assert.NotNull(verification.VerifiedBundle);
+        return verification.VerifiedBundle!;
+    }
+
+    /// <summary>
+    /// A deterministic clock for exercising the fresh time reads inside the guarded commit.
+    /// </summary>
+    private sealed class ManualTimeProvider(DateTime startUtc) : TimeProvider
+    {
+        private DateTimeOffset utcNow = new(startUtc, TimeSpan.Zero);
+
+        public override DateTimeOffset GetUtcNow() => utcNow;
+
+        public void Advance(TimeSpan duration) => utcNow = utcNow.Add(duration);
+    }
+
+    /// <summary>
+    /// Simulates slow storage deterministically: every read consumes a fixed amount of the
+    /// controllable clock instead of sleeping, so lease expiry during verification does not
+    /// depend on real elapsed time.
+    /// </summary>
+    private sealed class AdvancingFileStorage(
+        IFileStorage inner,
+        ManualTimeProvider clock,
+        TimeSpan readDuration) : IFileStorage
+    {
+        public Task<StoredFile> WriteAsync(
+            string storageRef,
+            Stream content,
+            long maxBytes,
+            CancellationToken cancellationToken = default) =>
+            inner.WriteAsync(storageRef, content, maxBytes, cancellationToken);
+
+        public async Task<Stream> OpenReadAsync(
+            string storageRef,
+            CancellationToken cancellationToken = default)
+        {
+            clock.Advance(readDuration);
+            return await inner.OpenReadAsync(storageRef, cancellationToken);
+        }
+
+        public Task DeleteIfExistsAsync(
+            string storageRef,
+            CancellationToken cancellationToken = default) =>
+            inner.DeleteIfExistsAsync(storageRef, cancellationToken);
+    }
+
+    private sealed class CancellingFileStorage(IFileStorage inner) : IFileStorage
+    {
+        public Task<StoredFile> WriteAsync(
+            string storageRef,
+            Stream content,
+            long maxBytes,
+            CancellationToken cancellationToken = default) =>
+            inner.WriteAsync(storageRef, content, maxBytes, cancellationToken);
+
+        public Task<Stream> OpenReadAsync(
+            string storageRef,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<Stream>(new OperationCanceledException(cancellationToken));
+
+        public Task DeleteIfExistsAsync(
+            string storageRef,
+            CancellationToken cancellationToken = default) =>
+            inner.DeleteIfExistsAsync(storageRef, cancellationToken);
     }
 
     private static ParseBundle BlockBundle(params ParseBlock[] blocks) =>

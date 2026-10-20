@@ -32,6 +32,7 @@ internal static class ParseRunLeaseContract
         await AssertCreationGuardsAsync(options);
         await AssertSegmentMutationFencingAsync(options);
         await AssertSegmentedPersistingAdmissionAsync(options);
+        await AssertBundleCommitLeaseFencingAsync(options);
 
         var nowUtc = DateTime.UtcNow;
         var claims = await Task.WhenAll(
@@ -270,18 +271,16 @@ internal static class ParseRunLeaseContract
                 nowUtc.AddSeconds(5));
             Assert.NotNull(persistingLease);
 
-            var resultStore = new EfCoreParseBundleCommitStore(dbContext, resultStorage);
-            var commit = await resultStore.TryCommitAsync(
-                persistingLease,
-                bundle,
-                nowUtc.AddSeconds(6));
+            var resultStore = new EfCoreParseBundleCommitStore(dbContext, resultStorage, TimeProvider.System);
+            var verification = await resultStore.VerifyBundleAsync(bundle);
+            Assert.Equal(ParseBundleVerificationStatus.Verified, verification.Status);
+            Assert.NotNull(verification.VerifiedBundle);
+            var verifiedBundle = verification.VerifiedBundle!;
+            var commit = await resultStore.TryCommitAsync(persistingLease, verifiedBundle);
             Assert.Equal(ParseBundleCommitStatus.Committed, commit.Status);
             Assert.Equal(
                 ParseBundleCommitStatus.AlreadyCommitted,
-                (await resultStore.TryCommitAsync(
-                    persistingLease,
-                    bundle,
-                    nowUtc.AddSeconds(7))).Status);
+                (await resultStore.TryCommitAsync(persistingLease, verifiedBundle)).Status);
         }
 
         var ownedCancellationLease = successfulClaims[7]!;
@@ -751,6 +750,162 @@ internal static class ParseRunLeaseContract
             128,
             new string('c', 64),
             "created");
+    }
+
+    /// <summary>
+    /// Bundle publication is two-phase on every database: verification needs no lease, and the
+    /// guarded commit decides lease expiry with the current time. A lease that lapsed before the
+    /// commit decision must not publish canonical rows on any dialect.
+    /// </summary>
+    private static async Task AssertBundleCommitLeaseFencingAsync(
+        DbContextOptions<StructaDocDbContext> options)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var documentId = Guid.NewGuid();
+        var committingLease = Lease("bundle-commit-worker");
+        var expiredLease = Lease("bundle-expiry-worker");
+
+        await using (var seed = new StructaDocDbContext(options))
+        {
+            seed.Documents.Add(new DocumentEntity
+            {
+                Id = documentId,
+                OriginalFileName = "bundle-fence-contract.pdf",
+                MediaType = "application/pdf",
+                Extension = ".pdf",
+                SizeBytes = 128,
+                Sha256 = new string('e', 64),
+                StorageRef = "documents/bundle-fence-contract.pdf",
+                CreatedAtUtc = nowUtc,
+            });
+            seed.ParseRuns.AddRange(
+                Run(committingLease),
+                Run(expiredLease));
+            await seed.SaveChangesAsync();
+        }
+
+        var storage = new ContractFileStorage();
+        await using (var dbContext = new StructaDocDbContext(options))
+        {
+            var store = new EfCoreParseBundleCommitStore(dbContext, storage, TimeProvider.System);
+
+            // The lease lapses after verification: the guarded commit reads the current time,
+            // rejects the expired claim, and creates no canonical rows.
+            var expiredBundle = Bundle(expiredLease.ParseRunId);
+            var expiredVerification = await store.VerifyBundleAsync(expiredBundle);
+            Assert.Equal(ParseBundleVerificationStatus.Verified, expiredVerification.Status);
+            await dbContext.ParseRuns
+                .Where(parseRun => parseRun.Id == expiredLease.ParseRunId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    parseRun => parseRun.LeaseExpiresAtUtc,
+                    DateTime.UtcNow.AddSeconds(-1)));
+            var rejected = await store.TryCommitAsync(expiredLease, expiredVerification.VerifiedBundle!);
+            Assert.Equal(ParseBundleCommitStatus.LeaseLost, rejected.Status);
+
+            var run = await dbContext.ParseRuns
+                .AsNoTracking()
+                .SingleAsync(parseRun => parseRun.Id == expiredLease.ParseRunId);
+            Assert.Equal(ParseRunStatuses.Running, run.Status);
+            Assert.Null(run.ResultSha256);
+
+            // A current lease publishes the verified bundle through the same guarded path.
+            var committingBundle = Bundle(committingLease.ParseRunId);
+            var committingVerification = await store.VerifyBundleAsync(committingBundle);
+            Assert.Equal(ParseBundleVerificationStatus.Verified, committingVerification.Status);
+            var committed = await store.TryCommitAsync(
+                committingLease,
+                committingVerification.VerifiedBundle!);
+            Assert.Equal(ParseBundleCommitStatus.Committed, committed.Status);
+        }
+
+        await using (var verification = new StructaDocDbContext(options))
+        {
+            Assert.False(await verification.ParsePages.AnyAsync(
+                page => page.ParseRunId == expiredLease.ParseRunId));
+            Assert.False(await verification.ParseBlocks.AnyAsync(
+                block => block.ParseRunId == expiredLease.ParseRunId));
+            Assert.False(await verification.ParseAssets.AnyAsync(
+                asset => asset.ParseRunId == expiredLease.ParseRunId));
+            Assert.False(await verification.ParseArtifacts.AnyAsync(
+                artifact => artifact.ParseRunId == expiredLease.ParseRunId));
+
+            var committedRun = await verification.ParseRuns
+                .AsNoTracking()
+                .SingleAsync(parseRun => parseRun.Id == committingLease.ParseRunId);
+            Assert.Equal(ParseRunStatuses.Succeeded, committedRun.Status);
+            Assert.NotNull(committedRun.CompletedAtUtc);
+        }
+
+        await using var cleanup = new StructaDocDbContext(options);
+        // Blocks carry a composite foreign key to Pages, so they go first.
+        await cleanup.ParseBlocks
+            .Where(block => block.ParseRun.DocumentId == documentId)
+            .ExecuteDeleteAsync();
+        await cleanup.ParsePages
+            .Where(page => page.ParseRun.DocumentId == documentId)
+            .ExecuteDeleteAsync();
+        await cleanup.ParseAssets
+            .Where(asset => asset.ParseRun.DocumentId == documentId)
+            .ExecuteDeleteAsync();
+        await cleanup.ParseArtifacts
+            .Where(artifact => artifact.ParseRun.DocumentId == documentId)
+            .ExecuteDeleteAsync();
+        await cleanup.ParseRuns
+            .Where(parseRun => parseRun.DocumentId == documentId)
+            .ExecuteDeleteAsync();
+        await cleanup.Documents
+            .Where(document => document.Id == documentId)
+            .ExecuteDeleteAsync();
+
+        ParseRunLease Lease(string workerId) => new(
+            Guid.NewGuid(),
+            workerId,
+            1,
+            nowUtc.AddMinutes(5));
+
+        ParseRunEntity Run(ParseRunLease lease) => new()
+        {
+            Id = lease.ParseRunId,
+            DocumentId = documentId,
+            Status = ParseRunStatuses.Running,
+            Stage = ParseRunStages.Persisting,
+            ProviderType = "test-provider",
+            ProviderConfigId = Guid.NewGuid(),
+            ProviderConfigVersion = Guid.NewGuid(),
+            OptionsJson = "{}",
+            SourceMediaType = "application/pdf",
+            SubmittedMediaType = "application/pdf",
+            AttemptCount = 1,
+            MaxAttempts = 3,
+            NextAttemptAtUtc = nowUtc,
+            ClaimedBy = lease.WorkerId,
+            LeaseExpiresAtUtc = lease.LeaseExpiresAtUtc,
+            CreatedAtUtc = nowUtc,
+            StartedAtUtc = nowUtc,
+            ConcurrencyVersion = lease.ConcurrencyVersion,
+        };
+
+        ParseBundle Bundle(Guid parseRunId)
+        {
+            var file = storage.Add(
+                $"results/{parseRunId:N}/full.md",
+                Encoding.UTF8.GetBytes("# Bundle fence contract"));
+            return new ParseBundle(
+                ParseBundleValidator.CurrentSchemaVersion,
+                parseRunId,
+                [new ParsePage(1, 1000, 1400, "pixel")],
+                [new ParseBlock(Guid.NewGuid(), 0, 1, "text", Content: "Bundle fence contract")],
+                [],
+                [new ParseArtifact(
+                    Guid.NewGuid(),
+                    ArtifactTypes.Markdown,
+                    "full.md",
+                    "text/markdown",
+                    file.SizeBytes,
+                    file.Sha256,
+                    file.StorageRef)],
+                "{\"providerType\":\"test-provider\"}");
+        }
     }
 
     private static async Task AssertSegmentedPersistingAdmissionAsync(

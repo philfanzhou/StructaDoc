@@ -426,7 +426,8 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
                     new InterruptingParseBundleCommitStore(
                         new EfCoreParseBundleCommitStore(
                             serviceProvider.GetRequiredService<StructaDocDbContext>(),
-                            serviceProvider.GetRequiredService<IFileStorage>()),
+                            serviceProvider.GetRequiredService<IFileStorage>(),
+                            serviceProvider.GetRequiredService<TimeProvider>()),
                         interruption));
             },
             afterExecution: async (services, parseRunId) =>
@@ -1339,17 +1340,20 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
         IParseBundleCommitStore inner,
         CommitInterruption interruption) : IParseBundleCommitStore
     {
+        public Task<ParseBundleVerificationResult> VerifyBundleAsync(
+            ParseBundle bundle,
+            CancellationToken cancellationToken = default) =>
+            inner.VerifyBundleAsync(bundle, cancellationToken);
+
         public Task<ParseBundleCommitResult> TryCommitAsync(
             ParseRunLease currentLease,
-            ParseBundle bundle,
-            DateTime nowUtc,
+            VerifiedParseBundle verifiedBundle,
             CancellationToken cancellationToken = default) =>
             interruption.TryInterrupt()
                 ? Task.FromResult(new ParseBundleCommitResult(ParseBundleCommitStatus.LeaseLost))
                 : inner.TryCommitAsync(
                     currentLease,
-                    bundle,
-                    nowUtc,
+                    verifiedBundle,
                     cancellationToken);
     }
 

@@ -11,38 +11,30 @@ namespace StructaDoc.Adapters.Persistence.ParseRuns;
 
 public sealed class EfCoreParseBundleCommitStore(
     StructaDocDbContext dbContext,
-    IFileStorage fileStorage) : IParseBundleCommitStore
+    IFileStorage fileStorage,
+    TimeProvider timeProvider) : IParseBundleCommitStore
 {
     private const int VerificationBufferSize = 64 * 1024;
 
-    public async Task<ParseBundleCommitResult> TryCommitAsync(
-        ParseRunLease currentLease,
+    public async Task<ParseBundleVerificationResult> VerifyBundleAsync(
         ParseBundle bundle,
-        DateTime nowUtc,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(currentLease);
         ArgumentNullException.ThrowIfNull(bundle);
-        ValidateUtc(nowUtc);
-
-        if (bundle.ParseRunId != currentLease.ParseRunId)
-        {
-            return InvalidBundle(
-                "parse-run-mismatch",
-                "The Parse Bundle does not belong to the leased Parse Run.");
-        }
 
         if (bundle.Pages is null
             || bundle.Blocks is null
             || bundle.Assets is null
             || bundle.Artifacts is null)
         {
-            return InvalidBundle(
+            return VerificationInvalidBundle(
                 "missing-collection",
                 "Parse Bundle collections cannot be null.");
         }
 
-        bundle = bundle with
+        // Freeze the snapshot so later caller mutations cannot change what this verification
+        // certified. The commit phase still rebinds the snapshot to its receipt.
+        var snapshot = bundle with
         {
             Pages = bundle.Pages.ToArray(),
             Blocks = bundle.Blocks.ToArray(),
@@ -50,16 +42,19 @@ public sealed class EfCoreParseBundleCommitStore(
             Artifacts = bundle.Artifacts.ToArray(),
         };
 
-        var validation = ParseBundleValidator.Validate(bundle);
+        var validation = ParseBundleValidator.Validate(snapshot);
         if (!validation.IsValid)
         {
-            return InvalidBundle(validation.ErrorCode!, validation.ErrorMessage!);
+            return VerificationInvalidBundle(validation.ErrorCode!, validation.ErrorMessage!);
         }
 
-        var fingerprint = ParseBundleValidator.ComputeFingerprint(bundle);
+        var fingerprint = ParseBundleValidator.ComputeFingerprint(snapshot);
+
+        // A finished run needs no storage I/O: an identical fingerprint replays as committed and
+        // a different one conflicts. The guarded transaction rechecks this decision authoritatively.
         var existingResult = await dbContext.ParseRuns
             .AsNoTracking()
-            .Where(parseRun => parseRun.Id == bundle.ParseRunId)
+            .Where(parseRun => parseRun.Id == snapshot.ParseRunId)
             .Select(parseRun => new
             {
                 parseRun.Status,
@@ -70,22 +65,57 @@ public sealed class EfCoreParseBundleCommitStore(
         if (existingResult?.Status == ParseRunStatuses.Succeeded)
         {
             return string.Equals(existingResult.ResultSha256, fingerprint, StringComparison.Ordinal)
-                ? new(ParseBundleCommitStatus.AlreadyCommitted)
+                ? new(ParseBundleVerificationStatus.AlreadyCommitted)
                 : new(
-                    ParseBundleCommitStatus.Conflict,
-                    "result-conflict",
-                    "The Parse Run already contains a different committed result.");
+                    ParseBundleVerificationStatus.Conflict,
+                    ErrorCode: "result-conflict",
+                    ErrorMessage: "The Parse Run already contains a different committed result.");
         }
 
-        var storageVerification = await VerifyStorageAsync(bundle, cancellationToken);
-        if (storageVerification is not null)
+        return await VerifyStorageAsync(snapshot, fingerprint, cancellationToken);
+    }
+
+    public async Task<ParseBundleCommitResult> TryCommitAsync(
+        ParseRunLease currentLease,
+        VerifiedParseBundle verifiedBundle,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(currentLease);
+        ArgumentNullException.ThrowIfNull(verifiedBundle);
+        ArgumentNullException.ThrowIfNull(verifiedBundle.Bundle);
+
+        var bundle = verifiedBundle.Bundle;
+
+        if (bundle.ParseRunId != currentLease.ParseRunId)
         {
-            return storageVerification;
+            return InvalidBundle(
+                "parse-run-mismatch",
+                "The Parse Bundle does not belong to the leased Parse Run.");
+        }
+
+        // Bind the snapshot to its receipt: the fingerprint and the verified object metadata are
+        // re-derived from the snapshot, so data changed after verification — or a receipt assembled
+        // around other claims — cannot enter the guarded phase.
+        if (!ParseBundleValidator.Validate(bundle).IsValid)
+        {
+            return ReceiptMismatch();
+        }
+
+        var fingerprint = ParseBundleValidator.ComputeFingerprint(bundle);
+        if (!TryBuildExpectedStorage(bundle, out var expectedStorage)
+            || !string.Equals(fingerprint, verifiedBundle.Fingerprint, StringComparison.Ordinal)
+            || !MatchesVerifiedStorage(expectedStorage, verifiedBundle.VerifiedStorage))
+        {
+            return ReceiptMismatch();
         }
 
         var executionStrategy = dbContext.Database.CreateExecutionStrategy();
         return await executionStrategy.ExecuteAsync(async () =>
         {
+            // Read the clock inside the retried operation. The guarded mutation — and every
+            // execution-strategy retry after a transient failure — decides lease expiry with the
+            // current time, never a timestamp captured before the storage verification ran.
+            var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
             await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
             try
             {
@@ -231,30 +261,20 @@ public sealed class EfCoreParseBundleCommitStore(
         });
     }
 
-    private async Task<ParseBundleCommitResult?> VerifyStorageAsync(
-        ParseBundle bundle,
+    private async Task<ParseBundleVerificationResult> VerifyStorageAsync(
+        ParseBundle snapshot,
+        string fingerprint,
         CancellationToken cancellationToken)
     {
-        var expectedFiles = new Dictionary<string, (long SizeBytes, string Sha256)>(StringComparer.Ordinal);
-        foreach (var file in bundle.Assets
-                     .Select(asset => (asset.StorageRef, asset.SizeBytes, asset.Sha256))
-                     .Concat(bundle.Artifacts.Select(artifact =>
-                         (artifact.StorageRef, artifact.SizeBytes, artifact.Sha256))))
+        if (!TryBuildExpectedStorage(snapshot, out var expectedStorage))
         {
-            if (expectedFiles.TryGetValue(file.StorageRef, out var existing)
-                && (existing.SizeBytes != file.SizeBytes
-                    || !string.Equals(existing.Sha256, file.Sha256, StringComparison.Ordinal)))
-            {
-                return new(
-                    ParseBundleCommitStatus.StorageMismatch,
-                    "storage-reference-conflict",
-                    "One storage reference has conflicting expected metadata.");
-            }
-
-            expectedFiles[file.StorageRef] = (file.SizeBytes, file.Sha256);
+            return new(
+                ParseBundleVerificationStatus.StorageMismatch,
+                ErrorCode: "storage-reference-conflict",
+                ErrorMessage: "One storage reference has conflicting expected metadata.");
         }
 
-        foreach (var (storageRef, expected) in expectedFiles)
+        foreach (var (storageRef, expected) in expectedStorage)
         {
             try
             {
@@ -262,34 +282,87 @@ public sealed class EfCoreParseBundleCommitStore(
                 if (!await MatchesAsync(content, expected.SizeBytes, expected.Sha256, cancellationToken))
                 {
                     return new(
-                        ParseBundleCommitStatus.StorageMismatch,
-                        "storage-content-mismatch",
-                        "A stored result does not match its expected size and SHA-256 hash.");
+                        ParseBundleVerificationStatus.StorageMismatch,
+                        ErrorCode: "storage-content-mismatch",
+                        ErrorMessage: "A stored result does not match its expected size and SHA-256 hash.");
                 }
             }
             catch (FileNotFoundException)
             {
                 return new(
-                    ParseBundleCommitStatus.StorageMismatch,
-                    "storage-object-missing",
-                    "A stored result object is missing.");
+                    ParseBundleVerificationStatus.StorageMismatch,
+                    ErrorCode: "storage-object-missing",
+                    ErrorMessage: "A stored result object is missing.");
             }
             catch (DirectoryNotFoundException)
             {
                 return new(
-                    ParseBundleCommitStatus.StorageMismatch,
-                    "storage-object-missing",
-                    "A stored result object is missing.");
+                    ParseBundleVerificationStatus.StorageMismatch,
+                    ErrorCode: "storage-object-missing",
+                    ErrorMessage: "A stored result object is missing.");
             }
             catch (ArgumentException)
             {
-                return InvalidBundle(
+                return VerificationInvalidBundle(
                     "invalid-storage-reference",
                     "A result storage reference is invalid.");
             }
         }
 
-        return null;
+        return new(
+            ParseBundleVerificationStatus.Verified,
+            VerifiedBundle: new VerifiedParseBundle(snapshot, fingerprint, expectedStorage));
+    }
+
+    /// <summary>
+    /// Derives the verified object metadata from a snapshot. A storage reference repeated with
+    /// conflicting expected metadata fails derivation; equal repetitions are one verified object.
+    /// </summary>
+    private static bool TryBuildExpectedStorage(
+        ParseBundle bundle,
+        out Dictionary<string, VerifiedStorageObject> expectedStorage)
+    {
+        expectedStorage = new Dictionary<string, VerifiedStorageObject>(StringComparer.Ordinal);
+
+        foreach (var file in bundle.Assets
+                     .Select(asset => (asset.StorageRef, asset.SizeBytes, asset.Sha256))
+                     .Concat(bundle.Artifacts.Select(artifact =>
+                         (artifact.StorageRef, artifact.SizeBytes, artifact.Sha256))))
+        {
+            if (expectedStorage.TryGetValue(file.StorageRef, out var existing)
+                && (existing.SizeBytes != file.SizeBytes
+                    || !string.Equals(existing.Sha256, file.Sha256, StringComparison.Ordinal)))
+            {
+                return false;
+            }
+
+            expectedStorage[file.StorageRef] = new VerifiedStorageObject(file.SizeBytes, file.Sha256);
+        }
+
+        return true;
+    }
+
+    private static bool MatchesVerifiedStorage(
+        Dictionary<string, VerifiedStorageObject> expectedStorage,
+        IReadOnlyDictionary<string, VerifiedStorageObject>? verifiedStorage)
+    {
+        if (verifiedStorage is null
+            || verifiedStorage.Count != expectedStorage.Count)
+        {
+            return false;
+        }
+
+        foreach (var (storageRef, expected) in expectedStorage)
+        {
+            if (!verifiedStorage.TryGetValue(storageRef, out var verified)
+                || verified.SizeBytes != expected.SizeBytes
+                || !string.Equals(verified.Sha256, expected.Sha256, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private async Task<bool> HasExistingResultRowsAsync(
@@ -361,13 +434,13 @@ public sealed class EfCoreParseBundleCommitStore(
         }
     }
 
-    private static void ValidateUtc(DateTime value)
-    {
-        if (value.Kind != DateTimeKind.Utc)
-        {
-            throw new ArgumentException("Parse Bundle timestamps must use UTC.", nameof(value));
-        }
-    }
+    private static ParseBundleVerificationResult VerificationInvalidBundle(string code, string message) =>
+        new(ParseBundleVerificationStatus.InvalidBundle, ErrorCode: code, ErrorMessage: message);
+
+    private static ParseBundleCommitResult ReceiptMismatch() =>
+        InvalidBundle(
+            "verification-receipt-mismatch",
+            "The verified bundle snapshot does not match its verification receipt.");
 
     private static ParseBundleCommitResult InvalidBundle(string code, string message) =>
         new(ParseBundleCommitStatus.InvalidBundle, code, message);
