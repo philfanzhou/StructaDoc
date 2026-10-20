@@ -455,23 +455,38 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
                             parseRun => parseRun.LeaseExpiresAtUtc,
                             recoveryTimeUtc.AddSeconds(-1)),
                         TestContext.Current.CancellationToken);
+                // This host keeps the maintenance worker running at a 100 ms interval, and it
+                // runs the same recovery routine. The guarded update lets exactly one caller
+                // requeue an expired run, so when the worker's poll lands between the expiry
+                // write above and this call, this call legitimately finds nothing to do. What
+                // matters is the invariant — the run ends up queued — so accept either winner
+                // instead of asserting that this call's counter did the requeue.
                 var recovery = await scope.ServiceProvider
                     .GetRequiredService<IParseRunLeaseStore>()
                     .RecoverExpiredUnsubmittedRunsAsync(
                         recoveryTimeUtc,
                         maxCount: 1,
                         TestContext.Current.CancellationToken);
-                Assert.Equal(1, recovery.RequeuedCount);
                 Assert.Equal(0, recovery.FailedUnknownSubmissionCount);
+                if (recovery.RequeuedCount == 0)
+                {
+                    await WaitUntilRunIsQueuedAsync(dbContext, parseRunId);
+                }
 
+                // Claim with a fresh timestamp: whichever caller requeued set the run's next
+                // attempt to its own, possibly later, clock reading, and the claim only sees
+                // runs whose next attempt is already due.
                 var recoveredLease = Assert.IsType<ParseRunLease>(
                     await scope.ServiceProvider
                         .GetRequiredService<IParseRunLeaseStore>()
                         .TryClaimNextAsync(
                             $"recovery-{parseRunId:N}",
-                            recoveryTimeUtc.AddSeconds(1),
+                            DateTime.UtcNow,
                             TimeSpan.FromMinutes(2),
                             TestContext.Current.CancellationToken));
+                Assert.True(
+                    recoveredLease.ParseRunId == parseRunId,
+                    $"Recovery claimed run {recoveredLease.ParseRunId} instead of this test's run {parseRunId}; an earlier test left a queued run behind.");
                 await scope.ServiceProvider.GetRequiredService<ParseRunExecutor>().ExecuteAsync(
                     recoveredLease,
                     alreadyRunning: false,
@@ -898,6 +913,13 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
                 $"executor-test-{parseRunId:N}",
                 nowUtc,
                 TimeSpan.FromMinutes(2)));
+            // The claim takes the globally earliest queued run, so a queued run left behind by
+            // an earlier test would be executed here while this test's own run stayed
+            // "queued" and every later assertion reported the wrong run's outcome. Fail fast
+            // on exactly that contamination instead.
+            Assert.True(
+                lease.ParseRunId == parseRunId,
+                $"The executor claimed run {lease.ParseRunId} instead of this test's run {parseRunId}; an earlier test left a queued run behind.");
             if (largePdfPageCount.HasValue && !executeLargePdfThroughExecutor)
             {
                 await using var session = scope.ServiceProvider
@@ -1035,6 +1057,35 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
 
     private static byte[] CreateSourceBytes(string mediaType) =>
         System.Text.Encoding.UTF8.GetBytes($"executor-source:{mediaType}");
+
+    private static async Task WaitUntilRunIsQueuedAsync(
+        StructaDocDbContext dbContext,
+        Guid parseRunId)
+    {
+        // The maintenance worker's 100 ms interval requeues an expired run within a few
+        // cycles; the generous bound only tolerates a heavily loaded test runner.
+        var deadlineUtc = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            var status = await dbContext.ParseRuns
+                .AsNoTracking()
+                .Where(parseRun => parseRun.Id == parseRunId)
+                .Select(parseRun => parseRun.Status)
+                .SingleAsync(TestContext.Current.CancellationToken);
+            if (status == ParseRunStatuses.Queued)
+            {
+                return;
+            }
+
+            if (DateTime.UtcNow >= deadlineUtc)
+            {
+                Assert.Fail(
+                    $"Run {parseRunId} was still '{status}' 10 seconds after its lease expired; neither this test's recovery call nor the maintenance worker requeued it.");
+            }
+
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+    }
 
     private static async Task SeedSegmentIntentAsync(
         IServiceProvider services,
