@@ -2,15 +2,17 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
+using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Resources;
+using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Domain.Resources;
 
 namespace StructaDoc.Adapters.Resources;
 
-public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext) : IResourceDeletionService
+public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext, IFileStorage fileStorage) : IResourceDeletionService
 {
     private static readonly string[] FinalStatuses = ParseRunStatuses.Final;
     private const int DeletionAttempts = 3;
@@ -153,10 +155,30 @@ public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext)
             storageRefs.AddRange(assetsByRun[run.Id].Select(row => row.StorageRef));
             storageRefs.AddRange(artifactsByRun[run.Id].Select(row => row.StorageRef));
             storageRefs.Add($"parse-runs/{run.Id:N}/provider/result.zip");
+            await AppendDerivedManifestOutputsAsync(
+                storageRefs,
+                run.Id,
+                $"Parse Run '{run.Id:D}'",
+                cancellationToken);
             foreach (var segment in segmentsByRun[run.Id])
             {
                 storageRefs.Add(segment.StorageRef);
                 storageRefs.Add($"parse-runs/{segment.Id:N}/provider/result.zip");
+                await AppendDerivedManifestOutputsAsync(
+                    storageRefs,
+                    segment.Id,
+                    $"Parse Segment '{segment.Id:D}'",
+                    cancellationToken);
+                // A merged bundle keeps only the concatenated Markdown row, so each segment's own
+                // Markdown object stays outside committed rows even after a successful merge.
+                storageRefs.Add($"parse-runs/{segment.Id:N}/artifacts/markdown.md");
+            }
+
+            if (segmentsByRun[run.Id].Any())
+            {
+                // The merged parent Markdown is written before the final canonical commit, so a
+                // failed commit leaves this deterministic object without a committed row.
+                storageRefs.Add($"parse-runs/{run.Id:N}/artifacts/document.md");
             }
 
             if (run.ConversionJson is not null)
@@ -178,6 +200,30 @@ public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext)
         }
 
         return storageRefs;
+    }
+
+    // A run or segment normalized by the current normalizer owns a durable manifest of every
+    // planned derived key. Its key is always inventoried — deleting a missing object is an
+    // idempotent no-op — and a manifest that exists but is malformed or targets another identity
+    // fails the whole deletion request before any lifecycle mutation. A manifest that is truly
+    // absent is the legacy case and falls back to committed rows plus the known deterministic
+    // keys the caller already collected.
+    private async Task AppendDerivedManifestOutputsAsync(
+        List<string> storageRefs,
+        Guid identity,
+        string identityDescription,
+        CancellationToken cancellationToken)
+    {
+        storageRefs.Add(DerivedOutputManifest.StorageKey(identity));
+        var outputs = await DerivedOutputManifest.ReadAsync(
+            fileStorage,
+            identity,
+            identityDescription,
+            cancellationToken);
+        if (outputs is not null)
+        {
+            storageRefs.AddRange(outputs);
+        }
     }
 
     private sealed record RunStorageRow(Guid Id, string? ConversionJson);

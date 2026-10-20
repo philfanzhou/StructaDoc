@@ -1,7 +1,7 @@
 # File Storage
 
 - Status: Implementation note
-- Last updated: 2026-08-12
+- Last updated: 2026-10-20
 
 ## Storage Boundary
 
@@ -20,6 +20,23 @@ Every implementation preserves conflict-safe, idempotent writes:
 The local implementation writes a random staging file and atomically moves it into place. Empty, oversized, cancelled, and failed writes remove staging data. S3 uses conditional operations and hash metadata to provide the same observable behavior.
 
 Fixed logical keys are used for Provider archives and deterministic derived results so crash recovery can reuse identical objects. Random immutable keys are used where an uncommitted object must not be mistaken for an accepted database snapshot.
+
+## Derived-Output Manifests
+
+Normalization writes derived objects (Markdown, Content Lists, JSON sidecars, and image Assets) before the bundle is validated and before any canonical row is committed. Because a failed, interrupted, or partially written normalization therefore has no database row pointing at those objects, the normalizer first persists an internal manifest at `parse-runs/{identity:N}/provider/derived-manifest.json`, where the identity is the Parse Run ID or, for a large-PDF Segment, the segment ID normalized under its own identity.
+
+The manifest is written before the first derived write and lists every planned deterministic output key, its schema version, the identity, and the source archive's SHA-256. Image extensions are planned with the same signature detection the writes use, and the existing asset-count and size limits plus a manifest size bound keep it small. Serialization is deterministic, so the immutable/idempotent write semantics apply: retrying the same archive reuses the same manifest and objects, while a different archive digest under the same identity conflicts before any further derived write.
+
+The manifest is service-owned cleanup metadata. It is not a public Artifact, never part of Provider payload, and never appears in API responses. Deletion reads and validates it (version, identity, output count, and per-identity artifact/asset prefixes; stored manifest JSON is untrusted) and copies its keys, plus the manifest key itself, into the Cleanup Job. A malformed, oversized, or identity-mismatched manifest — or a storage outage that makes it unreadable — fails the deletion request before any lifecycle change, the same fail-closed behavior a malformed conversion snapshot already has. A manifest that is genuinely absent is the legacy case created before manifests existed: deletion falls back to committed rows and the known deterministic keys below. A missing object reported by storage is therefore kept distinguishable from an access failure.
+
+Segmented runs additionally inventory two deterministic keys that predate and sit outside the manifests: each segment's own Markdown object at `parse-runs/{segmentId:N}/artifacts/markdown.md` (a successful merge keeps only the concatenated Markdown row) and the merged parent Markdown at `parse-runs/{runId:N}/artifacts/document.md`, which the merge writes before the final canonical commit.
+
+Retention and failure handling:
+
+- the manifest and the raw archive must survive until the run is deleted; deleting either before then removes cleanup coverage for outputs not yet committed;
+- a manifest write failure prevents all derived writes, so an accepted Cleanup Job snapshot plus the durable manifest always cover every planned output of the current normalizer;
+- objects created by older binaries without any manifest are not discovered automatically; operators remain responsible for that legacy orphan reconciliation, and a missing legacy manifest does not prove that no such object exists;
+- rolling back to an older binary likewise loses cleanup coverage for outputs planned under newer manifests.
 
 Cross-media operations are not treated as one fragile transaction. Database acceptance and durable cleanup jobs handle compensation and deletion. Orphan scanning remains a useful maintenance safeguard for crashes before a resource reference was committed.
 
@@ -72,7 +89,7 @@ Changing storage does not move anything. Objects already written stay where they
 
 ## Deletion
 
-Deletion first marks a resource `deletion-pending` and snapshots all referenced objects into a persistent Cleanup Job. The cleanup Worker deletes each object idempotently, retries transient errors with backoff, and removes relational rows only after all storage work succeeds. It also recovers stale `running` jobs.
+Deletion first marks a resource `deletion-pending` and snapshots all referenced objects into a persistent Cleanup Job. The inventory combines committed Asset, Artifact, Segment, and conversion rows with the deterministic Provider archive keys, the derived-output manifests described above (including their own keys), the segment and merged Markdown keys of segmented runs, and — for Documents — the original file. The cleanup Worker deletes each object idempotently, retries transient errors with backoff, and removes relational rows only after all storage work succeeds. It also recovers stale `running` jobs.
 
 The local implementation also removes the directories a delete emptied, up to but never including the storage root or its staging directory. Object keys are nested per Parse Run, so without this a deployment that deletes results would keep one empty tree per deleted run forever. A directory that still holds anything ends the walk, and the non-recursive delete is what makes a concurrent write into the same directory safe.
 

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Providers;
@@ -135,6 +136,58 @@ public sealed partial class MinerUResultNormalizer(
                     structuredContent = ParseJson(structuredBytes, "structured-content.json", requireArray: false);
                 }
 
+                // Every deterministic derived key is planned from the validated archive and
+                // persisted as an internal manifest before the first derived write. A validation
+                // failure, a partial write, or cancellation after this point leaves an inventory
+                // that deletion can read even though no canonical row was ever committed.
+                var assetPlan = await PlanAssetsAsync(session, request.ParseRunId, cancellationToken);
+                var plannedOutputs = new List<string>(MaxArtifactOutputs + assetPlan.Assets.Count)
+                {
+                    ArtifactStorageKey(request.ParseRunId, "markdown.md"),
+                };
+                if (contentListEntry is not null)
+                {
+                    plannedOutputs.Add(ArtifactStorageKey(request.ParseRunId, "content-list.json"));
+                }
+
+                if (structuredEntry is not null)
+                {
+                    plannedOutputs.Add(ArtifactStorageKey(request.ParseRunId, "structured-content.json"));
+                }
+
+                if (contentListV2Entry is not null)
+                {
+                    plannedOutputs.Add(ArtifactStorageKey(request.ParseRunId, "content-list-v2.json"));
+                }
+
+                if (layoutEntry is not null)
+                {
+                    plannedOutputs.Add(ArtifactStorageKey(request.ParseRunId, "layout.json"));
+                }
+
+                if (modelEntry is not null)
+                {
+                    plannedOutputs.Add(ArtifactStorageKey(request.ParseRunId, "model-output.json"));
+                }
+
+                plannedOutputs.AddRange(assetPlan.Assets.Select(asset => asset.StorageRef));
+                var manifestJson = DerivedOutputManifest.Serialize(
+                    request.ParseRunId,
+                    request.Archive.Sha256.ToLowerInvariant(),
+                    plannedOutputs);
+                await using (var manifestContent = new MemoryStream(
+                        Encoding.UTF8.GetBytes(manifestJson),
+                        writable: false))
+                {
+                    // A failed or conflicting manifest write fails normalization before any
+                    // derived object exists, so a durable manifest always covers every write.
+                    await fileStorage.WriteAsync(
+                        DerivedOutputManifest.StorageKey(request.ParseRunId),
+                        manifestContent,
+                        DerivedOutputManifest.MaxJsonBytes,
+                        cancellationToken);
+                }
+
                 var artifacts = new List<ParseArtifact>
                 {
                     CreateArchiveArtifact(request),
@@ -201,8 +254,7 @@ public sealed partial class MinerUResultNormalizer(
                     cancellationToken);
 
                 var (assets, assetsByEntryPath) = await StoreAssetsAsync(
-                    session,
-                    request.ParseRunId,
+                    assetPlan,
                     cancellationToken);
                 var blocks = contentList is null
                     ? []
@@ -421,11 +473,28 @@ public sealed partial class MinerUResultNormalizer(
             cancellationToken));
     }
 
-    private async Task<(IReadOnlyList<ParseAsset> Assets, Dictionary<string, Guid> AssetsByPath)>
-        StoreAssetsAsync(
-            ProviderArchiveReadSession session,
-            Guid parseRunId,
-            CancellationToken cancellationToken)
+    // The normalizer writes at most this many distinct derived artifacts, which bounds the
+    // manifest's artifact section alongside the asset limit that bounds the rest.
+    private const int MaxArtifactOutputs = 6;
+
+    private sealed record PlannedAsset(
+        string Path,
+        ZipArchiveEntry Entry,
+        Guid Id,
+        string MediaType,
+        string Extension,
+        string StorageRef);
+
+    private sealed record AssetPlan(
+        IReadOnlyList<PlannedAsset> Assets,
+        Dictionary<string, Guid> AssetsByPath);
+
+    // Planning runs before the first derived write, so the count and size limits and the image
+    // signature detection that decide each asset key all execute while nothing is stored yet.
+    private async Task<AssetPlan> PlanAssetsAsync(
+        ProviderArchiveReadSession session,
+        Guid parseRunId,
+        CancellationToken cancellationToken)
     {
         var entries = session.Entries
             .Where(item =>
@@ -440,7 +509,7 @@ public sealed partial class MinerUResultNormalizer(
                 "The MinerU result exceeds the supported image count.");
         }
 
-        var assets = new List<ParseAsset>(entries.Length);
+        var planned = new List<PlannedAsset>(entries.Length);
         var assetsByPath = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
         foreach (var (path, entry) in entries)
         {
@@ -456,14 +525,32 @@ public sealed partial class MinerUResultNormalizer(
             var pathHash = Convert.ToHexString(
                     SHA256.HashData(Encoding.UTF8.GetBytes(path.Normalize(NormalizationForm.FormC))))
                 .ToLowerInvariant()[..24];
-            var storageRef = $"parse-runs/{parseRunId:N}/assets/{pathHash}{extension}";
-            await using var entryContent = entry.Open();
+            planned.Add(new PlannedAsset(
+                path,
+                entry,
+                CreateDeterministicId(parseRunId, $"asset:{path.ToLowerInvariant()}"),
+                mediaType,
+                extension,
+                $"parse-runs/{parseRunId:N}/assets/{pathHash}{extension}"));
+            AddAssetPath(assetsByPath, path, planned[^1].Id);
+        }
+
+        return new AssetPlan(planned, assetsByPath);
+    }
+
+    private async Task<(IReadOnlyList<ParseAsset> Assets, Dictionary<string, Guid> AssetsByPath)>
+        StoreAssetsAsync(AssetPlan plan, CancellationToken cancellationToken)
+    {
+        var assets = new List<ParseAsset>(plan.Assets.Count);
+        foreach (var asset in plan.Assets)
+        {
+            await using var entryContent = asset.Entry.Open();
             var stored = await fileStorage.WriteAsync(
-                storageRef,
+                asset.StorageRef,
                 entryContent,
                 options.MaxAssetBytes,
                 cancellationToken);
-            if (stored.SizeBytes != entry.Length)
+            if (stored.SizeBytes != asset.Entry.Length)
             {
                 throw Failure(
                     "mineru-result-entry-size-mismatch",
@@ -471,18 +558,16 @@ public sealed partial class MinerUResultNormalizer(
                     ProviderFailureCategory.Security);
             }
 
-            var id = CreateDeterministicId(parseRunId, $"asset:{path.ToLowerInvariant()}");
             assets.Add(new ParseAsset(
-                id,
-                GetDisplayName(path, extension),
-                mediaType,
+                asset.Id,
+                GetDisplayName(asset.Path, asset.Extension),
+                asset.MediaType,
                 stored.SizeBytes,
                 stored.Sha256,
                 stored.StorageRef));
-            AddAssetPath(assetsByPath, path, id);
         }
 
-        return (assets, assetsByPath);
+        return (assets, plan.AssetsByPath);
     }
 
     private static bool IsImageEntryPath(string path) =>
@@ -880,7 +965,7 @@ public sealed partial class MinerUResultNormalizer(
     {
         await using var input = new MemoryStream(content, writable: false);
         var stored = await fileStorage.WriteAsync(
-            $"parse-runs/{parseRunId:N}/artifacts/{storedName}",
+            ArtifactStorageKey(parseRunId, storedName),
             input,
             maxBytes,
             cancellationToken);
@@ -893,6 +978,9 @@ public sealed partial class MinerUResultNormalizer(
             stored.Sha256,
             stored.StorageRef);
     }
+
+    private static string ArtifactStorageKey(Guid parseRunId, string storedName) =>
+        $"parse-runs/{parseRunId:N}/artifacts/{storedName}";
 
     private static ParseArtifact CreateArchiveArtifact(
         ProviderResultNormalizationRequest request) =>

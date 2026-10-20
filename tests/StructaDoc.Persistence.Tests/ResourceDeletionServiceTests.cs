@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Adapters.Resources;
+using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Resources;
@@ -190,7 +191,7 @@ public sealed class ResourceDeletionServiceTests
         DeletionTestDatabase database,
         CancellationToken cancellationToken)
     {
-        var service = new EfCoreResourceDeletionService(dbContext);
+        var service = new EfCoreResourceDeletionService(dbContext, database.Storage);
         return target switch
         {
             DeletionTarget.Document => service.RequestDocumentDeletionAsync(
@@ -235,6 +236,10 @@ public sealed class ResourceDeletionServiceTests
             Options = options;
             DocumentId = documentId;
             ParseRuns = parseRuns;
+            // No manifests exist under this root, so every fixture exercises the legacy
+            // fallback that inventories committed rows plus the known deterministic keys.
+            Storage = new LocalFileStorage(
+                new FileStorageOptions { RootPath = Path.Combine(directory, "storage") });
         }
 
         public const string PrivateStorageRef = "private/conversion/storage-ref.pdf";
@@ -242,6 +247,7 @@ public sealed class ResourceDeletionServiceTests
         private string Directory { get; }
         private IReadOnlyList<ParseRunFixture> ParseRuns { get; }
         public DbContextOptions<StructaDocDbContext> Options { get; }
+        public LocalFileStorage Storage { get; }
         public Guid DocumentId { get; }
         public Guid ParseRunId => ParseRuns[0].Id;
         public string DocumentStorageRef => $"documents/{DocumentId:N}/original.pdf";
@@ -403,10 +409,18 @@ public sealed class ResourceDeletionServiceTests
                     .OrderBy(artifact => artifact.Id)
                     .Select(artifact => artifact.StorageRef));
                 storageRefs.Add($"parse-runs/{parseRun.Id:N}/provider/result.zip");
+                storageRefs.Add($"parse-runs/{parseRun.Id:N}/provider/derived-manifest.json");
                 foreach (var segment in parseRun.Segments.OrderBy(segment => segment.Id))
                 {
                     storageRefs.Add(segment.StorageRef);
                     storageRefs.Add($"parse-runs/{segment.Id:N}/provider/result.zip");
+                    storageRefs.Add($"parse-runs/{segment.Id:N}/provider/derived-manifest.json");
+                    storageRefs.Add($"parse-runs/{segment.Id:N}/artifacts/markdown.md");
+                }
+
+                if (parseRun.Segments.Count > 0)
+                {
+                    storageRefs.Add($"parse-runs/{parseRun.Id:N}/artifacts/document.md");
                 }
 
                 if (parseRun.ConversionStorageRef is not null)
