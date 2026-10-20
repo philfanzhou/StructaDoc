@@ -411,6 +411,186 @@ jobs:
         working-directory: web
         run: npm run test:e2e
 
+      # A supported result can exceed the bounded /tmp the container command mounts, because a
+      # single permitted Asset already reaches the same size. This check seeds a succeeded Parse
+      # Run whose two Assets total more than that mount, exports it through the real API under
+      # the supported read-only/non-root flags, and proves the served archive was staged on the
+      # data volume and removed once the response was disposed. It is deliberately a container
+      # check: the whole point is the production image's own /tmp limit, which no unit test
+      # reproduces. It uses its own container name, host port, and volume so it cannot disturb
+      # the smoke-test container above.
+      - name: Verify a large ZIP export stages under /data and not the bounded tmpfs
+        run: |
+          set -euo pipefail
+
+          data="$RUNNER_TEMP/structadoc-export-data"
+          app_uid="$(docker run --rm --entrypoint /bin/sh structadoc:ci -c 'id -u')"
+          mkdir -p "$data/storage"
+
+          # Microsoft.Data.Sqlite binds Guid parameters and stores Guid columns as uppercase
+          # dashed TEXT, and SQLite compares TEXT byte-wise, so the seeded identifiers must be
+          # uppercase or the application's queries will not match the rows.
+          document_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          run_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          artifact_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          asset_a_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          asset_b_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          provider_config_id="$(uuidgen | tr 'a-z' 'A-Z')"
+          provider_config_version="$(uuidgen | tr 'a-z' 'A-Z')"
+
+          document_dir="$data/storage/documents/$document_id"
+          run_dir="$data/storage/parse-runs/$run_id"
+          mkdir -p "$document_dir" "$run_dir/assets"
+          asset_a="$run_dir/assets/figure-a.png"
+          asset_b="$run_dir/assets/figure-b.png"
+          markdown="$run_dir/markdown.md"
+          source_pdf="$document_dir/source.pdf"
+
+          # Two permitted Assets (136 MiB each, pseudorandom so the archive cannot compress them
+          # under the limit) make the served ZIP larger than the 256 MiB tmpfs the container
+          # mounts at /tmp.
+          head -c 142606336 /dev/urandom > "$asset_a"
+          head -c 142606336 /dev/urandom > "$asset_b"
+          printf '# Container export check\n\n![](images/figure-a.png)\n\n![](images/figure-b.png)\n' > "$markdown"
+          printf '%%PDF-1.7\ncontainer-export-check\n' > "$source_pdf"
+
+          sha_a="$(sha256sum "$asset_a" | cut -d' ' -f1)"
+          sha_b="$(sha256sum "$asset_b" | cut -d' ' -f1)"
+          markdown_sha="$(sha256sum "$markdown" | cut -d' ' -f1)"
+          document_sha="$(sha256sum "$source_pdf" | cut -d' ' -f1)"
+          size_a="$(stat -c %s "$asset_a")"
+          size_b="$(stat -c %s "$asset_b")"
+          markdown_size="$(stat -c %s "$markdown")"
+          document_size="$(stat -c %s "$source_pdf")"
+
+          sudo chown -R "$app_uid:$app_uid" "$data"
+
+          docker run --rm --name structadoc-export-migrate-ci \
+            --read-only \
+            --security-opt no-new-privileges:true \
+            --cap-drop ALL \
+            --network none \
+            --tmpfs /tmp:size=256m,mode=1777 \
+            --volume "$data:/data" \
+            --env Database__ApplyMigrationsOnStartup=false \
+            structadoc:ci \
+            --migrate-business-database
+
+          sudo chown -R "$(id -u):$(id -g)" "$data"
+
+          now="2026-01-01 00:00:00"
+          sqlite3 "$data/structadoc.db" <<SQL
+          INSERT INTO documents (
+            id, original_file_name, media_type, extension, size_bytes, sha256, storage_ref,
+            lifecycle_state, concurrency_version, created_at_utc
+          ) VALUES (
+            '$document_id', 'container-export-check.pdf', 'application/pdf', '.pdf',
+            $document_size, '$document_sha', 'documents/$document_id/source.pdf',
+            'active', 0, '$now'
+          );
+
+          INSERT INTO parse_runs (
+            id, document_id, status, provider_type, provider_config_id, provider_config_version,
+            options_json, source_media_type, submitted_media_type, attempt_count, max_attempts,
+            next_attempt_at_utc, created_at_utc, completed_at_utc, concurrency_version,
+            lifecycle_state
+          ) VALUES (
+            '$run_id', '$document_id', 'succeeded', 'seed-provider',
+            '$provider_config_id', '$provider_config_version',
+            '{}', 'application/pdf', 'application/pdf', 1, 3,
+            '$now', '$now', '$now', 0, 'active'
+          );
+
+          INSERT INTO parse_artifacts (
+            id, parse_run_id, type, name, media_type, size_bytes, sha256, storage_ref,
+            created_at_utc
+          ) VALUES (
+            '$artifact_id', '$run_id', 'markdown', 'document.md', 'text/markdown',
+            $markdown_size, '$markdown_sha', 'parse-runs/$run_id/markdown.md', '$now'
+          );
+
+          INSERT INTO parse_assets (
+            id, parse_run_id, name, media_type, size_bytes, sha256, storage_ref, created_at_utc
+          ) VALUES (
+            '$asset_a_id', '$run_id', 'figure-a.png', 'image/png', $size_a, '$sha_a',
+            'parse-runs/$run_id/assets/figure-a.png', '$now'
+          );
+
+          INSERT INTO parse_assets (
+            id, parse_run_id, name, media_type, size_bytes, sha256, storage_ref, created_at_utc
+          ) VALUES (
+            '$asset_b_id', '$run_id', 'figure-b.png', 'image/png', $size_b, '$sha_b',
+            'parse-runs/$run_id/assets/figure-b.png', '$now'
+          );
+          SQL
+
+          sudo chown -R "$app_uid:$app_uid" "$data"
+
+          export_password="StructaDoc-Export-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker run --detach --name structadoc-export-ci \
+            --read-only \
+            --security-opt no-new-privileges:true \
+            --cap-drop ALL \
+            --tmpfs /tmp:size=256m,mode=1777 \
+            --publish 127.0.0.1:8081:8080 \
+            --volume "$data:/data" \
+            --env Authentication__BootstrapAdministratorUsername=structadoc-export-admin \
+            --env Authentication__BootstrapAdministratorPassword="$export_password" \
+            structadoc:ci
+
+          ready=""
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8081/health/ready; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$ready" ]; then
+            docker logs structadoc-export-ci
+            exit 1
+          fi
+
+          cookies="$RUNNER_TEMP/structadoc-export-cookies.txt"
+          antiforgery="$(curl --fail --silent --show-error --cookie-jar "$cookies" \
+            http://127.0.0.1:8081/api/v1/admin/antiforgery)"
+          token_header="$(printf '%s' "$antiforgery" | jq -r .headerName)"
+          token_value="$(printf '%s' "$antiforgery" | jq -r .requestToken)"
+          curl --fail --silent --show-error --cookie "$cookies" --cookie-jar "$cookies" \
+            --header "Content-Type: application/json" \
+            --header "$token_header: $token_value" \
+            --request POST http://127.0.0.1:8081/api/v1/admin/session \
+            --data "{\"username\":\"structadoc-export-admin\",\"password\":\"$export_password\"}" \
+            > /dev/null
+
+          zip="$RUNNER_TEMP/structadoc-large-export.zip"
+          zip_headers="$RUNNER_TEMP/structadoc-large-export.headers"
+          status="$(curl --silent --show-error --cookie "$cookies" \
+            --output "$zip" --dump-header "$zip_headers" \
+            --write-out '%{http_code}' \
+            "http://127.0.0.1:8081/api/v1/parse-runs/$run_id/exports/zip")"
+          echo "Export answered $status with $(stat -c %s "$zip") bytes."
+          test "$status" = "200"
+          test "$(stat -c %s "$zip")" -gt 268435456
+          grep --ignore-case --quiet '^etag:' "$zip_headers"
+
+          docker exec structadoc-export-ci test -d /data/temp/exports
+          leftover=1
+          for attempt in {1..30}; do
+            leftover="$(docker exec structadoc-export-ci find /data/temp/exports -type f | wc -l)"
+            if [ "$leftover" -eq 0 ]; then
+              break
+            fi
+            sleep 1
+          done
+          echo "Files left under /data/temp/exports after response disposal: $leftover"
+          test "$leftover" -eq 0
+          test -z "$(docker exec structadoc-export-ci find /tmp -name 'structadoc-export-*.zip' -print -quit)"
+
+      - name: Stop the export-check container
+        if: always()
+        run: docker rm --force structadoc-export-ci >/dev/null 2>&1 || true
+
       - name: Upload browser report and screenshots
         if: always()
         uses: actions/upload-artifact@v7.0.1

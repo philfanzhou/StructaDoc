@@ -483,6 +483,7 @@ public sealed class SettingCatalogContractTests
         string[] deploymentOwned =
         [
             "Worker:Enabled",
+            "ParseExports:TemporaryPath",
             "ProviderResults:TemporaryPath",
             "ProviderResultNormalization:TemporaryPath",
             "LibreOffice:TemporaryPath",

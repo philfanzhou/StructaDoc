@@ -110,6 +110,7 @@ RUN install -d -o "${APP_UID}" -g "${APP_UID}" \
         /data/keys \
         /data/storage \
         /data/temp \
+        /data/temp/exports \
         /data/temp/libreoffice \
         /data/temp/provider-normalization \
         /data/temp/provider-results
@@ -126,6 +127,7 @@ ENV ASPNETCORE_HTTP_PORTS=8080 \
     Authentication__DataProtectionKeysPath=/data/keys \
     LibreOffice__ExecutablePath=/usr/bin/libreoffice \
     LibreOffice__TemporaryPath=/data/temp/libreoffice \
+    ParseExports__TemporaryPath=/data/temp/exports \
     ProviderResults__TemporaryPath=/data/temp/provider-results \
     ProviderResultNormalization__TemporaryPath=/data/temp/provider-normalization
 

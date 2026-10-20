@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -61,6 +62,57 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         Assert.DoesNotContain("images/diagram.png", markdown, StringComparison.Ordinal);
         // An unresolvable reference is preserved rather than silently dropped.
         Assert.Contains("images/missing.png", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Zip_export_stages_on_the_deployment_configured_path_and_releases_it_with_the_response()
+    {
+        // The deployment override — the environment variable `ParseExports__TemporaryPath` on a
+        // container, `UseSetting` here — is what decides where the served archive is staged, and
+        // the staged file lives exactly as long as the response that owns it.
+        var stagingPath = Path.Combine(
+            Path.GetTempPath(),
+            "structadoc-export-endpoint-tests",
+            Guid.NewGuid().ToString("N"));
+        using var specializedFactory = factory.WithWebHostBuilder(builder =>
+            builder.UseSetting("ParseExports:TemporaryPath", stagingPath));
+        using var client = specializedFactory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+        // A body well past the transport's buffering is what keeps the served archive open on
+        // the server while this test reads it, so the mid-response assertions below observe the
+        // staged file rather than racing response completion.
+        var seeded = await SeedSucceededResultAsync(
+            sourceIsPdf: true,
+            host: specializedFactory,
+            assetBytes: RandomNumberGenerator.GetBytes(4 * 1024 * 1024));
+
+        using var response = await client.GetAsync(
+            $"/api/v1/parse-runs/{seeded.ParseRunId:D}/exports/zip",
+            HttpCompletionOption.ResponseHeadersRead,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // The headers cannot arrive before the archive is complete, and holding the response
+        // open is holding the staged file: the export is on the configured data path, not the
+        // system temporary directory a bounded container would refuse it in.
+        await using var content = await response.Content.ReadAsStreamAsync(
+            TestContext.Current.CancellationToken);
+        var first = content.ReadByte();
+        Assert.NotEqual(-1, first);
+        var stagedWhileStreaming = Assert.Single(Directory.GetFiles(stagingPath));
+        Assert.StartsWith("structadoc-export-", Path.GetFileName(stagedWhileStreaming), StringComparison.Ordinal);
+
+        using var remainder = new MemoryStream();
+        await content.CopyToAsync(remainder, TestContext.Current.CancellationToken);
+
+        // Response disposal — the client-abort and completion path alike — removes the staged
+        // file with its handle, leaving nothing on the data path to scavenge.
+        for (var attempt = 0; attempt < 100 && Directory.GetFiles(stagingPath).Length > 0; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(50), TestContext.Current.CancellationToken);
+        }
+
+        Assert.Empty(Directory.GetFiles(stagingPath));
     }
 
     [Fact]
@@ -529,11 +581,16 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         Assert.Equal("![](segment-0001-figure.png)", secondMarkdown);
     }
 
-    private async Task<Guid> SeedSucceededRunAsync(bool sourceIsPdf, int assetCount = 1)
-        => (await SeedSucceededResultAsync(sourceIsPdf, assetCount)).ParseRunId;
+    private async Task<Guid> SeedSucceededRunAsync(bool sourceIsPdf, int assetCount = 1, WebApplicationFactory<Program>? host = null)
+        => (await SeedSucceededResultAsync(sourceIsPdf, assetCount, host)).ParseRunId;
 
-    private async Task<SeededResult> SeedSucceededResultAsync(bool sourceIsPdf, int assetCount = 1)
+    private async Task<SeededResult> SeedSucceededResultAsync(
+        bool sourceIsPdf,
+        int assetCount = 1,
+        WebApplicationFactory<Program>? host = null,
+        byte[]? assetBytes = null)
     {
+        assetBytes ??= ImageBytes;
         ArgumentOutOfRangeException.ThrowIfLessThan(assetCount, 1);
         var parseRunId = Guid.NewGuid();
         var markdownArtifactId = Guid.NewGuid();
@@ -552,7 +609,7 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
             "\n\n",
             ["# Export", .. assetNames.Select(name => $"![](images/{name})"), "![](images/missing.png)\n"]));
 
-        await using var scope = factory.Services.CreateAsyncScope();
+        await using var scope = (host ?? factory).Services.CreateAsyncScope();
         var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
         var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
         var nowUtc = DateTime.UtcNow;
@@ -565,7 +622,7 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
             storedImages[index] = await WriteAsync(
                 storage,
                 $"parse-runs/{parseRunId:N}/assets/{assetNames[index]}",
-                ImageBytes);
+                assetBytes);
         }
 
         var document = new DocumentEntity
