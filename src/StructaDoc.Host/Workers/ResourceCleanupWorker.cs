@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Persistence.CleanupJobs;
 using StructaDoc.Application.Storage;
 using StructaDoc.Domain.Resources;
 
@@ -33,6 +34,14 @@ public sealed class ResourceCleanupWorker(IServiceScopeFactory scopeFactory, Tim
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return true; }
 
+        // The concurrency version this claim just wrote identifies the attempt. Every later
+        // database write of the attempt is fenced by it: completion updates the row through the
+        // tracked concurrency token, and a failure schedules its retry only while the row is still
+        // running under this version. A slower attempt that was reclaimed after the five-minute
+        // deadline therefore repeats idempotent object deletion but cannot touch the state, retry
+        // deadline, attempt count, or error of the newer claim or of a finished job.
+        var claimConcurrencyVersion = job.ConcurrencyVersion;
+
         try
         {
             foreach (var storageRef in JsonSerializer.Deserialize<string[]>(job.StorageRefsJson) ?? []) await storage.DeleteIfExistsAsync(storageRef, cancellationToken);
@@ -57,14 +66,31 @@ public sealed class ResourceCleanupWorker(IServiceScopeFactory scopeFactory, Tim
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
+            // A DbUpdateConcurrencyException from the completion save above lands here too. When
+            // the job row itself moved on, the conditional retry below matches nothing and the
+            // stale attempt performs no state mutation; when only the target rows conflicted, the
+            // attempt still owns the job and schedules a normal retry. Cancellation keeps escaping
+            // this filter and leaves the job running for the existing stale-claim recovery.
             db.ChangeTracker.Clear();
-            var retry = await db.CleanupJobs.SingleAsync(item => item.Id == job.Id, cancellationToken);
-            retry.Status = CleanupJobStatuses.RetryWait;
-            retry.ErrorMessage = exception.Message.Length > 2048 ? exception.Message[..2048] : exception.Message;
-            retry.NextAttemptAtUtc = clock.GetUtcNow().UtcDateTime.AddSeconds(Math.Min(300, Math.Pow(2, Math.Min(retry.AttemptCount, 8))));
-            retry.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime;
-            await db.SaveChangesAsync(cancellationToken);
-            logger.LogWarning(exception, "Cleanup job {CleanupJobId} will be retried.", job.Id);
+            var failedAtUtc = clock.GetUtcNow().UtcDateTime;
+            var scheduledRetry = await new EfCoreCleanupJobStateStore(db).TryScheduleRetryAsync(
+                job.Id,
+                claimConcurrencyVersion,
+                exception.Message.Length > 2048 ? exception.Message[..2048] : exception.Message,
+                failedAtUtc,
+                failedAtUtc.AddSeconds(Math.Min(300, Math.Pow(2, Math.Min(job.AttemptCount, 8)))),
+                cancellationToken);
+            if (scheduledRetry)
+            {
+                logger.LogWarning(exception, "Cleanup job {CleanupJobId} will be retried.", job.Id);
+            }
+            else
+            {
+                logger.LogInformation(
+                    exception,
+                    "Cleanup job {CleanupJobId} was reclaimed or finished while this attempt ran; its current state is untouched.",
+                    job.Id);
+            }
         }
         return true;
     }

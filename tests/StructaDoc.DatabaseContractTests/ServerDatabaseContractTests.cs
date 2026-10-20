@@ -71,6 +71,9 @@ public sealed class ServerDatabaseContractTests
         await ParseRunLeaseContract.AssertAsync(
             DatabaseProvider.PostgreSql,
             container.GetConnectionString());
+        await CleanupOwnershipContract.AssertAsync(
+            DatabaseProvider.PostgreSql,
+            container.GetConnectionString());
         await DataProtectionKeyRingContract.AssertAsync(
             DatabaseProvider.PostgreSql,
             container.GetConnectionString());
@@ -94,6 +97,10 @@ public sealed class ServerDatabaseContractTests
             container.GetConnectionString(),
             serverVersion: "8.4.0");
         await ParseRunLeaseContract.AssertAsync(
+            DatabaseProvider.MySql,
+            container.GetConnectionString(),
+            serverVersion: "8.4.0");
+        await CleanupOwnershipContract.AssertAsync(
             DatabaseProvider.MySql,
             container.GetConnectionString(),
             serverVersion: "8.4.0");
@@ -121,6 +128,10 @@ public sealed class ServerDatabaseContractTests
             container.GetConnectionString(),
             serverVersion: "11.4.0");
         await ParseRunLeaseContract.AssertAsync(
+            DatabaseProvider.MariaDb,
+            container.GetConnectionString(),
+            serverVersion: "11.4.0");
+        await CleanupOwnershipContract.AssertAsync(
             DatabaseProvider.MariaDb,
             container.GetConnectionString(),
             serverVersion: "11.4.0");
