@@ -190,3 +190,7 @@ usually need no new design document.
 - Before deleting, moving, or bulk rewriting, confirm the exact targets.
 - Before committing, check documentation links, formatting, secrets, and the repository
   state.
+
+## English working environment
+
+Write in English: project-maintained documentation (README and docs), Issue and Change Request titles and bodies, Comments, Discussions, Review Threads, and future commit messages, unless a maintainer explicitly requests another language. Preserve historical Issues, Change Requests, and comments. Do not translate code, commands, paths, identifiers, logs, technical data, or quoted external text. Preserve other project conventions.
