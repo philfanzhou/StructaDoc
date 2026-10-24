@@ -164,8 +164,11 @@ Registered scopes are:
 - `documents:write`
 - `parses:read`
 - `parses:write`
+- `layout:detect`
 
 Scopes are independent. Provider configuration remains administrator-only.
+
+`layout:detect` opens the non-archiving layout endpoint (`POST /api/v1/layout/detect`, [ADR-0013](../adr/0013-non-archiving-layout-detection.md)) and is the one scope that does not admit an interactive session: that endpoint is for machine callers, so its authorization policy requires an authenticated API client holding the scope and refuses a signed-in browser session outright, unlike the four document/parse scopes, which an interactive session reaches without holding any scope.
 
 A scope says which verbs a key may use. It says nothing about whose resources they may be used on, which is decided by ownership: a client is a workspace principal keyed by `(structadoc:api-client, <client id>)`, it owns what it uploads, and it reaches nothing else unless a grant names it. See [Resource Boundary](#resource-boundary).
 

@@ -53,6 +53,7 @@ public sealed class ApiDescriptionTests
     [InlineData("/api/v1/documents/{id}", "delete", "documents:write")]
     [InlineData("/api/v1/documents/{documentId}/parse-runs", "post", "parses:write")]
     [InlineData("/api/v1/parse-runs/{id}", "get", "parses:read")]
+    [InlineData("/api/v1/layout/detect", "post", "layout:detect")]
     public async Task A_scope_gated_operation_names_its_scope_and_offers_the_credential(
         string path,
         string method,
@@ -64,6 +65,45 @@ public sealed class ApiDescriptionTests
         Assert.Contains(scope, operation.GetProperty("description").GetString());
         var requirement = Assert.Single(operation.GetProperty("security").EnumerateArray());
         Assert.True(requirement.TryGetProperty("ApiKey", out _));
+    }
+
+    [Fact]
+    public async Task Layout_detection_is_described_as_an_api_client_only_operation()
+    {
+        using var document = await ReadDescriptionAsync();
+        var operation = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/v1/layout/detect")
+            .GetProperty("post");
+        var described = operation.GetProperty("description").GetString();
+
+        // The one scope policy with no browser-session branch. Describing it the way the
+        // document/parse scopes are described would invite a signed-in operator to call it, and
+        // the policy refuses them.
+        Assert.Equal("DetectLayout", operation.GetProperty("operationId").GetString());
+        Assert.Contains("layout:detect", described);
+        Assert.Contains("A browser session is not admitted", described);
+
+        // The request contract states the fixed bounds a caller cannot see anywhere else, and the
+        // non-archiving behavior that separates this operation from every other write.
+        var requestBody = operation.GetProperty("requestBody");
+        Assert.Contains("32 MiB", requestBody.GetProperty("description").GetString());
+        Assert.Contains("100,000,000", requestBody.GetProperty("description").GetString());
+        Assert.Contains("Nothing about the request is kept", requestBody.GetProperty("description").GetString());
+        var file = requestBody.GetProperty("content").GetProperty("multipart/form-data")
+            .GetProperty("schema").GetProperty("properties").GetProperty("file");
+        Assert.Equal("binary", file.GetProperty("format").GetString());
+
+        // Grouped under its own tag, not lost among the document operations. The serialized form
+        // of a tag reference is its name alone.
+        Assert.Equal(
+            "Layout",
+            operation.GetProperty("tags").EnumerateArray().Single().GetString());
+
+        // The error outcomes the endpoint itself produces are declared responses.
+        Assert.Contains("413", operation.GetProperty("responses").EnumerateObject()
+            .Select(status => status.Name));
+        Assert.Contains("429", operation.GetProperty("responses").EnumerateObject()
+            .Select(status => status.Name));
     }
 
     [Theory]

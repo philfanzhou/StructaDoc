@@ -28,7 +28,7 @@ The design must also remain self-hostable in one image and portable across all s
 - An API key contains a public client UUID and at least 256 bits of random secret material.
 - The full credential is shown only at creation or rotation; the database stores only SHA-256 of the secret.
 - Verification uses fixed-time comparison and checks enabled/revoked state.
-- Explicit scopes include `documents:read`, `documents:write`, `parses:read`, and `parses:write`.
+- Explicit scopes include `documents:read`, `documents:write`, `parses:read`, `parses:write`, and `layout:detect` (the non-archiving layout-detection endpoint of ADR-0013, an API-client-only permission).
 - Send credentials as `Authorization: ApiKey <credential>`, never in URLs, cookies, or logs.
 
 ### Authorization

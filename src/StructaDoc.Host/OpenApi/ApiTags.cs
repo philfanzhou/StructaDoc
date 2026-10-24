@@ -8,6 +8,7 @@ internal static class ApiTags
 {
     public const string Documents = "Documents";
     public const string ParseRuns = "Parse Runs";
+    public const string Layout = "Layout";
     public const string Administration = "Administration";
     public const string Sessions = "Sessions";
     public const string System = "System";
@@ -23,6 +24,11 @@ internal static class ApiTags
         {
             Name = ParseRuns,
             Description = "Start parsing, follow it, and read the normalized result.",
+        },
+        new()
+        {
+            Name = Layout,
+            Description = "Detect layout regions on one page image, in the same request, without creating anything.",
         },
         new()
         {

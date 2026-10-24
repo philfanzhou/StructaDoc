@@ -49,7 +49,7 @@ const hasDefaultProvider = computed(() => providers.value.some(provider => provi
 // one field short of working, and the parse it would refuse happens on another page.
 function needsCredential(provider: any) { return typeInfo(provider.providerType)?.requiresCredential === true && !provider.hasCredential }
 const defaultProviderNeedingCredential = computed(() => providers.value.find(provider => provider.isDefault && provider.isEnabled && needsCredential(provider)))
-const clientScopeLabels: Record<string, string> = { 'documents:read': '查看文档', 'documents:write': '上传和管理文档', 'parses:read': '查看解析结果', 'parses:write': '开始和管理解析' }
+const clientScopeLabels: Record<string, string> = { 'documents:read': '查看文档', 'documents:write': '上传和管理文档', 'parses:read': '查看解析结果', 'parses:write': '开始和管理解析', 'layout:detect': '版面检测' }
 const newClient = ref({ name: '', scopes: ['documents:read', 'documents:write', 'parses:read', 'parses:write'] })
 const newAdministrator = ref({ username: '', displayName: '', password: '' })
 const ownPassword = ref({ currentPassword: '', newPassword: '', confirmPassword: '' })

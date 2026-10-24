@@ -103,7 +103,7 @@ public static class StructaDocApiDescription
         }
 
         // Service identity is intentionally public. Every other consumer operation must be backed
-        // by one of the four API-client scope policies, which is the same fact authentication uses.
+        // by one of the API-client scope policies, which is the same fact authentication uses.
         if (string.Equals(description.RelativePath, "api/v1/system/info", StringComparison.Ordinal))
         {
             return true;
@@ -115,7 +115,8 @@ public static class StructaDocApiDescription
             .Any(policy => policy is AuthorizationPolicies.DocumentsRead
                 or AuthorizationPolicies.DocumentsWrite
                 or AuthorizationPolicies.ParsesRead
-                or AuthorizationPolicies.ParsesWrite);
+                or AuthorizationPolicies.ParsesWrite
+                or AuthorizationPolicies.LayoutDetect);
     }
 
     private static bool IsServiceApiOperation(ApiDescription description) =>

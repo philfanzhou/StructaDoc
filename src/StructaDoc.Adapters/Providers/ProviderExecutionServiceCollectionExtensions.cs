@@ -45,6 +45,10 @@ public static class ProviderExecutionServiceCollectionExtensions
         options.Validate();
 
         var runtime = options.ToRuntimeConfiguration();
+        // The bound configuration is registered for the endpoint that resolves per request: the
+        // public layout route reads it and hands it to the capability resolution, so what the
+        // endpoint resolves with is exactly what was bound here, restart to restart.
+        services.AddSingleton(runtime);
         if (runtime.BaseUri is null)
         {
             services.AddSingleton<ILayoutDetectionProviderResolver>(_ =>

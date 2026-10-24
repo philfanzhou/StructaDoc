@@ -202,6 +202,17 @@ public static class HostAuthenticationServiceCollectionExtensions
                     .RequireAssertion(context =>
                         IsInteractive(context.User)
                         || HasScope(context.User, AuthenticationScopes.ParsesWrite)))
+            // The one policy that does not admit an interactive session. Layout detection is an
+            // API-client endpoint (ADR-0013 point 5): a machine caller holds the scope, while a
+            // signed-in browser session has no business reaching a non-archiving detection API, so
+            // the IsInteractive branch the four document/parse policies carry is deliberately
+            // absent here — an administrator in a browser is refused exactly like anyone else.
+            .AddPolicy(
+                AuthorizationPolicies.LayoutDetect,
+                policy => policy
+                    .RequireAuthenticatedUser()
+                    .RequireAssertion(context =>
+                        HasScope(context.User, AuthenticationScopes.LayoutDetect)))
             .AddPolicy(
                 AuthorizationPolicies.InteractiveUser,
                 policy => policy
