@@ -120,3 +120,45 @@ def test_response_never_carries_request_data():
     payload = build_response(detection, "stub").to_json_dict()
     assert set(payload) == {"width", "height", "regions", "engine"}
     assert payload["engine"] == "stub"
+
+
+def test_the_sdk_loguru_sink_is_replaced_at_startup(monkeypatch):
+    # mineru_vl_utils logs through loguru, whose default stderr sink prints
+    # DEBUG records — including each request's raw model output — whatever the
+    # application's stdlib level is. Startup must remove that sink and leave
+    # one that cannot carry request data. The weight-free environment has no
+    # loguru, so a fake module stands in for it (the pattern test_sdk_guard
+    # uses for the SDK itself); the real-engine smoke covers the real one.
+    import sys
+    import types
+
+    calls: list = []
+
+    class FakeLogger:
+        def remove(self):  # noqa: ANN101
+            calls.append("remove")
+
+        def add(self, sink, *, level=None):  # noqa: ANN001
+            calls.append((sink, level))
+
+    fake_module = types.ModuleType("loguru")
+    fake_module.logger = FakeLogger()
+    monkeypatch.setitem(sys.modules, "loguru", fake_module)
+
+    from structadoc_layout_worker.__main__ import silence_sdk_request_logging
+
+    silence_sdk_request_logging()
+
+    assert calls == ["remove", (sys.stderr, "WARNING")]
+
+
+def test_silencing_tolerates_an_absent_loguru(monkeypatch):
+    # A None entry in sys.modules makes `from loguru import logger` raise
+    # ImportError — the weight-free environment, where nothing needs sinking.
+    import sys
+
+    monkeypatch.setitem(sys.modules, "loguru", None)
+
+    from structadoc_layout_worker.__main__ import silence_sdk_request_logging
+
+    silence_sdk_request_logging()  # must not raise

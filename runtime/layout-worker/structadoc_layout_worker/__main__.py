@@ -20,11 +20,33 @@ from .config import ConfigurationError, WorkerConfig
 from .engine import EngineUnavailableError, build_engine
 
 
+def silence_sdk_request_logging() -> None:
+    """Stop the SDK's logger from writing request data to the log stream.
+
+    ``mineru_vl_utils`` logs through loguru, not stdlib logging. Importing
+    loguru installs a default stderr sink at DEBUG level, so the raw model
+    output for each request (``Layout raw output: ...``) is printed whatever
+    this application's stdlib level is — request data in logs, which
+    ADR-0013 (point 5) and the deployment guide's retention statement forbid.
+    The default sink is removed before the engine is built and replaced with
+    one at WARNING: operational SDK warnings stay visible, request data does
+    not reach the log stream. Loguru is absent in the weight-free
+    environment (it arrives with the SDK); there is nothing to silence then.
+    """
+    try:
+        from loguru import logger
+    except ImportError:
+        return
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    silence_sdk_request_logging()
 
     try:
         config = WorkerConfig.from_env()
