@@ -61,7 +61,7 @@ StructaDoc owns the reliable conversion from files to normalized document data:
 5. retain parsing history and raw results for traceability;
 6. expose versioned APIs and a user-facing workspace.
 
-Alongside that lifecycle, [ADR-0013](./docs/adr/0013-non-archiving-layout-detection.md) records one explicit exception: a non-archiving image layout detection mode, exposed as `POST /api/v1/layout/detect`, in which an authenticated API client holding `layout:detect` submits a single JPEG or PNG and receives Provider-neutral normalized layout regions in the same response, while StructaDoc creates no Document or Parse Run and stores no request image or result. The mode detects page layout only — it returns no recognized text, table HTML, formula LaTeX, or assets. It needs an administrator-configured layout runtime to answer anything.
+Alongside that lifecycle, [ADR-0013](./docs/adr/0013-non-archiving-layout-detection.md) records one explicit exception: a non-archiving image layout detection mode, exposed as `POST /api/v1/layout/detect`, in which an authenticated API client holding `layout:detect` submits a single JPEG or PNG and receives Provider-neutral normalized layout regions in the same response, while StructaDoc creates no Document or Parse Run and stores no request image or result. The mode detects page layout only — it returns no recognized text, table HTML, formula LaTeX, or assets. It needs an administrator-configured layout runtime to answer anything; StructaDoc maintains an optional one — a separate Python worker in `runtime/layout-worker/` running the MinerU SDK layout path — deployable beside the main image or replaceable by any service speaking the same protocol ([Layout Runtime](./docs/deployment/layout-runtime.md)).
 
 StructaDoc intentionally does not include:
 
@@ -280,7 +280,7 @@ Connection strings, bootstrap passwords, OIDC secrets, Provider tokens, and stor
 | File storage | Local filesystem or S3-compatible object storage |
 | Office conversion | Constrained LibreOffice headless subprocess |
 | Parsing | MinerU Cloud and MinerU Local Provider adapters |
-| Deployment | One StructaDoc image; SQLite volume or external server database |
+| Deployment | One StructaDoc image; SQLite volume or external server database; optional layout inference worker beside it |
 
 The runtime image does not contain Node.js, the .NET SDK, or Python. Build tools exist only in multi-stage build stages.
 

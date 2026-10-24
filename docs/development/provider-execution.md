@@ -47,7 +47,8 @@ contract, so no path exists from a layout request into full document parsing.
   empty) belongs to the endpoint task.
 - `MinerULayoutDetectionProvider` is the one implementation; its single-route wire protocol is
   described in [MinerU HTTP Provider Adapters](./mineru-http-providers.md). The inference runtime
-  itself is a separate deployment component.
+  itself is a separate deployment component, shipped as the optional worker under
+  `runtime/layout-worker/` ([Layout Runtime](../deployment/layout-runtime.md)).
 
 ### The Public Layout Endpoint
 
@@ -134,6 +135,6 @@ See [Provider Result Intake](./provider-result-intake.md), [Provider Result Norm
 
 Automated coverage includes capabilities, redaction, duplicate Provider registration, encrypted Cloud checkpoint recovery, token isolation, signed-target SSRF controls, Local multipart, state/error mapping, stream ownership, immutable execution contexts, conditional stages and IDs, adoption, heartbeat concurrency, ZIP limits, Cloud/Local layout recognition, deterministic canonical mapping, and executor-to-commit integration. Real PostgreSQL, MySQL, MariaDB, production-image, and Chromium contracts pass in GitHub Actions.
 
-The layout contract is covered against an instrumented stub runtime: success with normalized regions, the single-route guarantee (any non-layout request fails the test), malformed and oversized output rejection, deadline expiry, cancellation with slot release, the concurrency bound, unsupported-capability resolution, registration with and without a runtime, and the structural no-persistence guarantee. The public endpoint adds the end-to-end half: every outcome row is tested against the real host with a stub provider, the stores stay empty after success, failure, timeout, cancellation, and concurrent runs, no temporary files appear on the path, and the `layout:detect` scope admits API clients while refusing every other scope and interactive sessions.
+The layout contract is covered against an instrumented stub runtime: success with normalized regions, the single-route guarantee (any non-layout request fails the test), malformed and oversized output rejection, deadline expiry, cancellation with slot release, the concurrency bound, unsupported-capability resolution, registration with and without a runtime, and the structural no-persistence guarantee. The public endpoint adds the end-to-end half: every outcome row is tested against the real host with a stub provider, the stores stay empty after success, failure, timeout, cancellation, and concurrent runs, no temporary files appear on the path, and the `layout:detect` scope admits API clients while refusing every other scope and interactive sessions. The shipped runtime worker carries its own weight-free suite — wire conformance, the full-parsing guard, bounded concurrency, and the no-persistence and log hygiene inspections — plus an adapter-acceptance check that runs the real `MinerULayoutDetectionProvider` against the worker over HTTP ([Layout Runtime](../deployment/layout-runtime.md)).
 
-Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, deployment-specific base-URL trust policy, and the deployable inference runtime.
+Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, and deployment-specific base-URL trust policy.
