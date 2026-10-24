@@ -369,6 +369,7 @@ public sealed class LayoutDetectEndpointTests
         };
         using var client = factory.CreateClient();
         var apiKey = await factory.CreateApiClientAsync(AuthenticationScopes.LayoutDetect);
+        var countsBefore = await TakeCountsAsync(factory.Host);
 
         var requests = Enumerable
             .Range(0, LayoutDetectInFlightGate.Capacity + 1)
@@ -403,6 +404,11 @@ public sealed class LayoutDetectEndpointTests
         {
             response.Dispose();
         }
+
+        // This is the "concurrent runs" row of the outcome matrix: eight executions in flight at
+        // once is the concurrency the no-persistence proof must also cover, not just the
+        // single-request rows.
+        await AssertNothingPersistedAsync(factory.Host, countsBefore);
     }
 
     [Fact]
