@@ -65,6 +65,7 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | Document | Subject |
 |---|---|
 | [Single Container](./deployment/single-container.md) | Building and running the Host, Vue UI, LibreOffice, fonts, and SQLite volume in one image |
+| [Layout Runtime](./deployment/layout-runtime.md) | The optional layout inference worker: model download with pinned checksums, configuration, the `LayoutRuntime` pointing procedure, sizing, and the real-image smoke |
 
 ## Documentation Rules
 

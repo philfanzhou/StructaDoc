@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A standalone check harness, deliberately outside StructaDoc.slnx: it is
+       run by the layout worker's pytest adapter-acceptance test, not by the
+       solution build or dotnet format. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>StructaDoc.LayoutWorkerAdapterCheck</RootNamespace>
+    <AssemblyName>StructaDoc.LayoutWorkerAdapterCheck</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference
+      Include="../../../src/StructaDoc.Adapters/StructaDoc.Adapters.csproj" />
+    <ProjectReference
+      Include="../../../src/StructaDoc.Application/StructaDoc.Application.csproj" />
+  </ItemGroup>
+
+</Project>

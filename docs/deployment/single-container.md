@@ -12,7 +12,7 @@ The root `Dockerfile` uses three build stages:
 2. the official .NET 10 SDK Noble image restores and publishes `StructaDoc.Host`, including the compiled web assets;
 3. the official ASP.NET Core 10 Noble runtime installs LibreOffice Writer, Calc, and Impress no-GUI components plus common Latin and CJK fonts.
 
-The final image contains ASP.NET Core Runtime, the Host, web assets, four migration assemblies, LibreOffice no-GUI components, fonts, CA certificates, and `curl` for health checks. It does not contain the .NET SDK, Node.js, npm, Python, the UNO Python bridge, FastAPI, or a second resident service.
+The final image contains ASP.NET Core Runtime, the Host, web assets, four migration assemblies, LibreOffice no-GUI components, fonts, CA certificates, and `curl` for health checks. It does not contain the .NET SDK, Node.js, npm, Python, the UNO Python bridge, FastAPI, or a second resident service. The optional layout inference runtime is therefore a separate component of its own, never an addition to this image; see [Layout Runtime](./layout-runtime.md).
 
 Ubuntu 24.04 Noble is explicit because the official .NET 10 image does not provide a Debian variant. The Dockerfile installs only the no-GUI components required for DOC/DOCX, XLS/XLSX, and PPT/PPTX conversion and verifies that Python, Node.js, and npm are absent from the runtime stage.
 
@@ -31,7 +31,7 @@ target architecture. CI builds both complete images without publishing on pull
 requests, and publishing waits for that check as well as the existing tests.
 
 
-CI publishes the image to GitHub Container Registry for every `v*` tag and every push to `main`, and only after all seven check jobs pass, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
+CI publishes the image to GitHub Container Registry for every `v*` tag and every push to `main`, and only after all eight check jobs pass, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
 
 ```bash
 docker pull ghcr.io/philfanzhou/structadoc:latest
