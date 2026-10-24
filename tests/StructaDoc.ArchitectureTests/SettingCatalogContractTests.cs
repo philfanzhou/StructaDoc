@@ -1,6 +1,7 @@
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.Conversion;
 using StructaDoc.Adapters.Persistence;
+using StructaDoc.Adapters.Providers;
 using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.ProviderResults;
@@ -336,6 +337,71 @@ public sealed class SettingCatalogContractTests
             Definition(SettingCatalog.LibreOfficeMaxTemporaryBytes).Default);
     }
 
+    [Fact]
+    public void Layout_runtime_defaults_match_the_options_they_describe()
+    {
+        var options = new LayoutRuntimeOptions();
+
+        // The two deliberately-empty defaults: a blank Base URL is the shipped state in which no
+        // runtime is configured (reported as an explicit unsupported capability, not as a value),
+        // and a secret never ships with a default.
+        Assert.Equal(string.Empty, Definition(SettingCatalog.LayoutRuntimeBaseUrl).Default);
+        Assert.Equal(string.Empty, Definition(SettingCatalog.LayoutRuntimeCredential).Default);
+        Assert.Equal(
+            options.Timeout.ToString(),
+            Definition(SettingCatalog.LayoutRuntimeTimeout).Default);
+        Assert.Equal(
+            options.MaxConcurrency.ToString(),
+            Definition(SettingCatalog.LayoutRuntimeMaxConcurrency).Default);
+    }
+
+    [Fact]
+    public void Layout_runtime_ranges_match_the_bounds_validation_enforces()
+    {
+        var timeout = Definition(SettingCatalog.LayoutRuntimeTimeout);
+        Assert.Equal(SettingKind.Duration, timeout.Kind);
+        LayoutRuntimeWhere(SettingCatalog.LayoutRuntimeTimeout, timeout.Minimum).Validate();
+        Assert.ThrowsAny<Exception>(
+            () => LayoutRuntimeWhere(SettingCatalog.LayoutRuntimeTimeout, timeout.Minimum - 1).Validate());
+
+        foreach (var key in new[]
+        {
+            SettingCatalog.LayoutRuntimeMaxConcurrency,
+        })
+        {
+            var definition = Definition(key);
+            LayoutRuntimeWhere(key, definition.Minimum).Validate();
+            LayoutRuntimeWhere(key, definition.Maximum).Validate();
+            Assert.ThrowsAny<Exception>(
+                () => LayoutRuntimeWhere(key, definition.Minimum - 1).Validate());
+        }
+    }
+
+    [Fact]
+    public void Layout_runtime_addresses_follow_the_provider_url_rule()
+    {
+        // The same address rule the Parse Run Provider configuration enforces: absolute HTTP(S)
+        // and free of user information, a query, and a fragment. The catalog's Uri kind holds the
+        // generic address checks; this Provider-shaped rule lives in the options class, where a
+        // stored violation drops the whole recoverable section at the next startup instead of
+        // pointing requests at a credential-bearing or fragmented address.
+        new LayoutRuntimeOptions { BaseUrl = "https://runtime.example/prefix" }.Validate();
+        new LayoutRuntimeOptions { BaseUrl = "http://runtime.example:8080" }.Validate();
+
+        foreach (var rejected in new[]
+        {
+            "runtime.example",
+            "ftp://runtime.example",
+            "https://user:secret@runtime.example",
+            "https://runtime.example/prefix?token=1",
+            "https://runtime.example/prefix#section",
+        })
+        {
+            Assert.ThrowsAny<Exception>(
+                () => new LayoutRuntimeOptions { BaseUrl = rejected }.Validate());
+        }
+    }
+
     /// <summary>
     /// A range the catalog publishes has to be one the options behind it accept, or an
     /// administrator can save a value the next restart rejects for its own sake. The edges are
@@ -562,6 +628,24 @@ public sealed class SettingCatalogContractTests
                 SettingCatalog.LibreOfficeMaxTemporaryBytes,
                 milliseconds,
                 defaults.MaxTemporaryBytes),
+        };
+    }
+
+    private static LayoutRuntimeOptions LayoutRuntimeWhere(string key, long value)
+    {
+        var defaults = new LayoutRuntimeOptions();
+        return new LayoutRuntimeOptions
+        {
+            Timeout = TimeSpan.FromMilliseconds(Pick(
+                key,
+                SettingCatalog.LayoutRuntimeTimeout,
+                value,
+                defaults.Timeout.TotalMilliseconds)),
+            MaxConcurrency = (int)Pick(
+                key,
+                SettingCatalog.LayoutRuntimeMaxConcurrency,
+                value,
+                defaults.MaxConcurrency),
         };
     }
 

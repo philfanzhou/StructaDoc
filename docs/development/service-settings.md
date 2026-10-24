@@ -1,11 +1,11 @@
 # Service Settings
 
 - Status: Implementation note
-- Last updated: 2026-10-17
+- Last updated: 2026-10-24
 
 ## Purpose
 
-Administrators can manage the settings listed below under `/admin`, with their values stored in the control-plane database. The settable keys now cover the service's tuning as well as its connections: Worker lease, heartbeat, retry, and polling rhythm; the bounds on Provider result intake and normalization; the LibreOffice conversion limits; the local administration session lifetime and login throttling; and the console log levels, alongside storage, the business database, sign-in through an identity provider, and the upload limits. Other options remain deployment settings (see [Deployment-Minimum Keys](#deployment-minimum-keys)). Configuration files and environment variables can supply defaults or pin values that the browser cannot change.
+Administrators can manage the settings listed below under `/admin`, with their values stored in the control-plane database. The settable keys now cover the service's tuning as well as its connections: Worker lease, heartbeat, retry, and polling rhythm; the bounds on Provider result intake and normalization; the LibreOffice conversion limits; the optional layout-detection inference runtime; the local administration session lifetime and login throttling; and the console log levels, alongside storage, the business database, sign-in through an identity provider, and the upload limits. Other options remain deployment settings (see [Deployment-Minimum Keys](#deployment-minimum-keys)). Configuration files and environment variables can supply defaults or pin values that the browser cannot change.
 
 ## Where Settings Live
 
@@ -106,6 +106,10 @@ whole.
 | `LibreOffice:MaxInputBytes` | integer, 1–8 GiB | Restart |
 | `LibreOffice:MaxOutputBytes` | integer, 1–8 GiB | Restart |
 | `LibreOffice:MaxTemporaryBytes` | integer, 1–8 GiB, ≥ both byte limits above | Restart |
+| `LayoutRuntime:BaseUrl` | address, absolute HTTP(S) without user info, query, or fragment; blank means no runtime | Restart |
+| `LayoutRuntime:Credential` | secret | Restart |
+| `LayoutRuntime:Timeout` | duration, ≥ 1 s | Restart |
+| `LayoutRuntime:MaxConcurrency` | integer, 1–64 | Restart |
 | `Logging:LogLevel:Default` | `Trace`–`Critical` | Live on the writing instance |
 | `Logging:LogLevel:Microsoft.AspNetCore` | `Trace`–`Critical` | Live on the writing instance |
 | `Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command` | `Trace`–`Critical` | Live on the writing instance |
@@ -121,6 +125,8 @@ seeds the switch at startup, is reported as managed by the deployment, and answe
 write like every other pin.
 
 A duration is written the way the configuration files write one — `00:00:30` for thirty seconds, `1.00:00:00` for a day, with an optional fractional part for sub-second values. Any spelling the runtime accepts is stored, and the API reports the one canonical spelling back, so a saved value never looks different from itself after a reload. A number may carry a fractional part and is parsed and stored in the invariant culture only.
+
+The `LayoutRuntime` section configures the optional layout-detection inference runtime (ADR-0013). It is a settings section rather than a Provider configuration on purpose: a layout runtime is never offered as a document-parsing Provider, creates no Parse Run, and has no immutable configuration version to snapshot. A blank `LayoutRuntime:BaseUrl` is the shipped state — no runtime configured — in which the layout capability resolves to an explicit unsupported error rather than a fallback into document parsing; the credential is optional because a runtime on a trusted network needs none, and once set it is a secret reported the same way as the others. See [MinerU HTTP Provider Adapters](./mineru-http-providers.md) for the protocol the runtime serves and [Provider Execution](./provider-execution.md) for the execution contract.
 
 `Storage:Provider` and `Database:Provider` are closed sets. A value outside one is refused by the write rather than at the next start, which is the only moment an administrator is still looking at what they typed. The list of accepted spellings is reported with the setting, so the web interface offers a choice instead of asking anyone to guess, and an architecture test holds it against what the options classes accept.
 
@@ -169,11 +175,11 @@ A value written from a browser can be wrong in ways a configuration file cannot,
 
 Refusing to start on that would take away the only surface such a deployment could be fixed from. A stored section that fails validation is dropped instead, the service starts without it, and `GET /api/v1/admin/settings/oidc` reports what was rejected. The whole section goes rather than the failing key alone: half a configuration is harder to reason about than none. The stored values are still reported so an administrator can see what they wrote; the fault is what says they are not in effect.
 
-Tuning keys are written one at a time in exactly the same way, so the same rescue covers the combinations their own rules compare across keys: a `Worker:HeartbeatInterval` no shorter than its `Worker:LeaseDuration`, a `Worker:MaximumPollDelay` below its floor, an expansion allowance that no longer covers the entry limit, a `LibreOffice:MaxTemporaryBytes` below the limits it has to house, and a `Worker:MaxExecutionDuration` between zero and one second. Each value is one its key accepts alone, so no single write can refuse the combination; the next start drops the stored section and runs on the shipped tuning instead.
+Tuning keys are written one at a time in exactly the same way, so the same rescue covers the combinations their own rules compare across keys: a `Worker:HeartbeatInterval` no shorter than its `Worker:LeaseDuration`, a `Worker:MaximumPollDelay` below its floor, an expansion allowance that no longer covers the entry limit, a `LibreOffice:MaxTemporaryBytes` below the limits it has to house, and a `Worker:MaxExecutionDuration` between zero and one second. Each value is one its key accepts alone, so no single write can refuse the combination; the next start drops the stored section and runs on the shipped tuning instead. A `LayoutRuntime:BaseUrl` the Provider address rule rejects is the same event for its section: the stored section is dropped, the service starts with no runtime configured, and layout requests answer the explicit unsupported-capability error until the address is corrected.
 
 The distinction is the source of the value, not the error. Anything the deployment pins still stops the service, because whoever set it has a command line.
 
-`Oidc`, `Authentication` (the tuning half above), `Storage`, `Database`, `Worker`, `ProviderResults`, `ProviderResultNormalization`, and `LibreOffice` are the recoverable sections. Each is dropped to the shipped default when a stored value fails to bind or validate, and each records why. An architecture test holds that every recoverable section is one the catalog can write to, since a section no browser can produce is not one that needs rescuing. More than one can be wrong at once — moving a deployment to object storage and an external database in the same sitting is an ordinary way to do that — so faults are kept per section rather than one at a time.
+`Oidc`, `Authentication` (the tuning half above), `Storage`, `Database`, `Worker`, `ProviderResults`, `ProviderResultNormalization`, `LibreOffice`, and `LayoutRuntime` are the recoverable sections. Each is dropped to the shipped default when a stored value fails to bind or validate, and each records why. An architecture test holds that every recoverable section is one the catalog can write to, since a section no browser can produce is not one that needs rescuing. More than one can be wrong at once — moving a deployment to object storage and an external database in the same sitting is an ordinary way to do that — so faults are kept per section rather than one at a time.
 
 The identity-provider, storage, and database panels report their own fault beside the values that produced it. The tuning sections have no panel of their own, so `GET /api/v1/admin/settings/startup-faults` answers every dropped section and why — one place an administrator can check before trusting what the page reports as in force.
 

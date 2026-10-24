@@ -139,6 +139,11 @@ public static class SettingCatalog
     public const string LibreOfficeMaxOutputBytes = "LibreOffice:MaxOutputBytes";
     public const string LibreOfficeMaxTemporaryBytes = "LibreOffice:MaxTemporaryBytes";
 
+    public const string LayoutRuntimeBaseUrl = "LayoutRuntime:BaseUrl";
+    public const string LayoutRuntimeCredential = "LayoutRuntime:Credential";
+    public const string LayoutRuntimeTimeout = "LayoutRuntime:Timeout";
+    public const string LayoutRuntimeMaxConcurrency = "LayoutRuntime:MaxConcurrency";
+
     public const string LoggingDefaultLevel = "Logging:LogLevel:Default";
     public const string LoggingAspNetCoreLevel = "Logging:LogLevel:Microsoft.AspNetCore";
     public const string LoggingEfCoreDatabaseCommandLevel =
@@ -202,6 +207,15 @@ public static class SettingCatalog
     /// </summary>
     public const string LibreOfficeSection = "LibreOffice";
 
+    /// <summary>
+    /// The optional layout-detection inference runtime. Recoverable for the same reason as the
+    /// conversion limits: a stored address that fails validation is dropped and the service starts
+    /// with no runtime configured, which the layout capability resolution reports as an explicit
+    /// unsupported error rather than a startup failure. This section is deliberately not a Parse
+    /// Run Provider type: a layout runtime is never offered as a document-parsing Provider.
+    /// </summary>
+    public const string LayoutRuntimeSection = "LayoutRuntime";
+
     /// <summary>Sections a stored value may be dropped from rather than stopping the service.</summary>
     public static IReadOnlyList<string> RecoverableSections { get; } =
     [
@@ -213,6 +227,7 @@ public static class SettingCatalog
         ProviderResultsSection,
         ProviderResultNormalizationSection,
         LibreOfficeSection,
+        LayoutRuntimeSection,
     ];
 
     private const int ClaimNameMaximumLength = 255;
@@ -541,6 +556,39 @@ public static class SettingCatalog
             Default: "536870912",
             Minimum: 1,
             Maximum: EightGibibytes),
+
+        // The optional layout-detection inference runtime (ADR-0013). A blank Base URL is the
+        // shipped state — no runtime, so layout requests fail with the explicit unsupported
+        // capability error rather than guessing an endpoint. The credential is optional because a
+        // runtime on a trusted network needs none; it is a secret for the same reason the Provider
+        // credentials are. The timeout and concurrency floors are the ones
+        // LayoutRuntimeOptions.Validate enforces, so a value accepted here is never one the next
+        // restart rejects for its own sake.
+        new(
+            LayoutRuntimeBaseUrl,
+            SettingKind.Uri,
+            RequiresRestart: true,
+            Default: "",
+            Maximum: 2048),
+        new(
+            LayoutRuntimeCredential,
+            SettingKind.Secret,
+            RequiresRestart: true,
+            Default: "",
+            Maximum: 512),
+        new(
+            LayoutRuntimeTimeout,
+            SettingKind.Duration,
+            RequiresRestart: true,
+            Default: "00:00:30",
+            Minimum: 1000),
+        new(
+            LayoutRuntimeMaxConcurrency,
+            SettingKind.Integer,
+            RequiresRestart: true,
+            Default: "1",
+            Minimum: 1,
+            Maximum: 64),
 
         // Console log verbosity, one key for the pipeline's root level and one for each of the two
         // fixed override categories. A change listener flips the level switch the running console

@@ -231,6 +231,18 @@ var conversionOptions = RecoverableConfigurationBinder.Bind(
     source => source.GetSection(LibreOfficeConversionOptions.SectionName)
         .Get<LibreOfficeConversionOptions>() ?? new LibreOfficeConversionOptions(),
     options => options.Validate());
+// The optional layout-detection inference runtime (ADR-0013). Bound recoverably like the other
+// tuning sections: a stored address the service cannot use is dropped and the service starts with
+// no runtime configured, which the layout capability resolution reports explicitly. A blank base
+// URL — the shipped default — is that same state, not a fault.
+var layoutRuntimeOptions = RecoverableConfigurationBinder.Bind(
+    settingsConfiguration,
+    settingsStartupFault,
+    SettingCatalog.LayoutRuntimeSection,
+    "layout runtime configuration",
+    source => source.GetSection(LayoutRuntimeOptions.SectionName).Get<LayoutRuntimeOptions>()
+        ?? new LayoutRuntimeOptions(),
+    options => options.Validate());
 ingestionOptions.Validate();
 var oidcOptions = OidcConfigurationBinder.Bind(settingsConfiguration, settingsStartupFault);
 // The Authentication section's tuning half binds from the settings-aware configuration rather than
@@ -252,6 +264,7 @@ builder.Services.AddScoped<IServiceHealthSnapshotSource, StructaDocHealthSnapsho
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions, uploadLimits);
 builder.Services.AddStructaDocDocumentConversion(conversionOptions);
 builder.Services.AddStructaDocParseProviders();
+builder.Services.AddStructaDocLayoutDetection(layoutRuntimeOptions);
 builder.Services.AddStructaDocProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
