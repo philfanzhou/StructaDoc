@@ -17,6 +17,38 @@ Provider states remain internal. `ProviderException` exposes a stable code, sani
 
 `ProviderCredential.ToString()` is always `[redacted]`; only adapter request construction can read the value explicitly. This reduces accidental logging but does not replace log review or memory hygiene.
 
+## Layout Detection Execution
+
+`ILayoutDetectionProvider` is a second, separate internal execution contract for the non-archiving
+image layout-detection mode of [ADR-0013](../adr/0013-non-archiving-layout-detection.md). It is
+synchronous request/response — one JPEG or PNG page image in, normalized layout regions out — and
+deliberately not an `IParseProvider` operation, because it takes no Parse Run, no immutable
+configuration version, and no persisted result. `IParseProvider`, `ProviderCapabilities`, and the
+MinerU Cloud/Local full-parsing adapters are unchanged, and neither side implements the other's
+contract, so no path exists from a layout request into full document parsing.
+
+- The request carries validated image bytes plus the media type (`image/jpeg` or `image/png`),
+  bounded to 32 MiB; the endpoint that calls the contract owns request validation, authorization,
+  and the caller's deadline, which arrive through the cancellation token. Cancellation propagates
+  as cancellation, not as a Provider error.
+- The result carries normalized regions — a generic lowercase type label plus a box in the
+  canonical bounding-box convention of the Canonical Model (Section 9: top-left origin, `x`
+  rightward, `y` downward, values in `[0, 1]`) — the runtime-reported source image dimensions,
+  engine/model/version information when the runtime supplies it, and a bounded diagnostics slot
+  that is empty unless the runtime had a recoverable note.
+- The capability is declared by resolution, not by extending `ProviderCapabilities`:
+  `ILayoutDetectionProviderResolver.Resolve` reads the `LayoutRuntime` settings section and either
+  returns the registered implementation or throws `ProviderException`
+  `layout-capability-unsupported` (Configuration category) — the explicit unsupported-capability
+  error. A blank `LayoutRuntime:BaseUrl` is the shipped state and resolves the same way.
+- The path is non-persistent: the contract, the resolution, and the adapter reference no Document,
+  Parse Run, Page, Block, Asset, Artifact, or request-result store and no storage client. An
+  architecture test holds that structural guarantee; the end-to-end proof (real stores stay
+  empty) belongs to the endpoint task.
+- `MinerULayoutDetectionProvider` is the one implementation; its single-route wire protocol is
+  described in [MinerU HTTP Provider Adapters](./mineru-http-providers.md). The inference runtime
+  itself is a separate deployment component.
+
 ## Execution Snapshot
 
 `IParseRunExecutionContextStore` accepts only a current `ParseRunLease` and verifies:
@@ -72,4 +104,6 @@ See [Provider Result Intake](./provider-result-intake.md), [Provider Result Norm
 
 Automated coverage includes capabilities, redaction, duplicate Provider registration, encrypted Cloud checkpoint recovery, token isolation, signed-target SSRF controls, Local multipart, state/error mapping, stream ownership, immutable execution contexts, conditional stages and IDs, adoption, heartbeat concurrency, ZIP limits, Cloud/Local layout recognition, deterministic canonical mapping, and executor-to-commit integration. Real PostgreSQL, MySQL, MariaDB, production-image, and Chromium contracts pass in GitHub Actions.
 
-Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, and deployment-specific base-URL trust policy.
+The layout contract is covered against an instrumented stub runtime: success with normalized regions, the single-route guarantee (any non-layout request fails the test), malformed and oversized output rejection, deadline expiry, cancellation with slot release, the concurrency bound, unsupported-capability resolution, registration with and without a runtime, and the structural no-persistence guarantee.
+
+Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, deployment-specific base-URL trust policy, the public layout endpoint, and the deployable inference runtime.

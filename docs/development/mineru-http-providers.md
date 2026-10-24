@@ -1,6 +1,6 @@
 # MinerU HTTP Provider Adapters
 
-This note describes the current MinerU Cloud and MinerU Local HTTP adapters. See [ADR-0002](../adr/0002-parser-provider-abstraction.md) for the abstraction and the [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) for recovery rules. Upstream protocol changes must remain in adapters and contract tests rather than entering the public API.
+This note describes the current MinerU Cloud and MinerU Local HTTP adapters, and the MinerU layout runtime protocol the layout detection adapter speaks. See [ADR-0002](../adr/0002-parser-provider-abstraction.md) for the abstraction, [ADR-0013](../adr/0013-non-archiving-layout-detection.md) for the layout mode, and the [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) for recovery rules. Upstream protocol changes must remain in adapters and contract tests rather than entering the public API.
 
 ## MinerU Cloud
 
@@ -59,6 +59,65 @@ Arbitrary future output schemas and identical output across tiers are not promis
 No additional input formats are enabled by the broader upstream format support.
 
 The normalizer recognizes both Local layouts such as `{document}/{method}/{document}.md` plus nested `images/` and Cloud's root `full.md`. It resolves only unique, validated candidates from the archive manifest.
+
+## MinerU Layout Runtime
+
+`MinerULayoutDetectionProvider` executes layout-only inference (ADR-0013) against the
+administrator-configured runtime — the `LayoutRuntime` settings section
+([Service Settings](./service-settings.md)), not a Parse Run Provider configuration. It calls
+exactly one route and nothing else: no task submission, no polling, no content recognition, no
+artifact generation. The route and the JSON shapes below are the contract the layout inference
+runtime serves; the runtime itself ships as a separate deployment component built on the official
+MinerU SDK layout path.
+
+```text
+POST {LayoutRuntime:BaseUrl}/v1/layout/detect
+Authorization: Bearer <LayoutRuntime:Credential>     # only when a credential is configured
+Content-Type: application/json
+
+{"mediaType": "image/png", "image": "<base64 JPEG or PNG bytes>"}
+```
+
+Response — HTTP 200 with `application/json`:
+
+```json
+{
+  "width": 2480,
+  "height": 3508,
+  "engine": "mineru",
+  "model": "MinerU2.0-Layout-Detect",
+  "version": "2.0.7",
+  "regions": [
+    { "label": "title", "x0": 0.125, "y0": 0.24, "x1": 0.875, "y1": 0.42 }
+  ]
+}
+```
+
+- `width` and `height` are the source image dimensions in pixels as the runtime decoded them;
+  `regions` is required (an explicitly empty array is a valid answer for a blank image), each
+  region exactly `label`/`x0`/`y0`/`x1`/`y1`; `engine`, `model`, and `version` are optional
+  strings.
+- Region geometry is normalized: top-left origin, `x` rightward, `y` downward, coordinates in
+  `[0, 1]`, `x0 <= x1` and `y0 <= y1`. Labels are short generic lowercase identifiers
+  (`text`, `title`, `table`, `figure`, `formula`, ...); the response carries no recognized body
+  content.
+- Parsing is strict: unknown or duplicate properties, wrong types, missing `width`/`height`/
+  `regions`, coordinates outside `[0, 1]` or inverted, labels longer than 32 characters or
+  containing anything but `a-z0-9_-`, and more than 4096 regions all fail as
+  `mineru-layout-response-invalid` (permanent) with a bounded diagnostic naming the offending
+  property or region index — never a successful empty result. The response body is limited to
+  1 MiB (`mineru-layout-response-too-large`).
+- HTTP mapping follows the shared boundary: runtime `400/422` is input failure, `401/403` is
+  configuration failure (a protected runtime whose credential is wrong), `408/429/5xx` and network
+  failures are transient (`mineru-layout-http-<status>`, `mineru-layout-network-error`).
+- The configured `LayoutRuntime:Timeout` is the client's own deadline, so an expired bound
+  surfaces as the transient `mineru-layout-timeout`; caller cancellation propagates as
+  cancellation. In-flight executions are bounded by `LayoutRuntime:MaxConcurrency` through a
+  semaphore held for the whole exchange.
+- The base URL follows the Provider address rule — absolute HTTP(S) without user information, a
+  query, or a fragment. HTTP is allowed because a runtime on a trusted network is the expected
+  deployment, matching MinerU Local; the adapter must not be pointed at the cloud extraction API,
+  which offers no layout-only inference.
 
 ## Parse Run Options
 
