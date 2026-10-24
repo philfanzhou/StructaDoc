@@ -52,7 +52,7 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | [Observability](./development/observability.md) | Service identity, the sanitizing Serilog console pipeline, and their guarantees |
 | [Office Conversion](./development/office-conversion.md) | Constrained LibreOffice execution, snapshots, and recovery |
 | [Provider Config and Parse Runs](./development/provider-config-and-parse-runs.md) | Immutable Provider configuration, browser administration, and Parse Run creation |
-| [Provider Execution](./development/provider-execution.md) | Provider capabilities, execution snapshots, heartbeats, resumable orchestration, and the layout detection contract |
+| [Provider Execution](./development/provider-execution.md) | Provider capabilities, execution snapshots, heartbeats, resumable orchestration, the layout detection contract, and the public layout endpoint |
 | [Provider Result Intake](./development/provider-result-intake.md) | Idempotent ZIP storage and bounded archive validation |
 | [Provider Result Normalization](./development/provider-result-normalization.md) | MinerU entry discovery, deterministic identity, and canonical mapping |
 | [Result API and Resource Lifecycle](./development/result-api-and-resource-lifecycle.md) | Stable DTOs, downloads, exports, and durable deletion |

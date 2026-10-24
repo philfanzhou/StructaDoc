@@ -16,7 +16,7 @@ All live under `/api` so the descriptions travel with the API they describe, inc
 
 ## What It Describes
 
-Both documents are generated from the endpoints themselves, so neither can name a route that does not exist. The consumer document filters the surface by the same four scope policies used to admit API client credentials, plus the public service-information route. Browser-only administration, setup, and session operations live only in the operator document, so a generated SDK cannot advertise methods no API key can call.
+Both documents are generated from the endpoints themselves, so neither can name a route that does not exist. The consumer document filters the surface by the same five scope policies used to admit API client credentials, plus the public service-information route. Browser-only administration, setup, and session operations live only in the operator document, so a generated SDK cannot advertise methods no API key can call.
 
 Routes, parameters, and request bodies normally come from signatures. Selective XML documentation supplies summaries and remarks where a path alone does not explain the operation; comments are written for useful semantics rather than to meet a coverage target. Documented handlers remain at least `internal`, because the compile-time XML processor omits private members, and each `AddOpenApi` document name remains a literal expression so the processor can intercept its registration. Explicit endpoint names provide stable, unique `operationId` values for generated method names.
 
@@ -29,7 +29,7 @@ A parameter with a fixed set of legal values says so too. `{format}` on the expo
 Two things are not visible in an endpoint signature and are supplied by transformers in `src/StructaDoc.Host/OpenApi`:
 
 - **Who may call it.** Every operation gated by a scope policy carries the `ApiKey` security requirement and says which scope it needs, and every operation admitted by a permission on a Document says which permission. Every operation reachable only from a browser says so instead, and offers no credential, because none would work. An endpoint that opts out of its group's policy is described as open, since describing the group's policy would state a requirement nothing enforces.
-- **What the group is.** Operations are tagged Documents, Parse Runs, Administration, Sessions, or System. Ungrouped, every operation lands under the assembly name and a reader is handed one undifferentiated list.
+- **What the group is.** Operations are tagged Documents, Parse Runs, Layout, Administration, Sessions, or System. Ungrouped, every operation lands under the assembly name and a reader is handed one undifferentiated list.
 
 The scope is stated in prose rather than carried in the security requirement because OpenAPI attaches scopes to OAuth flows alone, and an API client credential is not one. A signed-in browser session reaches the same endpoints holding no scope at all.
 
@@ -50,6 +50,8 @@ Health probes are excluded. They are endpoints, but they are an operational cont
 The credential is described as an API key in the `Authorization` header rather than as an HTTP authorization scheme, because the header value carries its own `ApiKey ` prefix. Described the other way, a generated example would omit the prefix and fail to authenticate.
 
 A scope authorizes the endpoint; ownership or an explicit grant authorizes the resource. See [Authentication](./authentication.md#resource-boundary) and [ADR-0008](../adr/0008-api-client-resource-isolation.md). The document says so in its overview, because a reader who sees only the scope list will otherwise expect a key to reach the whole workspace.
+
+One endpoint breaks the pattern deliberately: `POST /api/v1/layout/detect` requires the `layout:detect` scope and no browser session can reach it at all — the non-archiving layout mode of [ADR-0013](../adr/0013-non-archiving-layout-detection.md) is an API-client surface, so its operation description says a browser session is not admitted rather than offering the "scope or browser session" wording the document and parse operations carry. It is also the one operation whose description states the fixed request bounds (image bytes and pixel dimensions), because no settings key exposes them.
 
 Browser-only endpoints are described in the separate operator document and are not offered an API-client credential. Keeping the operator surface visible without putting it in the consumer contract lets administrators inspect the complete Host while integrations generate only callable methods. The management audit trail's query endpoint, `GET /api/v1/admin/audit`, is one of these: browser-only, cursor-paginated, and described with the cursor and count semantics a caller needs to walk it.
 

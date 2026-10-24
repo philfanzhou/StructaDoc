@@ -22,6 +22,7 @@ using StructaDoc.Host.Auditing;
 using StructaDoc.Host.Authentication;
 using StructaDoc.Host.Documents;
 using StructaDoc.Host.Health;
+using StructaDoc.Host.Layout;
 using StructaDoc.Host.Logging;
 using StructaDoc.Host.Migrations;
 using StructaDoc.Host.OpenApi;
@@ -265,6 +266,11 @@ builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions
 builder.Services.AddStructaDocDocumentConversion(conversionOptions);
 builder.Services.AddStructaDocParseProviders();
 builder.Services.AddStructaDocLayoutDetection(layoutRuntimeOptions);
+// The layout endpoint's own overload bound. It is fixed rather than settings-managed because it
+// protects this Host's request-scoped memory budget, and it is registered here rather than inside
+// the adapter extension because the adapter extension owns the runtime contract, not the public
+// endpoint's admission behavior.
+builder.Services.AddSingleton<LayoutDetectInFlightGate>();
 builder.Services.AddStructaDocProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
@@ -481,6 +487,9 @@ app.MapProviderConfigAdministrationEndpoints();
 app.MapParseRunEndpoints();
 app.MapParseResultEndpoints();
 app.MapParseExportEndpoints();
+// The public non-archiving layout-detection endpoint (ADR-0013): API clients holding the
+// `layout:detect` scope only; interactive sessions are deliberately not admitted.
+app.MapLayoutDetectEndpoints();
 app.MapResourceDeletionEndpoints();
 
 app.MapServiceMantleHealthEndpoints();

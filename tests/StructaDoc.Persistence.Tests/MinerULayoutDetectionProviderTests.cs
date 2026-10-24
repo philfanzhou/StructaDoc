@@ -351,6 +351,31 @@ public sealed partial class MinerULayoutDetectionProviderTests
     }
 
     [Fact]
+    public void Registration_publishes_the_bound_configuration_for_the_endpoint()
+    {
+        // The endpoint resolves per request against the configuration the registration bound, so
+        // both branches — runtime configured and the shipped unset state — have to publish it:
+        // what the endpoint resolves with is exactly what was bound here.
+        using var configured = new ServiceCollection()
+            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions
+            {
+                BaseUrl = "https://runtime.example/prefix",
+                Timeout = TimeSpan.FromSeconds(45),
+                MaxConcurrency = 3,
+            })
+            .BuildServiceProvider();
+        var published = configured.GetRequiredService<LayoutRuntimeConfiguration>();
+        Assert.Equal(new Uri("https://runtime.example/prefix"), published.BaseUri);
+        Assert.Equal(TimeSpan.FromSeconds(45), published.RequestTimeout);
+        Assert.Equal(3, published.MaxConcurrency);
+
+        using var unset = new ServiceCollection()
+            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions())
+            .BuildServiceProvider();
+        Assert.Null(unset.GetRequiredService<LayoutRuntimeConfiguration>().BaseUri);
+    }
+
+    [Fact]
     public void Request_records_reject_anything_but_a_bounded_jpeg_or_png_image()
     {
         Assert.Throws<ArgumentException>(
@@ -383,6 +408,41 @@ public sealed partial class MinerULayoutDetectionProviderTests
             () => new LayoutDetectionRegion("text", -0.1, 0, 1, 1));
         Assert.Throws<ArgumentException>(
             () => new LayoutDetectionRegion("a label with spaces", 0, 0, 1, 1));
+    }
+
+    [Fact]
+    public void Result_diagnostics_enforce_the_bounded_slot()
+    {
+        // The diagnostics slot is what the public response serializes, so its bound is a contract
+        // guarantee rather than an internal nicety: one note at the exact bound is the last
+        // accepted length, one past it is refused, and so is any blank note.
+        var atBound = new LayoutDetectionResult(
+            [],
+            100,
+            100,
+            diagnostics: [new string('n', LayoutDetectionResult.MaximumDiagnosticLength)]);
+        Assert.Equal(
+            [new string('n', LayoutDetectionResult.MaximumDiagnosticLength)],
+            atBound.Diagnostics);
+
+        Assert.Throws<ArgumentException>(() => new LayoutDetectionResult(
+            [],
+            100,
+            100,
+            diagnostics: [new string('n', LayoutDetectionResult.MaximumDiagnosticLength + 1)]));
+        Assert.Throws<ArgumentException>(() => new LayoutDetectionResult(
+            [],
+            100,
+            100,
+            diagnostics: ["valid note", " "]));
+        Assert.Throws<ArgumentException>(() => new LayoutDetectionResult(
+            [],
+            100,
+            100,
+            diagnostics: Enumerable
+                .Range(0, LayoutDetectionResult.MaximumDiagnosticCount + 1)
+                .Select(index => $"note {index}")
+                .ToArray()));
     }
 
     private static LayoutRuntimeConfiguration ConfiguredRuntime(

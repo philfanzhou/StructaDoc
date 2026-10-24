@@ -86,11 +86,11 @@ result APIs, retention, and cleanup behavior are unchanged.
    results, schedules and retries requests, and maps results to its own versions.
    StructaDoc provides no durable replay and no exactly-once inference guarantee.
 
-This ADR records a decision only: until the dependent implementation tasks
-([#193](https://github.com/philfanzhou/StructaDoc/issues/193),
-[#194](https://github.com/philfanzhou/StructaDoc/issues/194),
-[#195](https://github.com/philfanzhou/StructaDoc/issues/195)) are merged, no endpoint,
-capability, or runtime exists.
+This ADR records a decision only, not delivery status. The implementation tasks it
+depends on are [#193](https://github.com/philfanzhou/StructaDoc/issues/193) (the execution
+contract and adapter), [#194](https://github.com/philfanzhou/StructaDoc/issues/194) (the public
+endpoint), and [#195](https://github.com/philfanzhou/StructaDoc/issues/195) (the deployable
+inference runtime); see the tracker and those issues for what exists on the mainline today.
 
 ## Consequences
 

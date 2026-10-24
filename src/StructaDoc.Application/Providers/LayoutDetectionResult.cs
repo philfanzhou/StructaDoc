@@ -40,7 +40,8 @@ public sealed record LayoutDetectionResult
 
         var boundedDiagnostics = diagnostics?.ToArray() ?? [];
         if (boundedDiagnostics.Length > MaximumDiagnosticCount
-            || boundedDiagnostics.Any(string.IsNullOrWhiteSpace))
+            || boundedDiagnostics.Any(string.IsNullOrWhiteSpace)
+            || boundedDiagnostics.Any(note => note.Length > MaximumDiagnosticLength))
         {
             throw new ArgumentException(
                 "Diagnostics must be a short list of non-empty notes.",

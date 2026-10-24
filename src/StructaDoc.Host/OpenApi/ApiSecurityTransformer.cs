@@ -35,6 +35,8 @@ internal sealed class ApiSecurityTransformer : IOpenApiOperationTransformer
                 or AuthorizationPolicies.DocumentsWrite
                 or AuthorizationPolicies.ParsesRead
                 or AuthorizationPolicies.ParsesWrite => RequireScope(operation, context.Document, policy),
+            AuthorizationPolicies.LayoutDetect => RequireApiClientScope(
+                operation, context.Document, policy),
             AuthorizationPolicies.Administrator =>
                 $"{BrowserOnly} The signed-in account must be an administrator.",
             AuthorizationPolicies.InteractiveUser => BrowserOnly,
@@ -62,6 +64,30 @@ internal sealed class ApiSecurityTransformer : IOpenApiOperationTransformer
 
     private static string RequireScope(OpenApiOperation operation, OpenApiDocument? document, string scope)
     {
+        RequireCredential(operation, document);
+
+        // The scope is stated rather than carried in the security requirement because OpenAPI
+        // attaches scopes to OAuth flows alone, and this credential is not one. A signed-in browser
+        // session reaches the same endpoint without holding any scope.
+        return $"Requires the `{scope}` scope, or a browser session.";
+    }
+
+    // The API-client-only form: same credential, same 401/403 answers, but no browser-session
+    // branch. Describing it the way the document/parse scopes are described would invite a signed-in
+    // operator to try, and the policy refuses them.
+    private static string RequireApiClientScope(
+        OpenApiOperation operation,
+        OpenApiDocument? document,
+        string scope)
+    {
+        RequireCredential(operation, document);
+
+        return $"Requires the `{scope}` API client scope. A browser session is not admitted to "
+            + "this endpoint, whatever account it is signed in as.";
+    }
+
+    private static void RequireCredential(OpenApiOperation operation, OpenApiDocument? document)
+    {
         operation.Security =
         [
             new OpenApiSecurityRequirement
@@ -78,10 +104,5 @@ internal sealed class ApiSecurityTransformer : IOpenApiOperationTransformer
         {
             Description = "The authenticated API client does not hold the required scope.",
         });
-
-        // The scope is stated rather than carried in the security requirement because OpenAPI
-        // attaches scopes to OAuth flows alone, and this credential is not one. A signed-in browser
-        // session reaches the same endpoint without holding any scope.
-        return $"Requires the `{scope}` scope, or a browser session.";
     }
 }

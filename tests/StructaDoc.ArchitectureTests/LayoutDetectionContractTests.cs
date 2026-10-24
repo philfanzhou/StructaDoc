@@ -32,10 +32,13 @@ public sealed class LayoutDetectionContractTests
     [Fact]
     public void The_contract_lives_in_the_application_layer()
     {
-        // The execution contract belongs beside IParseProvider, where the endpoint task can call
-        // it without depending on an adapter. The Domain and Contracts layers hold public data
-        // shapes; a layout type there would publish this internal contract as a public one before
-        // the endpoint exists.
+        // The execution contract belongs beside IParseProvider, where the endpoint calls it
+        // without depending on an adapter. The Domain and Contracts layers hold public data
+        // shapes, and the internal execution contract must not become one: the public layout
+        // response is published deliberately as `LayoutDetectResponse`/`LayoutDetectRegion`,
+        // outside the `LayoutDetection*`/`LayoutRuntime*` prefixes this assertion reserves for
+        // the internal contract, so a new internal layout type landing in Domain or Contracts
+        // still fails here rather than silently publishing the contract.
         foreach (var type in ApplicationContractTypes)
         {
             Assert.Equal("StructaDoc.Application", type.Assembly.GetName().Name);

@@ -49,6 +49,36 @@ contract, so no path exists from a layout request into full document parsing.
   described in [MinerU HTTP Provider Adapters](./mineru-http-providers.md). The inference runtime
   itself is a separate deployment component.
 
+### The Public Layout Endpoint
+
+`POST /api/v1/layout/detect` is the surface all of the above serves. It is API-client-only —
+guarded by the `layout:detect` scope, with no interactive-session branch — and takes one JPEG or
+PNG in the `file` multipart field. The endpoint, not the contract, owns what reaches the runtime:
+
+- Request shape first, body later: a non-multipart request, a missing or wrong `file` field, or a
+  second file answers `400 layout-request-invalid` before the body is read. The file section is
+  then read directly into a bounded in-memory buffer — no form binding, no temporary files on the
+  path — and bytes past the 32 MiB image bound answer `413 layout-input-too-large` mid-copy.
+- Validation is against the actual bytes: the signature decides the format (`415
+  layout-media-type-unsupported` for anything else or for a declared type that contradicts it),
+  and the header dimensions plus EXIF orientation are bounded by fixed constants — 32,000 pixels
+  per dimension and 100,000,000 pixels in total, checked against the orientation-adjusted size —
+  with no settings keys involved.
+- Overload and the deadline: a fixed in-flight cap rejects excess layout requests with `429` plus a short
+  `Retry-After` before execution begins (the adapter's semaphore remains the only queue), and the deadline is the caller's cancellation plus the runtime's own
+  `LayoutRuntime:Timeout` — there is no second endpoint timer.
+- Every Provider failure maps to a stable outcome: unsupported capability `503
+  layout-capability-unsupported`, deadline expiry `504 layout-timeout`, other transient failures
+  and malformed or oversized runtime output `502` (`layout-runtime-unavailable` /
+  `layout-output-invalid`), and a runtime that refused the exchange itself `502
+  layout-runtime-rejected` / `503 layout-runtime-unavailable`. Caller cancellation closes the
+  connection with no response written.
+- The response is versioned and Provider-neutral: request identifier (the correlation ID),
+  runtime-decoded dimensions, an explicit `coordinateFrame` statement, the EXIF orientation the
+  endpoint derived, regions with response-local IDs and generic labels, engine information when
+  the runtime supplies it, and a bounded `diagnostics` slot. An explicitly empty region list is a
+  documented success — the runtime looked and found nothing.
+
 ## Execution Snapshot
 
 `IParseRunExecutionContextStore` accepts only a current `ParseRunLease` and verifies:
@@ -104,6 +134,6 @@ See [Provider Result Intake](./provider-result-intake.md), [Provider Result Norm
 
 Automated coverage includes capabilities, redaction, duplicate Provider registration, encrypted Cloud checkpoint recovery, token isolation, signed-target SSRF controls, Local multipart, state/error mapping, stream ownership, immutable execution contexts, conditional stages and IDs, adoption, heartbeat concurrency, ZIP limits, Cloud/Local layout recognition, deterministic canonical mapping, and executor-to-commit integration. Real PostgreSQL, MySQL, MariaDB, production-image, and Chromium contracts pass in GitHub Actions.
 
-The layout contract is covered against an instrumented stub runtime: success with normalized regions, the single-route guarantee (any non-layout request fails the test), malformed and oversized output rejection, deadline expiry, cancellation with slot release, the concurrency bound, unsupported-capability resolution, registration with and without a runtime, and the structural no-persistence guarantee.
+The layout contract is covered against an instrumented stub runtime: success with normalized regions, the single-route guarantee (any non-layout request fails the test), malformed and oversized output rejection, deadline expiry, cancellation with slot release, the concurrency bound, unsupported-capability resolution, registration with and without a runtime, and the structural no-persistence guarantee. The public endpoint adds the end-to-end half: every outcome row is tested against the real host with a stub provider, the stores stay empty after success, failure, timeout, cancellation, and concurrent runs, no temporary files appear on the path, and the `layout:detect` scope admits API clients while refusing every other scope and interactive sessions.
 
-Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, deployment-specific base-URL trust policy, the public layout endpoint, and the deployable inference runtime.
+Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, deployment-specific base-URL trust policy, and the deployable inference runtime.
