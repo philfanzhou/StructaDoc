@@ -381,9 +381,14 @@ public sealed class LayoutDetectEndpointTests
             .ToArray();
 
         // Wait until the cap is genuinely full — the stub holds one in-flight execution per
-        // taken slot — and then let every request settle.
+        // taken slot — and the excess request has already been rejected at that full cap. Before
+        // the release fires, every accepted execution is held on release.Task, so the only
+        // request task that can be completed is the rejected one: exactly one completed request
+        // is the 429 itself, observed while every slot was still held, so no slot can free early
+        // under runner load and let the ninth request in.
         await WaitForAsync(
-            () => factory.Stub.PeakInFlight >= LayoutDetectInFlightGate.Capacity,
+            () => factory.Stub.PeakInFlight >= LayoutDetectInFlightGate.Capacity
+                && requests.Count(request => request.IsCompleted) == 1,
             TimeSpan.FromSeconds(30));
         release.TrySetResult();
         var responses = await Task.WhenAll(requests);
