@@ -1,8 +1,29 @@
 # ADR-0012: Propose a Deterministic Parse Run Outline
 
-- Status: Proposed
+- Status: Withdrawn
 - Date: 2026-10-19
-- Related issue: [#162](https://github.com/philfanzhou/StructaDoc/issues/162)
+- Withdrawn: 2026-10-22
+- Related issues: [#162](https://github.com/philfanzhou/StructaDoc/issues/162) (proposal), [#188](https://github.com/philfanzhou/StructaDoc/issues/188) (withdrawal)
+
+## Withdrawal
+
+This proposal was withdrawn before acceptance. Nothing in it was implemented, and the
+Canonical Model, public API, and Parse Run lifecycle never changed because of it.
+
+- The consumer that motivated it now owns document structure itself: Doctheca lets an
+  administrator configure structure levels at runtime and mark them by hand on parsed
+  Blocks. No caller currently needs a generic outline from StructaDoc.
+- A local measurement on a real 140-page scanned school textbook (not redistributable;
+  only aggregate counts were kept) showed that the proposed sources do not recover the
+  outline of documents whose structure is expressed mainly through layout: no bookmarks,
+  exact contents matching anchored 1 of 8 top-level entries, generic numbering produced
+  only false nodes from numbered exercise lines, and Provider headings nested every unit
+  under the previous unit's section title.
+
+A future outline proposal should start from a concrete caller requirement and a corpus
+that covers the document types that caller handles, measured before rules are chosen.
+The [evaluation](../../evaluations/document-outline/README.md) below stays as reference
+material. The rest of this record is kept unchanged as the historical proposal.
 
 ## Context
 

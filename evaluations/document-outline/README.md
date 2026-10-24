@@ -1,6 +1,6 @@
 # Document outline evaluation
 
-This is an evaluation for [proposed ADR-0012](../../docs/adr/0012-deterministic-document-outline.md),
+This is an evaluation for [ADR-0012](../../docs/adr/0012-deterministic-document-outline.md) (withdrawn before acceptance),
 not a production outline feature. See [provenance](PROVENANCE.md), independent
 [expected outlines](expected.json), and machine-readable [results](results/).
 
