@@ -93,6 +93,10 @@ honestly. Never fabricate files, behavior, or completion status.
 - Parsing Providers are configured by administrators; ordinary uploaders and API clients
   cannot modify Provider configuration.
 
+`docs/adr/0013-non-archiving-layout-detection.md` (ADR-0013) records the single accepted
+exception: an authenticated, non-archiving image layout-detection mode that creates and
+retains no application data about its requests.
+
 A feature beyond this boundary must first be confirmed by the user and covered by a new
 ADR that changes the product boundary, before it can be implemented.
 

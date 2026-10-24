@@ -61,6 +61,8 @@ StructaDoc owns the reliable conversion from files to normalized document data:
 5. retain parsing history and raw results for traceability;
 6. expose versioned APIs and a user-facing workspace.
 
+Alongside that lifecycle, [ADR-0013](./docs/adr/0013-non-archiving-layout-detection.md) records one explicit exception: a non-archiving image layout detection mode, in which an authenticated caller submits a single JPEG or PNG and receives Provider-neutral normalized layout regions in the same response, while StructaDoc creates no Document or Parse Run and stores no request image or result. The mode detects page layout only — it returns no recognized text, table HTML, formula LaTeX, or assets — and its implementation is tracked separately.
+
 StructaDoc intentionally does not include:
 
 - full-text search or OpenSearch;
