@@ -190,8 +190,14 @@ jobs:
         with:
           global-json-file: global.json
 
-      # uv is preinstalled on the hosted ubuntu-24.04 image; the lock file pins
-      # the environment it creates, so the tool only needs to exist.
+      # uv is not preinstalled on the hosted image, so the pinned version the
+      # lock was produced with is installed first; the lock file pins the
+      # environment it creates after that.
+      - name: Install uv (pinned)
+        run: |
+          curl -LsSf https://astral.sh/uv/0.13.0/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Install the pinned worker environment
         working-directory: runtime/layout-worker
         run: uv sync --locked --group test
