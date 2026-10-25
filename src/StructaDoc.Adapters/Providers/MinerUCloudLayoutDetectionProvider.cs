@@ -747,17 +747,17 @@ public sealed class MinerUCloudLayoutDetectionProvider : ILayoutDetectionProvide
         double x1,
         double y1,
         int orientation) => orientation switch
-    {
-        1 => (x0, y0, x1, y1),
-        2 => (1 - x1, y0, 1 - x0, y1),
-        3 => (1 - x1, 1 - y1, 1 - x0, 1 - y0),
-        4 => (x0, 1 - y1, x1, 1 - y0),
-        5 => (y0, x0, y1, x1),
-        6 => (y0, 1 - x1, y1, 1 - x0),
-        7 => (1 - y1, 1 - x1, 1 - y0, 1 - x0),
-        8 => (1 - y1, x0, 1 - y0, x1),
-        _ => throw new ArgumentOutOfRangeException(nameof(orientation)),
-    };
+        {
+            1 => (x0, y0, x1, y1),
+            2 => (1 - x1, y0, 1 - x0, y1),
+            3 => (1 - x1, 1 - y1, 1 - x0, 1 - y0),
+            4 => (x0, 1 - y1, x1, 1 - y0),
+            5 => (y0, x0, y1, x1),
+            6 => (y0, 1 - x1, y1, 1 - x0),
+            7 => (1 - y1, 1 - x1, 1 - y0, 1 - x0),
+            8 => (1 - y1, x0, 1 - y0, x1),
+            _ => throw new ArgumentOutOfRangeException(nameof(orientation)),
+        };
 
     private static ProviderException InvalidLayout(string diagnostics) =>
         MinerUHttpProtocol.InvalidCloudResponse(
