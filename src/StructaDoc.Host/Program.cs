@@ -244,6 +244,18 @@ var layoutRuntimeOptions = RecoverableConfigurationBinder.Bind(
     source => source.GetSection(LayoutRuntimeOptions.SectionName).Get<LayoutRuntimeOptions>()
         ?? new LayoutRuntimeOptions(),
     options => options.Validate());
+// Which backend serves the layout-detection mode (ADR-0014): the runtime above by default, or the
+// configured MinerU Cloud Provider when an administrator selects it explicitly. Recoverable for the
+// same reason: a stored value outside the closed set is dropped and the service starts on the
+// runtime backend, which is the shipped behavior.
+var layoutOptions = RecoverableConfigurationBinder.Bind(
+    settingsConfiguration,
+    settingsStartupFault,
+    SettingCatalog.LayoutSection,
+    "layout backend configuration",
+    source => source.GetSection(LayoutOptions.SectionName).Get<LayoutOptions>()
+        ?? new LayoutOptions(),
+    options => options.Validate());
 ingestionOptions.Validate();
 var oidcOptions = OidcConfigurationBinder.Bind(settingsConfiguration, settingsStartupFault);
 // The Authentication section's tuning half binds from the settings-aware configuration rather than
@@ -265,7 +277,7 @@ builder.Services.AddScoped<IServiceHealthSnapshotSource, StructaDocHealthSnapsho
 builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions, uploadLimits);
 builder.Services.AddStructaDocDocumentConversion(conversionOptions);
 builder.Services.AddStructaDocParseProviders();
-builder.Services.AddStructaDocLayoutDetection(layoutRuntimeOptions);
+builder.Services.AddStructaDocLayoutDetection(layoutRuntimeOptions, layoutOptions);
 // The layout endpoint's own overload bound. It is fixed rather than settings-managed because it
 // protects this Host's request-scoped memory budget, and it is registered here rather than inside
 // the adapter extension because the adapter extension owns the runtime contract, not the public

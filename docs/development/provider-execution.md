@@ -20,41 +20,49 @@ Provider states remain internal. `ProviderException` exposes a stable code, sani
 ## Layout Detection Execution
 
 `ILayoutDetectionProvider` is a second, separate internal execution contract for the non-archiving
-image layout-detection mode of [ADR-0013](../adr/0013-non-archiving-layout-detection.md). It is
+image layout-detection mode of [ADR-0013](../adr/0013-non-archiving-layout-detection.md), whose
+serving backend is selected per [ADR-0014](../adr/0014-cloud-layout-backend.md). It is
 synchronous request/response — one JPEG or PNG page image in, normalized layout regions out — and
 deliberately not an `IParseProvider` operation, because it takes no Parse Run, no immutable
-configuration version, and no persisted result. `IParseProvider`, `ProviderCapabilities`, and the
-MinerU Cloud/Local full-parsing adapters are unchanged, and neither side implements the other's
-contract, so no path exists from a layout request into full document parsing.
+configuration version of its own, and no persisted result. `IParseProvider`, `ProviderCapabilities`,
+and the MinerU Cloud/Local full-parsing adapters are unchanged, and neither side implements the
+other's contract, so no path exists from a layout request into full document parsing.
 
-- The request carries validated image bytes plus the media type (`image/jpeg` or `image/png`),
-  bounded to 32 MiB; the endpoint that calls the contract owns request validation, authorization,
+- The request carries validated image bytes, the media type (`image/jpeg` or `image/png`), and the
+  caller's bounded header inspection facts — the stored pixel dimensions and the EXIF orientation —
+  bounded to 32 MiB. The endpoint that calls the contract owns request validation, authorization,
   and the caller's deadline, which arrive through the cancellation token. Cancellation propagates
   as cancellation, not as a Provider error.
 - The result carries normalized regions — a generic lowercase type label plus a box in the
   canonical bounding-box convention of the Canonical Model (Section 9: top-left origin, `x`
-  rightward, `y` downward, values in `[0, 1]`) — the runtime-reported source image dimensions,
-  engine/model/version information when the runtime supplies it, and a bounded diagnostics slot
-  that is empty unless the runtime had a recoverable note.
+  rightward, `y` downward, values in `[0, 1]`) — the source image dimensions the response reports,
+  engine/model/version information when the backend supplies it, and a bounded diagnostics slot
+  that the cloud backend always uses to state that the cloud executed its full pipeline.
 - The capability is declared by resolution, not by extending `ProviderCapabilities`:
-  `ILayoutDetectionProviderResolver.Resolve` reads the `LayoutRuntime` settings section and either
-  returns the registered implementation or throws `ProviderException`
-  `layout-capability-unsupported` (Configuration category) — the explicit unsupported-capability
-  error. A blank `LayoutRuntime:BaseUrl` is the shipped state and resolves the same way.
-- The path is non-persistent: the contract, the resolution, and the adapter reference no Document,
+  `ILayoutDetectionProviderResolver.Resolve` reads the bound `LayoutBackendSelection` — the
+  `Layout:Backend` setting plus the selected backend's configuration — and either returns the
+  registered implementation or throws `ProviderException` `layout-capability-unsupported`
+  (Configuration category), the explicit unsupported-capability error. The runtime backend's
+  unsupported state is a blank `LayoutRuntime:BaseUrl`; the cloud backend's is a default Provider
+  that is absent, disabled, not a MinerU Cloud one, or missing its credential, decided per request
+  by the implementation's configuration source. There is no fallback between backends.
+- The path is non-persistent: the contract, the resolution, and the adapters reference no Document,
   Parse Run, Page, Block, Asset, Artifact, or request-result store and no storage client. An
   architecture test holds that structural guarantee; the end-to-end proof (real stores stay
   empty) belongs to the endpoint task.
-- `MinerULayoutDetectionProvider` is the one implementation; its single-route wire protocol is
-  described in [MinerU HTTP Provider Adapters](./mineru-http-providers.md). The inference runtime
-  itself is a separate deployment component, shipped as the optional worker under
-  `runtime/layout-worker/` ([Layout Runtime](../deployment/layout-runtime.md)).
+- Two implementations exist, exactly one registered per host by the selected backend.
+  `MinerULayoutDetectionProvider` speaks the single-route runtime protocol described in
+  [MinerU HTTP Provider Adapters](./mineru-http-providers.md); the runtime itself is a separate
+  deployment component shipped as the optional worker under `runtime/layout-worker/`
+  ([Layout Runtime](../deployment/layout-runtime.md)). `MinerUCloudLayoutDetectionProvider` runs
+  the official cloud extraction exchange through the configured default MinerU Cloud Provider,
+  also described in that document.
 
 ### The Public Layout Endpoint
 
 `POST /api/v1/layout/detect` is the surface all of the above serves. It is API-client-only —
 guarded by the `layout:detect` scope, with no interactive-session branch — and takes one JPEG or
-PNG in the `file` multipart field. The endpoint, not the contract, owns what reaches the runtime:
+PNG in the `file` multipart field. The endpoint, not the contract, owns what reaches the backend:
 
 - Request shape first, body later: a non-multipart request, a missing or wrong `file` field, or a
   second file answers `400 layout-request-invalid` before the body is read. The file section is
@@ -66,19 +74,21 @@ PNG in the `file` multipart field. The endpoint, not the contract, owns what rea
   per dimension and 100,000,000 pixels in total, checked against the orientation-adjusted size —
   with no settings keys involved.
 - Overload and the deadline: a fixed in-flight cap rejects excess layout requests with `429` plus a short
-  `Retry-After` before execution begins (the adapter's semaphore remains the only queue), and the deadline is the caller's cancellation plus the runtime's own
-  `LayoutRuntime:Timeout` — there is no second endpoint timer.
-- Every Provider failure maps to a stable outcome: unsupported capability `503
-  layout-capability-unsupported`, deadline expiry `504 layout-timeout`, other transient failures
-  and malformed or oversized runtime output `502` (`layout-runtime-unavailable` /
-  `layout-output-invalid`), and a runtime that refused the exchange itself `502
-  layout-runtime-rejected` / `503 layout-runtime-unavailable`. Caller cancellation closes the
-  connection with no response written.
-- The response is versioned and Provider-neutral: request identifier (the correlation ID),
-  runtime-decoded dimensions, an explicit `coordinateFrame` statement, the EXIF orientation the
-  endpoint derived, regions with response-local IDs and generic labels, engine information when
-  the runtime supplies it, and a bounded `diagnostics` slot. An explicitly empty region list is a
-  documented success — the runtime looked and found nothing.
+  `Retry-After` before execution begins (the adapters' own semaphores remain the only queue), and the deadline is the caller's cancellation plus the selected backend's bound — the runtime's
+  `LayoutRuntime:Timeout` or the cloud route's fixed overall deadline. There is no second endpoint timer.
+- Every Provider failure maps to a stable outcome: unsupported capability (including the cloud
+  configuration states) `503 layout-capability-unsupported`, deadline expiry `504 layout-timeout`,
+  other transient failures and malformed or oversized backend output `502`
+  (`layout-runtime-unavailable` / `layout-output-invalid`), and a backend that refused the
+  exchange itself `502 layout-runtime-rejected` / `503 layout-runtime-unavailable`. Caller
+  cancellation closes the connection with no response written.
+- The response is versioned and Provider-neutral: request identifier (the correlation ID), the
+  original image's stored dimensions, an explicit `coordinateFrame` statement, the EXIF orientation
+  the endpoint derived, regions with response-local IDs and generic labels, engine information when
+  the backend supplies it, and a bounded `diagnostics` slot. Region geometry is always in the
+  original image's stored frame — the cloud backend maps the orientation-applied geometry it
+  receives back into it — so a consumer applying the reported orientation rotates exactly once. An
+  explicitly empty region list is a documented success: the backend looked and found nothing.
 
 ## Execution Snapshot
 
@@ -135,6 +145,6 @@ See [Provider Result Intake](./provider-result-intake.md), [Provider Result Norm
 
 Automated coverage includes capabilities, redaction, duplicate Provider registration, encrypted Cloud checkpoint recovery, token isolation, signed-target SSRF controls, Local multipart, state/error mapping, stream ownership, immutable execution contexts, conditional stages and IDs, adoption, heartbeat concurrency, ZIP limits, Cloud/Local layout recognition, deterministic canonical mapping, and executor-to-commit integration. Real PostgreSQL, MySQL, MariaDB, production-image, and Chromium contracts pass in GitHub Actions.
 
-The layout contract is covered against an instrumented stub runtime: success with normalized regions, the single-route guarantee (any non-layout request fails the test), malformed and oversized output rejection, deadline expiry, cancellation with slot release, the concurrency bound, unsupported-capability resolution, registration with and without a runtime, and the structural no-persistence guarantee. The public endpoint adds the end-to-end half: every outcome row is tested against the real host with a stub provider, the stores stay empty after success, failure, timeout, cancellation, and concurrent runs, no temporary files appear on the path, and the `layout:detect` scope admits API clients while refusing every other scope and interactive sessions. The shipped runtime worker carries its own weight-free suite — wire conformance, the full-parsing guard, bounded concurrency, and the no-persistence and log hygiene inspections — plus an adapter-acceptance check that runs the real `MinerULayoutDetectionProvider` against the worker over HTTP ([Layout Runtime](../deployment/layout-runtime.md)).
+The layout contract is covered against an instrumented stub runtime: success with normalized regions, the single-route guarantee (any non-layout request fails the test), malformed and oversized output rejection, deadline expiry, cancellation with slot release, the concurrency bound, unsupported-capability resolution, registration with and without a runtime, and the structural no-persistence guarantee. The cloud backend carries its own suite against an instrumented stub cloud: the official protocol route-by-route (any non-protocol request fails the test), credential isolation between the API host and the signed hosts, the observed `layout.json` shapes (upright and EXIF-rotated) reduced to the public contract, nested line/span entries not duplicated, blank pages as valid empty answers, malformed and incompatible output rejection, the per-request configuration states, the overall deadline, cancellation, and the fixed concurrency bound. The public endpoint adds the end-to-end half: every outcome row is tested against the real host with a stub provider, backend selection for both values of `Layout:Backend` and the cloud configuration error are tested through the real registration, the stores stay empty after success, failure, timeout, cancellation, and concurrent runs, no temporary files appear on the path, and the `layout:detect` scope admits API clients while refusing every other scope and interactive sessions. The shipped runtime worker carries its own weight-free suite — wire conformance, the full-parsing guard, bounded concurrency, and the no-persistence and log hygiene inspections — plus an adapter-acceptance check that runs the real `MinerULayoutDetectionProvider` against the worker over HTTP ([Layout Runtime](../deployment/layout-runtime.md)).
 
-Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, and deployment-specific base-URL trust policy.
+Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, and deployment-specific base-URL trust policy. The final issue acceptance for the cloud backend — an end-to-end smoke through the deployed public endpoint with the deployment's real MinerU Cloud credential — is an environment input recorded on the issue, not a local test.

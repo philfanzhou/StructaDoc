@@ -1,6 +1,6 @@
 # ADR-0013: Adopt a Non-Archiving Image Layout-Detection Processing Mode
 
-- Status: Accepted
+- Status: Accepted (points 2 and 4 superseded in part by [ADR-0014](./0014-cloud-layout-backend.md))
 - Date: 2026-10-24
 - Related issue: [#190](https://github.com/philfanzhou/StructaDoc/issues/190)
 
@@ -57,7 +57,12 @@ result APIs, retention, and cleanup behavior are unchanged.
    declaration within the Provider abstraction of
    [ADR-0002](0002-parser-provider-abstraction.md) — a capability separate from full
    document parsing. A backend without the capability fails the request explicitly and
-   never falls back to full document parsing or a cloud extraction API.
+   never falls back to full document parsing. Superseded in part by
+   [ADR-0014](0014-cloud-layout-backend.md): an explicitly selected cloud backend built on
+   the MinerU Cloud extraction API is now allowed, because that service executes its full
+   pipeline regardless of the submission switches and the maintainer confirmed cloud-side
+   recognition is acceptable; the prohibition this point stated is narrower than the
+   requirement needs.
 
 3. **Provider-neutral, versioned response.** The public response is Provider-neutral
    and versioned under the public API's normal compatibility rules. Region geometry
@@ -73,7 +78,10 @@ result APIs, retention, and cleanup behavior are unchanged.
    inference runtime built on the official MinerU SDK layout path (`layout_detect()` /
    `aio_layout_detect()`), configured by administrators like other Providers, with the
    model loaded once and reused across requests and with bounded request concurrency.
-   Its request-data retention matches the non-archiving flow of point 1.
+   Its request-data retention matches the non-archiving flow of point 1. Superseded in
+   part by [ADR-0014](0014-cloud-layout-backend.md): it is now one of two selectable
+   backends (`Layout:Backend = layout-runtime`, still the default) rather than the only
+   one; the runtime itself and its behavior are unchanged.
 
 5. **Security boundaries.** A new explicit API-client permission guards the endpoint,
    separate from the existing document and parse scopes. Runtime endpoints, model
@@ -91,6 +99,8 @@ depends on are [#193](https://github.com/philfanzhou/StructaDoc/issues/193) (the
 contract and adapter), [#194](https://github.com/philfanzhou/StructaDoc/issues/194) (the public
 endpoint), and [#195](https://github.com/philfanzhou/StructaDoc/issues/195) (the deployable
 inference runtime); see the tracker and those issues for what exists on the mainline today.
+[ADR-0014](0014-cloud-layout-backend.md) records the later correction that added the configured
+MinerU Cloud service as a second, explicitly selected backend.
 
 ## Consequences
 

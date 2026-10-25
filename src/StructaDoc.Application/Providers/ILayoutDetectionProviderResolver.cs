@@ -1,23 +1,23 @@
 namespace StructaDoc.Application.Providers;
 
 /// <summary>
-/// Answers whether a layout-capable backend is available for the given runtime configuration and
-/// hands back the execution contract for it.
+/// Answers whether a layout-capable backend is available for the explicitly selected
+/// <see cref="LayoutBackend"/> and hands back the execution contract for it.
 ///
 /// The capability is declared by this resolution step rather than by extending
-/// <see cref="ProviderCapabilities"/>, which describes the persistent Parse Run flow. When the
-/// runtime configuration is unset, or points at an engine no implementation is registered for,
-/// resolving throws <see cref="ProviderException"/> with the stable
+/// <see cref="ProviderCapabilities"/>, which describes the persistent Parse Run flow. When no
+/// implementation is registered for the selected backend, or the runtime backend's configuration
+/// carries no Base URI, resolving throws <see cref="ProviderException"/> with the stable
 /// <see cref="UnsupportedCapabilityErrorCode"/> and the Configuration category — the explicit
-/// unsupported-capability error. There is no fallback: the full-parsing providers never implement
-/// the layout contract, so a deployment without a layout runtime fails layout requests instead of
-/// quietly running them through document parsing.
+/// unsupported-capability error. There is no fallback and no guessing from a URL: a deployment
+/// without the selected layout backend fails layout requests instead of quietly running them
+/// through document parsing.
 /// </summary>
 public interface ILayoutDetectionProviderResolver
 {
     const string UnsupportedCapabilityErrorCode = "layout-capability-unsupported";
 
-    ILayoutDetectionProvider Resolve(LayoutRuntimeConfiguration configuration);
+    ILayoutDetectionProvider Resolve(LayoutBackendSelection selection);
 }
 
 public sealed class LayoutDetectionProviderResolver : ILayoutDetectionProviderResolver
@@ -28,8 +28,9 @@ public sealed class LayoutDetectionProviderResolver : ILayoutDetectionProviderRe
     {
         ArgumentNullException.ThrowIfNull(providers);
 
-        // The runtime configuration carries no engine selector, so more than one registered
-        // implementation is a composition error with nothing to choose between them by.
+        // Startup registers exactly the selected backend's implementation, so more than one
+        // registered implementation is a composition error: the selection has already been made
+        // and there is nothing left to choose between them by.
         var resolved = providers.ToArray();
         if (resolved.Any(provider => provider is null))
         {
@@ -45,16 +46,30 @@ public sealed class LayoutDetectionProviderResolver : ILayoutDetectionProviderRe
         this.providers = resolved;
     }
 
-    public ILayoutDetectionProvider Resolve(LayoutRuntimeConfiguration configuration)
+    public ILayoutDetectionProvider Resolve(LayoutBackendSelection selection)
     {
-        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(selection);
 
-        if (configuration.BaseUri is null || providers.Count == 0)
+        var unsupported = selection.Backend switch
+        {
+            // The runtime backend's own unsupported state: its bound configuration carries no
+            // address. The cloud backend's equivalent — an absent, disabled, non-cloud, or
+            // credential-less default Provider — is decided by the cloud implementation's
+            // configuration source, per request, because that is administrator state rather than
+            // restart-bound settings.
+            LayoutBackend.LayoutRuntime => selection.RuntimeConfiguration!.BaseUri is null,
+            _ => false,
+        };
+
+        if (unsupported || providers.Count == 0)
         {
             throw new ProviderException(
                 ILayoutDetectionProviderResolver.UnsupportedCapabilityErrorCode,
-                "No layout-capable runtime is configured, so layout detection is unavailable. "
-                    + "Layout requests are not run through document parsing as a fallback.",
+                selection.Backend == LayoutBackend.MinerUCloud
+                    ? "No MinerU Cloud layout backend is registered, so layout detection is unavailable. "
+                        + "Select the cloud backend explicitly to use it; layout requests are not run through document parsing as a fallback."
+                    : "No layout-capable runtime is configured, so layout detection is unavailable. "
+                        + "Layout requests are not run through document parsing as a fallback.",
                 ProviderFailureCategory.Configuration);
         }
 

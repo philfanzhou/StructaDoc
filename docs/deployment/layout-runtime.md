@@ -18,6 +18,17 @@ It is optional end to end: with no `LayoutRuntime:BaseUrl` configured, the
 Host answers layout requests with an explicit unsupported-capability error,
 and every other feature works without this component.
 
+Since [ADR-0014](../adr/0014-cloud-layout-backend.md) this runtime is one of
+two selectable backends for the layout mode. A deployment that already runs
+the configured MinerU Cloud Provider can set `Layout:Backend` to
+`mineru-cloud` instead and needs none of what this document describes — no
+worker, model files, Python, or GPU. That route sends the image to the cloud
+service, which runs its full extraction pipeline; the Host still archives
+nothing. The runtime below remains the default backend and the choice that
+keeps inference local. See
+[MinerU HTTP Provider Adapters](../development/mineru-http-providers.md#mineru-cloud-layout-backend)
+for the cloud exchange.
+
 ## What the Worker Does and Does Not Do
 
 - It serves one route, `POST /v1/layout/detect`, and nothing else: no task

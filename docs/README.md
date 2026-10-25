@@ -27,7 +27,8 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | [ADR-0010](./adr/0010-setup-and-management-model.md) | Accepted | Keep StructaDoc's first-run claim and administration surface; do not adopt the ServiceMantle installation and management model |
 | [ADR-0011](./adr/0011-settings-and-secret-foundation.md) | Accepted | Keep the control-plane settings and file key ring; adopt database-persisted Data Protection keys as future multi-instance work |
 | [ADR-0012](./adr/0012-deterministic-document-outline.md) | Withdrawn | Proposed a deterministic Parse Run outline from declared document structure; withdrawn before acceptance because no caller needs it |
-| [ADR-0013](./adr/0013-non-archiving-layout-detection.md) | Accepted | Adopt a non-archiving image layout-detection mode as an explicit exception to the retained-document lifecycle |
+| [ADR-0013](./adr/0013-non-archiving-layout-detection.md) | Accepted (points 2 and 4 superseded in part by ADR-0014) | Adopt a non-archiving image layout-detection mode as an explicit exception to the retained-document lifecycle |
+| [ADR-0014](./adr/0014-cloud-layout-backend.md) | Accepted | Serve the non-archiving layout mode through the configured MinerU Cloud Provider when explicitly selected |
 
 ## Specifications
 
@@ -48,11 +49,11 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | [Database Support](./development/database-support.md) | Providers, migrations, configuration, and verification matrix |
 | [Document Reading](./development/document-reading.md) | Listing, detail, download, caching, and Range semantics |
 | [File Storage](./development/file-storage.md) | Local/S3 persistence, upload validation, and conflict-safe writes |
-| [MinerU HTTP Providers](./development/mineru-http-providers.md) | Cloud signed upload, Local multipart, polling, result streaming, the layout runtime protocol, and SSRF boundaries |
+| [MinerU HTTP Providers](./development/mineru-http-providers.md) | Cloud signed upload, Local multipart, polling, result streaming, the layout runtime protocol, the cloud layout backend, and SSRF boundaries |
 | [Observability](./development/observability.md) | Service identity, the sanitizing Serilog console pipeline, and their guarantees |
 | [Office Conversion](./development/office-conversion.md) | Constrained LibreOffice execution, snapshots, and recovery |
 | [Provider Config and Parse Runs](./development/provider-config-and-parse-runs.md) | Immutable Provider configuration, browser administration, and Parse Run creation |
-| [Provider Execution](./development/provider-execution.md) | Provider capabilities, execution snapshots, heartbeats, resumable orchestration, the layout detection contract, and the public layout endpoint |
+| [Provider Execution](./development/provider-execution.md) | Provider capabilities, execution snapshots, heartbeats, resumable orchestration, the layout detection contract and its backends, and the public layout endpoint |
 | [Provider Result Intake](./development/provider-result-intake.md) | Idempotent ZIP storage and bounded archive validation |
 | [Provider Result Normalization](./development/provider-result-normalization.md) | MinerU entry discovery, deterministic identity, and canonical mapping |
 | [Result API and Resource Lifecycle](./development/result-api-and-resource-lifecycle.md) | Stable DTOs, downloads, exports, and durable deletion |
@@ -65,7 +66,7 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | Document | Subject |
 |---|---|
 | [Single Container](./deployment/single-container.md) | Building and running the Host, Vue UI, LibreOffice, fonts, and SQLite volume in one image |
-| [Layout Runtime](./deployment/layout-runtime.md) | The optional layout inference worker: model download with pinned checksums, configuration, the `LayoutRuntime` pointing procedure, sizing, and the real-image smoke |
+| [Layout Runtime](./deployment/layout-runtime.md) | The optional layout inference worker: model download with pinned checksums, configuration, the `LayoutRuntime` pointing procedure, sizing, and the real-image smoke; the cloud layout backend that replaces the need for it when selected |
 
 ## Documentation Rules
 

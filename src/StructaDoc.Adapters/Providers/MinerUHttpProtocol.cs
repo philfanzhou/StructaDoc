@@ -337,4 +337,144 @@ internal static class MinerUHttpProtocol
 
         return uri;
     }
+
+    /// <summary>
+    /// Reads the <c>data</c> object of a successful MinerU Cloud JSON envelope, where success is a
+    /// numeric <c>code</c> of zero — the Provider answers some refusals with HTTP 200 and a
+    /// non-zero code, so the envelope itself is what decides.
+    /// </summary>
+    /// <remarks>
+    /// The kind is checked before the value because TryGetInt32 throws rather than returning false
+    /// when the element is not a number, and MinerU spells some of its error codes as strings.
+    /// Left unguarded, the one response that carries a reason is the one that crashes the adapter,
+    /// and it escapes as an exception no Provider failure category applies to.
+    /// </remarks>
+    public static JsonElement ReadSuccessfulData(JsonElement root, string operation)
+    {
+        if (!root.TryGetProperty("code", out var code)
+            || code.ValueKind != JsonValueKind.Number
+            || !code.TryGetInt32(out var codeValue)
+            || codeValue != 0)
+        {
+            // The reason is the Provider's to give and the only part of this failure the service
+            // cannot work out for itself. Without it the caller records that MinerU said no and
+            // nothing about why, which is indistinguishable from the service being broken -- an
+            // expired token, an unverified account, and an exhausted quota all look the same.
+            throw new ProviderException(
+                $"mineru-{operation}-rejected",
+                $"The MinerU {operation} request was rejected by the Provider. {DescribeRejection(root)}",
+                ProviderFailureCategory.Permanent);
+        }
+
+        if (!root.TryGetProperty("data", out var data)
+            || data.ValueKind != JsonValueKind.Object)
+        {
+            throw InvalidCloudResponse(
+                operation,
+                $"The MinerU {operation} response is missing 'data'.");
+        }
+
+        return data;
+    }
+
+    public static ProviderException InvalidCloudResponse(string operation, string message) => new(
+        $"mineru-{operation}-response-invalid",
+        message,
+        ProviderFailureCategory.Permanent);
+
+    public static ProviderException InvalidCloudResponse(
+        string operation,
+        string message,
+        ProviderFailureCategory category) => new(
+        $"mineru-{operation}-response-invalid",
+        message,
+        category);
+
+    public static ProviderException InvalidCloudResponse(
+        string operation,
+        string message,
+        ProviderFailureCategory category,
+        Exception innerException) => new(
+        $"mineru-{operation}-response-invalid",
+        message,
+        category,
+        innerException);
+
+    public static string ReadRequiredCloudString(
+        JsonElement root,
+        string name,
+        string operation)
+    {
+        if (!root.TryGetProperty(name, out var value)
+            || value.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(value.GetString()))
+        {
+            throw InvalidCloudResponse(
+                operation,
+                $"The MinerU {operation} response is missing '{name}'.");
+        }
+
+        return value.GetString()!;
+    }
+
+    /// <summary>
+    /// What the Provider said when it refused, in the fields that say it: its own code, its message,
+    /// and the trace identifier its support asks for.
+    ///
+    /// Only those. A successful response from these same endpoints carries presigned URLs, so
+    /// echoing a whole body would put a credential-bearing URL into an error path the first time
+    /// the shape of a rejection changed.
+    ///
+    /// Each of the three is spelled two ways because the Provider spells them two ways: its gateway
+    /// answers with <c>msgCode</c> and <c>traceId</c>, its extraction API with <c>code</c> and
+    /// <c>trace_id</c>. Reading only one spelling loses the trace identifier from half of the
+    /// rejections, which is the one field that lets somebody else look the failure up.
+    /// </summary>
+    public static string DescribeRejection(JsonElement root)
+    {
+        string[] names = ["code", "msgCode", "msg", "trace_id", "traceId"];
+        var described = names
+            .Select(name => (Name: name, Value: ReadRejectionScalar(root, name)))
+            .Where(field => field.Value is not null)
+            .Select(field => $"{field.Name}={field.Value}")
+            .ToArray();
+
+        return described.Length == 0
+            ? "It gave no code or message."
+            : string.Join(", ", described);
+    }
+
+    private const int MaximumRejectionDetailLength = 200;
+
+    private static string? ReadRejectionScalar(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+
+        var text = value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => value.ToString(),
+            _ => null,
+        };
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        // Someone else's string, on its way into a stored error and onto a page. Control characters
+        // and an unbounded length are what a foreign string must not bring with it; error paths are
+        // bounded too, and truncating here keeps the rest of the sentence.
+        var sanitized = new string(text.Where(character => !char.IsControl(character)).ToArray()).Trim();
+        if (sanitized.Length == 0)
+        {
+            return null;
+        }
+
+        return sanitized.Length > MaximumRejectionDetailLength
+            ? string.Concat(sanitized.AsSpan(0, MaximumRejectionDetailLength), "…")
+            : sanitized;
+    }
 }

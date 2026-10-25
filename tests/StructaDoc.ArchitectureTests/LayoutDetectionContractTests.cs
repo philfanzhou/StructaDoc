@@ -5,10 +5,11 @@ using StructaDoc.Application.Providers;
 namespace StructaDoc.ArchitectureTests;
 
 /// <summary>
-/// Structural guarantees of the layout-detection execution path (ADR-0013): the contract lives in
-/// the Application layer, touches no persistence or storage surface, and stays an execution
-/// contract separate from the Parse Run Provider registry rather than becoming a document-parsing
-/// Provider by another name.
+/// Structural guarantees of the layout-detection execution path (ADR-0013, backend selection per
+/// ADR-0014): the contract lives in the Application layer, touches no persistence or storage
+/// surface, and stays an execution contract separate from the Parse Run Provider registry rather
+/// than becoming a document-parsing Provider by another name. The cloud backend is its own
+/// implementation type; the full-parsing cloud adapter still never implements the layout contract.
 /// </summary>
 public sealed class LayoutDetectionContractTests
 {
@@ -21,12 +22,19 @@ public sealed class LayoutDetectionContractTests
         typeof(LayoutDetectionRegion),
         typeof(LayoutDetectionResult),
         typeof(LayoutRuntimeConfiguration),
+        typeof(LayoutBackend),
+        typeof(LayoutBackendNames),
+        typeof(LayoutBackendSelection),
+        typeof(ILayoutCloudConfigurationSource),
+        typeof(LayoutCloudConfigurationSnapshot),
     ];
 
     private static readonly Type[] AdapterTypes =
     [
         typeof(MinerULayoutDetectionProvider),
+        typeof(MinerUCloudLayoutDetectionProvider),
         typeof(LayoutRuntimeOptions),
+        typeof(LayoutOptions),
     ];
 
     [Fact]
@@ -36,9 +44,9 @@ public sealed class LayoutDetectionContractTests
         // without depending on an adapter. The Domain and Contracts layers hold public data
         // shapes, and the internal execution contract must not become one: the public layout
         // response is published deliberately as `LayoutDetectResponse`/`LayoutDetectRegion`,
-        // outside the `LayoutDetection*`/`LayoutRuntime*` prefixes this assertion reserves for
-        // the internal contract, so a new internal layout type landing in Domain or Contracts
-        // still fails here rather than silently publishing the contract.
+        // outside the internal prefixes this assertion reserves for the contract, so a new
+        // internal layout type landing in Domain or Contracts still fails here rather than
+        // silently publishing the contract.
         foreach (var type in ApplicationContractTypes)
         {
             Assert.Equal("StructaDoc.Application", type.Assembly.GetName().Name);
@@ -54,7 +62,9 @@ public sealed class LayoutDetectionContractTests
                 product.GetTypes(),
                 type => Assert.False(
                     type.Name.StartsWith("LayoutDetection", StringComparison.Ordinal)
-                        || type.Name.StartsWith("LayoutRuntime", StringComparison.Ordinal),
+                        || type.Name.StartsWith("LayoutRuntime", StringComparison.Ordinal)
+                        || type.Name.StartsWith("LayoutBackend", StringComparison.Ordinal)
+                        || type.Name.StartsWith("LayoutCloud", StringComparison.Ordinal),
                     $"{product.GetName().Name} defines {type.Name}."));
         }
     }
@@ -66,7 +76,9 @@ public sealed class LayoutDetectionContractTests
         // request-result record. At this slice's level that is verified structurally — every type
         // on the execution path, parameters and properties included, must stay clear of the
         // persistence, storage, result-intake, and settings stores — with the end-to-end proof
-        // landing with the endpoint task.
+        // landing with the endpoint task. The cloud backend reaches the Provider configuration
+        // through the Application-level `ILayoutCloudConfigurationSource` seam precisely so this
+        // guarantee survives its addition; the EF implementation lives behind the seam.
         string[] forbiddenNamespacePrefixes =
         [
             "StructaDoc.Adapters.Persistence",
@@ -94,11 +106,13 @@ public sealed class LayoutDetectionContractTests
     public void Full_parsing_providers_never_implement_the_layout_contract()
     {
         // The separation runs both ways: no full-parsing provider can be handed a layout request,
-        // and the layout adapter can never be resolved as a document-parsing Provider. This is the
-        // structural half of the no-fallback guarantee.
+        // and no layout adapter — runtime or cloud — can ever be resolved as a document-parsing
+        // Provider. This is the structural half of the no-fallback guarantee; the cloud layout
+        // adapter being its own type is what keeps it true for the cloud route (ADR-0014).
         Assert.False(typeof(ILayoutDetectionProvider).IsAssignableFrom(typeof(MinerULocalParseProvider)));
         Assert.False(typeof(ILayoutDetectionProvider).IsAssignableFrom(typeof(MinerUCloudParseProvider)));
         Assert.False(typeof(IParseProvider).IsAssignableFrom(typeof(MinerULayoutDetectionProvider)));
+        Assert.False(typeof(IParseProvider).IsAssignableFrom(typeof(MinerUCloudLayoutDetectionProvider)));
     }
 
     [Fact]
