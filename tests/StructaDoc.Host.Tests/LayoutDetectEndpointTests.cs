@@ -324,6 +324,65 @@ public sealed class LayoutDetectEndpointTests
         await AssertNothingPersistedAsync(factory, countsBefore);
     }
 
+    [Fact]
+    public async Task Cloud_backend_selection_serves_the_exchange_through_the_cloud_implementation()
+    {
+        // The deliberate selection: Layout:Backend=mineru-cloud registers the cloud route, and the
+        // exchange runs through it even though no LayoutRuntime is configured at all — the cloud
+        // route requires no runtime address, key copy, model files, or worker.
+        using var factory = new LayoutCloudFactory();
+        factory.Stub.Handler = (_, _) => Task.FromResult(SuccessResult());
+        using var client = factory.Host.CreateClient();
+        var apiKey = await factory.CreateApiClientAsync(AuthenticationScopes.LayoutDetect);
+        var countsBefore = await TakeCountsAsync(factory.Host);
+
+        using var response = await client.PostWithApiKeyAsync(
+            Route,
+            CreateUpload(CreatePng(2480, 3508), "page.png", "image/png"),
+            apiKey,
+            TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(2480, body.GetProperty("width").GetInt32());
+        Assert.Equal(2, body.GetProperty("regions").GetArrayLength());
+        Assert.Equal(1, factory.Stub.RequestCount);
+        await AssertNothingPersistedAsync(factory.Host, countsBefore);
+    }
+
+    [Fact]
+    public async Task Cloud_backend_without_a_usable_default_provider_answers_unsupported_capability()
+    {
+        // The real registration and the real configuration source against the seeded deployment
+        // state: the official Provider exists, is enabled and default, but has no credential, so
+        // the cloud backend refuses with the explicit configuration error naming what is missing.
+        // Nothing falls back to the runtime (none is configured) or to document parsing, and no
+        // request leaves the process.
+        using var inner = new StructaDocWebApplicationFactory();
+        using var factory = inner.WithWebHostBuilder(builder =>
+            builder.UseSetting("Layout:Backend", "mineru-cloud"));
+        using var client = factory.CreateClient();
+        var apiKey = await CreateApiClientAsync(factory, AuthenticationScopes.LayoutDetect);
+        var countsBefore = await TakeCountsAsync(factory);
+
+        using var response = await client.PostWithApiKeyAsync(
+            Route,
+            CreateUpload(CreatePng(100, 100), "page.png", "image/png"),
+            apiKey,
+            TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("layout-capability-unsupported", body.GetProperty("code").GetString());
+        Assert.Contains(
+            "credential",
+            body.GetProperty("detail").GetString(),
+            StringComparison.Ordinal);
+        await AssertNothingPersistedAsync(factory, countsBefore);
+    }
+
     [Theory]
     [InlineData("mineru-layout-timeout", ProviderFailureCategory.Transient, HttpStatusCode.GatewayTimeout, "layout-timeout")]
     [InlineData("mineru-layout-network-error", ProviderFailureCategory.Transient, HttpStatusCode.BadGateway, "layout-runtime-unavailable")]
@@ -331,6 +390,11 @@ public sealed class LayoutDetectEndpointTests
     [InlineData("mineru-layout-response-too-large", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
     [InlineData("mineru-layout-http-401", ProviderFailureCategory.Configuration, HttpStatusCode.ServiceUnavailable, "layout-runtime-unavailable")]
     [InlineData("mineru-layout-http-400", ProviderFailureCategory.Input, HttpStatusCode.BadGateway, "layout-runtime-rejected")]
+    [InlineData("mineru-layout-cloud-submit-rejected", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
+    [InlineData("mineru-layout-cloud-task-failed", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
+    [InlineData("mineru-layout-cloud-layout-response-invalid", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
+    [InlineData("mineru-layout-cloud-archive-too-large", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
+    [InlineData("mineru-layout-cloud-status-network-error", ProviderFailureCategory.Transient, HttpStatusCode.BadGateway, "layout-runtime-unavailable")]
     public async Task Every_provider_failure_maps_to_its_stable_http_outcome(
         string errorCode,
         ProviderFailureCategory category,
@@ -748,6 +812,44 @@ public sealed class LayoutDetectEndpointTests
         }
 
         public HttpClient CreateClient() => Host.CreateClient();
+
+        public async Task<IssuedApiKey> CreateApiClientAsync(string scopes) =>
+            await LayoutDetectEndpointTests.CreateApiClientAsync(Host, scopes);
+
+        public void Dispose() => factory.Dispose();
+    }
+
+    /// <summary>
+    /// The same host shape with the cloud backend selected instead: <c>Layout:Backend</c> is
+    /// mineru-cloud and no <c>LayoutRuntime</c> exists, which is the minimal cloud deployment —
+    /// the registration is real, only the provider implementation is stubbed.
+    /// </summary>
+    private sealed class LayoutCloudFactory : IDisposable
+    {
+        private readonly StructaDocWebApplicationFactory factory = new();
+
+        public StubLayoutDetectionProvider Stub { get; } = new();
+
+        public WebApplicationFactory<Program> Host { get; }
+
+        public LayoutCloudFactory()
+        {
+            Host = factory.WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting("Layout:Backend", "mineru-cloud");
+                builder.ConfigureServices(services =>
+                {
+                    foreach (var descriptor in services
+                                 .Where(descriptor => descriptor.ServiceType == typeof(ILayoutDetectionProvider))
+                                 .ToArray())
+                    {
+                        services.Remove(descriptor);
+                    }
+
+                    services.AddSingleton<ILayoutDetectionProvider>(Stub);
+                });
+            });
+        }
 
         public async Task<IssuedApiKey> CreateApiClientAsync(string scopes) =>
             await LayoutDetectEndpointTests.CreateApiClientAsync(Host, scopes);

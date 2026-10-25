@@ -92,7 +92,10 @@ internal sealed class ApiClientContractTransformer : IOpenApiOperationTransforme
                 + "must not exceed 33,554,432 bytes (32 MiB) and the orientation-adjusted "
                 + "dimensions must stay within 32,000 pixels each and 100,000,000 pixels in "
                 + "total. Nothing about the request is kept: no Document, Parse Run, or stored "
-                + "result is created.",
+                + "result is created. The backend that answers is an administrator choice: either "
+                + "the optional local layout runtime, or the configured MinerU Cloud service, "
+                + "which receives the image and runs its full extraction pipeline — the response "
+                + "still carries layout regions only, never recognized content.",
             Content = new Dictionary<string, OpenApiMediaType>(StringComparer.Ordinal)
             {
                 ["multipart/form-data"] = new()

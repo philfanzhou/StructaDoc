@@ -1,0 +1,115 @@
+{
+  "pdf_info": [
+    {
+      "page_idx": 0,
+      "page_size": [446.0, 631.0],
+      "_backend": "hybrid",
+      "_ocr_enable": true,
+      "_version_name": "3.4.4",
+      "preproc_blocks": [
+        {
+          "type": "title",
+          "bbox": [26, 71, 198, 129],
+          "lines": [
+            {
+              "bbox": [26, 71, 198, 129],
+              "spans": [
+                { "type": "text", "bbox": [26, 71, 198, 129], "content": "Synthetic worksheet heading", "score": 0.99 }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [40, 150, 420, 205],
+          "lines": [
+            {
+              "bbox": [40, 150, 420, 176],
+              "spans": [
+                { "type": "text", "bbox": [40, 150, 420, 176], "content": "Synthetic instruction line one.", "score": 0.98 }
+              ]
+            },
+            {
+              "bbox": [40, 179, 420, 205],
+              "spans": [
+                { "type": "text", "bbox": [40, 179, 420, 205], "content": "Synthetic instruction line two.", "score": 0.98 }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "image",
+          "bbox": [276, 71, 420, 129],
+          "lines": [
+            {
+              "bbox": [276, 71, 420, 129],
+              "spans": [
+                { "type": "image", "bbox": [276, 71, 420, 129], "image_path": "images/synthetic-figure.jpg", "score": 0.97 }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [40, 220, 420, 280],
+          "lines": [
+            {
+              "bbox": [40, 220, 420, 280],
+              "spans": [
+                { "type": "text", "bbox": [40, 220, 420, 280], "content": "Synthetic question text with a blank to fill.", "score": 0.98 }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "bbox": [40, 295, 420, 400],
+          "lines": [
+            {
+              "bbox": [40, 295, 420, 400],
+              "spans": [
+                { "type": "table", "bbox": [40, 295, 420, 400], "html": "<table><tr><td>Synthetic</td><td>Cells</td></tr></table>", "score": 0.96 }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "interline_equation",
+          "bbox": [40, 415, 240, 450],
+          "lines": [
+            {
+              "bbox": [40, 415, 240, 450],
+              "spans": [
+                { "type": "interline_equation", "bbox": [40, 415, 240, 450], "latex": "E = mc^{2}", "score": 0.95 }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [40, 465, 420, 560],
+          "lines": [
+            {
+              "bbox": [40, 465, 420, 560],
+              "spans": [
+                { "type": "text", "bbox": [40, 465, 420, 560], "content": "Synthetic closing paragraph with more worksheet text.", "score": 0.98 }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "footer",
+          "bbox": [40, 590, 200, 610],
+          "lines": [
+            {
+              "bbox": [40, 590, 200, 610],
+              "spans": [
+                { "type": "text", "bbox": [40, 590, 200, 610], "content": "Synthetic page footer", "score": 0.93 }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

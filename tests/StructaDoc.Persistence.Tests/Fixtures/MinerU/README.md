@@ -43,3 +43,24 @@ normalizer at `05b6aa5` produced fingerprint
 `1e15d27b17be8edec0d6887616abc514b6da75209845213e950db0afd7cbba05`.
 The regression test reads the fixed ZIP bytes, so compression/platform differences
 cannot change the assertion.
+
+## Cloud layout fixture
+
+`cloud-layout-worksheet.json` follows the field structure a real MinerU Cloud result
+ZIP's `layout.json` (the cloud's middle JSON) used for a single-image layout request:
+top-level `pdf_info` with one page; per-page `page_idx`, `page_size`, the
+`preproc_blocks` array of main regions, and the `_backend`/`_ocr_enable`/`_version_name`
+metadata; per-block `type` and a pixel `bbox` over that `page_size`, with the block's
+contents nested as `lines[].spans[]`. Every text value, image name, and number is
+synthetic; no third-party or private document content is included.
+
+The shape was taken from the direct-cloud probe recorded on StructaDoc issue #203
+(2026-10-25): a synthetic upright 1240x1754 PNG answered with `page_size` [446, 631],
+eight main regions whose first text region was `bbox` [26, 71, 198, 129], and
+`_backend=hybrid`, `_ocr_enable=true`, `_version_name=3.4.4`. The probe's
+EXIF-orientation-6 variant (stored 1754x1240) answered with equal main-region geometry
+in the orientation-applied frame, so this one fixture serves both the upright and the
+rotated case — the rotated test differs only in the request's stored dimensions and
+orientation, which is exactly the mapping under test. Nested `lines[].spans[]` entries
+are present on purpose: `MinerUCloudLayoutDetectionProviderTests` asserts they are not
+reported as peer regions.

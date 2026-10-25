@@ -291,7 +291,7 @@ public sealed partial class MinerULayoutDetectionProviderTests
 
         // No runtime configured: the explicit unsupported error, never a fallback provider.
         var unset = Assert.Throws<ProviderException>(
-            () => unregistered.Resolve(LayoutRuntimeConfiguration.Unset));
+            () => unregistered.Resolve(LayoutBackendSelection.ForRuntime(LayoutRuntimeConfiguration.Unset)));
         Assert.Equal(
             ILayoutDetectionProviderResolver.UnsupportedCapabilityErrorCode,
             unset.ErrorCode);
@@ -299,18 +299,33 @@ public sealed partial class MinerULayoutDetectionProviderTests
 
         // A runtime address with no registered implementation behind it fails the same way.
         var unimplemented = Assert.Throws<ProviderException>(
-            () => unregistered.Resolve(ConfiguredRuntime()));
+            () => unregistered.Resolve(LayoutBackendSelection.ForRuntime(ConfiguredRuntime())));
         Assert.Equal(
             ILayoutDetectionProviderResolver.UnsupportedCapabilityErrorCode,
             unimplemented.ErrorCode);
 
+        // The cloud backend selected with no cloud implementation registered fails the same way:
+        // selection is explicit and nothing guesses a different backend instead.
+        var noCloud = Assert.Throws<ProviderException>(
+            () => unregistered.Resolve(LayoutBackendSelection.ForCloud()));
+        Assert.Equal(
+            ILayoutDetectionProviderResolver.UnsupportedCapabilityErrorCode,
+            noCloud.ErrorCode);
+        Assert.Contains("cloud", noCloud.Message, StringComparison.Ordinal);
+
         // A configured runtime with its implementation resolves to that implementation.
         var resolver = new LayoutDetectionProviderResolver([implementation]);
-        Assert.Same(implementation, resolver.Resolve(ConfiguredRuntime()));
+        Assert.Same(
+            implementation,
+            resolver.Resolve(LayoutBackendSelection.ForRuntime(ConfiguredRuntime())));
 
-        // The resolution contract is explicit about its inputs, and one runtime address leaves
-        // nothing for a second registered implementation to be chosen by.
+        // The resolution contract is explicit about its inputs: the runtime backend requires its
+        // configuration and the cloud backend takes none.
         Assert.Throws<ArgumentNullException>(() => resolver.Resolve(null!));
+        Assert.Throws<ArgumentException>(
+            () => new LayoutBackendSelection(LayoutBackend.LayoutRuntime, null));
+        Assert.Throws<ArgumentException>(
+            () => new LayoutBackendSelection(LayoutBackend.MinerUCloud, ConfiguredRuntime()));
         Assert.Throws<InvalidOperationException>(
             () => new LayoutDetectionProviderResolver([implementation, implementation]));
     }
@@ -319,13 +334,13 @@ public sealed partial class MinerULayoutDetectionProviderTests
     public void Registration_without_a_runtime_configures_no_layout_implementation()
     {
         using var services = new ServiceCollection()
-            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions())
+            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions(), new LayoutOptions())
             .BuildServiceProvider();
 
         var resolver = services.GetRequiredService<ILayoutDetectionProviderResolver>();
         Assert.Empty(services.GetServices<ILayoutDetectionProvider>());
         var exception = Assert.Throws<ProviderException>(
-            () => resolver.Resolve(ConfiguredRuntime()));
+            () => resolver.Resolve(LayoutBackendSelection.ForRuntime(ConfiguredRuntime())));
         Assert.Equal(
             ILayoutDetectionProviderResolver.UnsupportedCapabilityErrorCode,
             exception.ErrorCode);
@@ -341,11 +356,11 @@ public sealed partial class MinerULayoutDetectionProviderTests
                 Credential = "runtime-credential",
                 Timeout = TimeSpan.FromSeconds(45),
                 MaxConcurrency = 3,
-            })
+            }, new LayoutOptions())
             .BuildServiceProvider();
 
         var resolver = services.GetRequiredService<ILayoutDetectionProviderResolver>();
-        var implementation = resolver.Resolve(ConfiguredRuntime());
+        var implementation = resolver.Resolve(LayoutBackendSelection.ForRuntime(ConfiguredRuntime()));
         var adapter = Assert.IsType<MinerULayoutDetectionProvider>(implementation);
         Assert.Single(services.GetServices<ILayoutDetectionProvider>());
     }
@@ -362,17 +377,23 @@ public sealed partial class MinerULayoutDetectionProviderTests
                 BaseUrl = "https://runtime.example/prefix",
                 Timeout = TimeSpan.FromSeconds(45),
                 MaxConcurrency = 3,
-            })
+            }, new LayoutOptions())
             .BuildServiceProvider();
         var published = configured.GetRequiredService<LayoutRuntimeConfiguration>();
         Assert.Equal(new Uri("https://runtime.example/prefix"), published.BaseUri);
         Assert.Equal(TimeSpan.FromSeconds(45), published.RequestTimeout);
         Assert.Equal(3, published.MaxConcurrency);
+        var selection = configured.GetRequiredService<LayoutBackendSelection>();
+        Assert.Equal(LayoutBackend.LayoutRuntime, selection.Backend);
+        Assert.Same(published, selection.RuntimeConfiguration);
 
         using var unset = new ServiceCollection()
-            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions())
+            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions(), new LayoutOptions())
             .BuildServiceProvider();
         Assert.Null(unset.GetRequiredService<LayoutRuntimeConfiguration>().BaseUri);
+        Assert.Equal(
+            LayoutBackend.LayoutRuntime,
+            unset.GetRequiredService<LayoutBackendSelection>().Backend);
     }
 
     [Fact]

@@ -13,16 +13,18 @@ using StructaDoc.Host.Authentication;
 namespace StructaDoc.Host.Layout;
 
 /// <summary>
-/// The public non-archiving layout-detection endpoint (ADR-0013): one JPEG or PNG page image in,
-/// normalized regions out, in the same request, with nothing written anywhere.
+/// The public non-archiving layout-detection endpoint (ADR-0013, backend selection per ADR-0014):
+/// one JPEG or PNG page image in, normalized regions out, in the same request, with nothing
+/// written anywhere.
 ///
 /// The endpoint owns the parts the execution contract leaves to its caller — authorization
 /// (through the API-client-only <c>layout:detect</c> policy), request validation against the
-/// actual bytes, bounded buffering, overload, and the deadline, which is the caller's
-/// cancellation token plus the runtime's own configured timeout — and maps every Provider failure
-/// to a stable HTTP outcome. It reads the multipart body itself rather than through form binding,
-/// because form binding spills large file sections to temporary files and this path creates none
-/// (ADR-0013 point 1 is satisfied vacuously: nothing to clean up because nothing is written).
+/// actual bytes, bounded buffering, overload, and the deadline, which is the caller's cancellation
+/// token plus the selected backend's own bound (the runtime's configured timeout or the cloud
+/// route's overall deadline) — and maps every Provider failure to a stable HTTP outcome. It reads
+/// the multipart body itself rather than through form binding, because form binding spills large
+/// file sections to temporary files and this path creates none (ADR-0013 point 1 is satisfied
+/// vacuously: nothing to clean up because nothing is written).
 /// </summary>
 public static class LayoutDetectEndpoints
 {
@@ -36,12 +38,12 @@ public static class LayoutDetectEndpoints
     private const int MaximumSectionHeaderLength = 4096;
 
     /// <summary>
-    /// The stable code of the adapter's deadline failure for the layout route
-    /// (see MinerU HTTP Providers, "MinerU Layout Runtime"): the one Provider error code the
-    /// public mapping looks at individually, because an expired deadline answers <c>504</c>
-    /// rather than the generic upstream-unavailable <c>502</c>.
+    /// The stable code of the adapters' deadline failure for the layout route (see MinerU HTTP
+    /// Providers, "MinerU Layout Runtime" and "MinerU Cloud Layout Mode"): the one Provider error
+    /// code the public mapping looks at individually, because an expired deadline answers
+    /// <c>504</c> rather than the generic upstream-unavailable <c>502</c>.
     /// </summary>
-    private const string RuntimeTimeoutErrorCode = "mineru-layout-timeout";
+    private const string LayoutTimeoutErrorCode = "mineru-layout-timeout";
 
     public static IEndpointRouteBuilder MapLayoutDetectEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -73,7 +75,7 @@ public static class LayoutDetectEndpoints
     private static async Task<IResult> DetectLayoutAsync(
         HttpRequest request,
         ILayoutDetectionProviderResolver resolver,
-        LayoutRuntimeConfiguration runtimeConfiguration,
+        LayoutBackendSelection backendSelection,
         LayoutDetectInFlightGate inFlightGate,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -81,7 +83,7 @@ public static class LayoutDetectEndpoints
         // One completion event per request, and nothing else on the path logs: it carries the
         // request's correlation identifier (from the log scope the correlation middleware opens),
         // the elapsed time, the region count, and the status — never image bytes, detected
-        // content, or anything the runtime said (ADR-0013 point 5). The category is a literal
+        // content, or anything the backend said (ADR-0013 point 5). The category is a literal
         // because the endpoint class is static and cannot be the logger's type argument.
         var logger = loggerFactory.CreateLogger("StructaDoc.Host.Layout.LayoutDetectEndpoints");
         var stopwatch = Stopwatch.StartNew();
@@ -91,7 +93,7 @@ public static class LayoutDetectEndpoints
             outcome = await ExecuteAsync(
                 request,
                 resolver,
-                runtimeConfiguration,
+                backendSelection,
                 inFlightGate,
                 cancellationToken);
         }
@@ -118,7 +120,7 @@ public static class LayoutDetectEndpoints
     private static async Task<LayoutOutcome> ExecuteAsync(
         HttpRequest request,
         ILayoutDetectionProviderResolver resolver,
-        LayoutRuntimeConfiguration runtimeConfiguration,
+        LayoutBackendSelection backendSelection,
         LayoutDetectInFlightGate inFlightGate,
         CancellationToken cancellationToken)
     {
@@ -195,11 +197,18 @@ public static class LayoutDetectEndpoints
                     $"The declared content type does not match the submitted {inspection.MediaType} image.");
             }
 
-            // Capability first: an unconfigured runtime answers 503 here, before any bytes are
-            // handed to an execution.
-            var provider = resolver.Resolve(runtimeConfiguration);
+            // Capability first: whichever backend the administrator selected answers its own
+            // unsupported state here — an unconfigured runtime, or a cloud route whose default
+            // Provider is absent, disabled, not a cloud one, or credential-less — before any bytes
+            // are handed to an execution.
+            var provider = resolver.Resolve(backendSelection);
             var result = await provider.DetectLayoutAsync(
-                new LayoutDetectionRequest(image.Bytes, inspection.MediaType),
+                new LayoutDetectionRequest(
+                    image.Bytes,
+                    inspection.MediaType,
+                    inspection.StoredWidth,
+                    inspection.StoredHeight,
+                    inspection.ExifOrientation),
                 cancellationToken);
 
             request.HttpContext.TryGetServiceMantleCorrelationId(out var correlationId);
@@ -337,7 +346,7 @@ public static class LayoutDetectEndpoints
                 exception.Message);
         }
 
-        if (exception.ErrorCode == RuntimeTimeoutErrorCode)
+        if (exception.ErrorCode == LayoutTimeoutErrorCode)
         {
             return LayoutOutcome.FromProblem(
                 StatusCodes.Status504GatewayTimeout,

@@ -5,6 +5,7 @@ using StructaDoc.Adapters.Providers;
 using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.ProviderResults;
+using StructaDoc.Application.Providers;
 using StructaDoc.Application.Settings;
 
 namespace StructaDoc.ArchitectureTests;
@@ -353,6 +354,35 @@ public sealed class SettingCatalogContractTests
         Assert.Equal(
             options.MaxConcurrency.ToString(),
             Definition(SettingCatalog.LayoutRuntimeMaxConcurrency).Default);
+    }
+
+    [Fact]
+    public void The_layout_backend_lists_exactly_what_its_options_class_accepts()
+    {
+        // The backend choice is closed on both sides: the catalog offers exactly the spellings
+        // the options class validates, the default is one of them (so an absent value selects the
+        // shipped runtime backend), and a value outside the set is refused at write time and by
+        // the options class alike.
+        var definition = Definition(SettingCatalog.LayoutBackend);
+        Assert.Equal(SettingKind.String, definition.Kind);
+        Assert.Equal(LayoutBackendNames.LayoutRuntime, definition.Default);
+        Assert.Equal(
+            [LayoutBackendNames.LayoutRuntime, LayoutBackendNames.MinerUCloud],
+            definition.AllowedValues);
+        // Case-insensitive spelling normalizes to the stored form; anything else is refused at
+        // write time, which is the same set the options class enforces at startup.
+        Assert.Equal(
+            LayoutBackendNames.MinerUCloud,
+            SettingCatalog.Normalize(definition, "MinerU-Cloud"));
+        Assert.Null(SettingCatalog.Normalize(definition, "cloud"));
+        Assert.Null(SettingCatalog.Normalize(definition, ""));
+
+        var options = new LayoutOptions();
+        Assert.Equal(LayoutBackendNames.LayoutRuntime, options.Backend);
+        options.Validate();
+        new LayoutOptions { Backend = LayoutBackendNames.MinerUCloud }.Validate();
+        Assert.ThrowsAny<Exception>(() => new LayoutOptions { Backend = "cloud" }.Validate());
+        Assert.ThrowsAny<Exception>(() => new LayoutOptions { Backend = "" }.Validate());
     }
 
     [Fact]

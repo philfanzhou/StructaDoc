@@ -1,6 +1,6 @@
 # MinerU HTTP Provider Adapters
 
-This note describes the current MinerU Cloud and MinerU Local HTTP adapters, and the MinerU layout runtime protocol the layout detection adapter speaks. See [ADR-0002](../adr/0002-parser-provider-abstraction.md) for the abstraction, [ADR-0013](../adr/0013-non-archiving-layout-detection.md) for the layout mode, and the [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) for recovery rules. Upstream protocol changes must remain in adapters and contract tests rather than entering the public API.
+This note describes the current MinerU Cloud and MinerU Local HTTP adapters, the MinerU layout runtime protocol the layout detection adapter speaks, and the cloud layout backend that serves the same mode through the official cloud API. See [ADR-0002](../adr/0002-parser-provider-abstraction.md) for the abstraction, [ADR-0013](../adr/0013-non-archiving-layout-detection.md) and [ADR-0014](../adr/0014-cloud-layout-backend.md) for the layout mode, and the [Parse Job Lifecycle](../specifications/parse-job-lifecycle.md) for recovery rules. Upstream protocol changes must remain in adapters and contract tests rather than entering the public API.
 
 ## MinerU Cloud
 
@@ -117,7 +117,60 @@ Response — HTTP 200 with `application/json`:
 - The base URL follows the Provider address rule — absolute HTTP(S) without user information, a
   query, or a fragment. HTTP is allowed because a runtime on a trusted network is the expected
   deployment, matching MinerU Local; the adapter must not be pointed at the cloud extraction API,
-  which offers no layout-only inference.
+  which offers no layout-only inference — deployments that want the cloud route select the cloud
+  layout backend below instead.
+
+## MinerU Cloud Layout Backend
+
+`MinerUCloudLayoutDetectionProvider` serves the non-archiving layout mode (ADR-0014) when
+`Layout:Backend` is `mineru-cloud` ([Service Settings](./service-settings.md)). It reuses the
+official cloud extraction protocol the full-parsing cloud adapter speaks — the same routes, the
+same credential handling, the same signed-transfer restrictions — inside one request, with none of
+the persistent orchestration:
+
+1. The per-request configuration snapshot is loaded from the enabled default Provider
+   configuration of type `mineru-cloud`: its current immutable version, base URL, model, and
+   credential decrypted through the secret protector. An absent, disabled, or non-cloud default,
+   or one without its credential, answers the explicit `layout-capability-unsupported`
+   configuration error naming the specific reason.
+2. `POST /api/v4/file-urls/batch` allocates one batch with a random `data_id` (there is no Parse
+   Run to name it after; the identifier lives in request memory only). The submission asks for
+   the least work — `is_ocr=false`, `enable_table=false`, `enable_formula=false` — but the
+   service runs its full extraction pipeline regardless, and nothing here promises otherwise.
+3. A `waiting-file` state performs the signed `PUT` of the image under the signed-transfer rules:
+   no Provider credential, no Content-Type, through the dedicated SSRF-guarded client.
+4. `GET /api/v4/extract-results/batch/{batchId}` polls at a one-second cadence inside the single
+   overall deadline (120 seconds) that covers submission, upload, polling, download, and
+   normalization; `failed` is permanent, unknown states are transient, and an expired deadline
+   surfaces as the stable `mineru-layout-timeout` (the endpoint's `504 layout-timeout`).
+5. The result ZIP downloads into one bounded in-memory buffer (64 MiB; no temporary file exists
+   on the path), and its `layout.json` is reduced to the public layout contract.
+
+Geometry reduction follows the format's own frame. `layout.json` is the cloud's middle JSON: one
+page whose `page_size` is the orientation-applied frame the cloud worked in, whose main blocks
+(`preproc_blocks`, or the `para_blocks` spelling) carry pixel boxes over that size, and whose
+nested `lines[].spans[]` entries are the same regions' contents — never reported as peer regions.
+Boxes are normalized against `page_size`, then mapped from the orientation-applied frame back to
+the original image's stored frame using the inverse of the submitted image's EXIF orientation, so
+the response reports the original dimensions and a consumer applying the reported orientation
+rotates exactly once. The page's proportions must match the image's orientation-applied
+proportions; unsupported, ambiguous, malformed, or incompatible output — no layout entry, more
+than one page, a bad `page_size`, boxes outside the page, an unusable label — is rejected as
+`mineru-layout-cloud-layout-response-invalid` (permanent) rather than answered as a false empty
+success. A page with no main blocks is a valid empty answer. The engine is reported as
+`mineru-cloud`, the model as the configured `model_version`, the version as the cloud's
+`_version_name` when present, and the bounded diagnostics always state that the cloud executed
+its full extraction pipeline.
+
+The cloud API client carries the credential and the signed-transfer client never does; the two
+clients are the ones the full-parsing cloud adapter uses. In-flight exchanges are bounded by a
+fixed concurrency limit (4) inside the endpoint's in-flight cap, leaving the shared account room
+for Parse Runs. Nothing about the exchange is persisted, and the endpoint's no-logging rules
+(image bytes, recognized content, raw responses, credentials, signed URLs) cover this route too.
+The minimal setup is: configure the existing MinerU Cloud Provider (the seeded `official`
+configuration plus its token), set `Layout:Backend` to `mineru-cloud`, and give the consumer an
+API key with `layout:detect` — the MinerU Provider token and the StructaDoc consumer API key are
+separate credentials.
 
 ## Parse Run Options
 

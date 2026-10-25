@@ -95,7 +95,10 @@ honestly. Never fabricate files, behavior, or completion status.
 
 `docs/adr/0013-non-archiving-layout-detection.md` (ADR-0013) records the single accepted
 exception: an authenticated, non-archiving image layout-detection mode that creates and
-retains no application data about its requests.
+retains no application data about its requests. `docs/adr/0014-cloud-layout-backend.md`
+(ADR-0014) partially supersedes ADR-0013 by allowing one explicitly selected backend for that
+mode to run the exchange through the configured MinerU Cloud Provider, whose full extraction
+pipeline executes cloud-side while StructaDoc still archives nothing.
 
 A feature beyond this boundary must first be confirmed by the user and covered by a new
 ADR that changes the product boundary, before it can be implemented.

@@ -1,4 +1,5 @@
 using System.Globalization;
+using StructaDoc.Application.Providers;
 
 namespace StructaDoc.Application.Settings;
 
@@ -144,6 +145,8 @@ public static class SettingCatalog
     public const string LayoutRuntimeTimeout = "LayoutRuntime:Timeout";
     public const string LayoutRuntimeMaxConcurrency = "LayoutRuntime:MaxConcurrency";
 
+    public const string LayoutBackend = "Layout:Backend";
+
     public const string LoggingDefaultLevel = "Logging:LogLevel:Default";
     public const string LoggingAspNetCoreLevel = "Logging:LogLevel:Microsoft.AspNetCore";
     public const string LoggingEfCoreDatabaseCommandLevel =
@@ -216,6 +219,13 @@ public static class SettingCatalog
     /// </summary>
     public const string LayoutRuntimeSection = "LayoutRuntime";
 
+    /// <summary>
+    /// Which backend serves the non-archiving layout-detection mode (ADR-0014). Recoverable like
+    /// the runtime section: a stored value outside the closed set is dropped and the service starts
+    /// on the default backend, which is the optional runtime and exactly the shipped behavior.
+    /// </summary>
+    public const string LayoutSection = "Layout";
+
     /// <summary>Sections a stored value may be dropped from rather than stopping the service.</summary>
     public static IReadOnlyList<string> RecoverableSections { get; } =
     [
@@ -228,6 +238,7 @@ public static class SettingCatalog
         ProviderResultNormalizationSection,
         LibreOfficeSection,
         LayoutRuntimeSection,
+        LayoutSection,
     ];
 
     private const int ClaimNameMaximumLength = 255;
@@ -589,6 +600,19 @@ public static class SettingCatalog
             Default: "1",
             Minimum: 1,
             Maximum: 64),
+
+        // Which backend answers the non-archiving layout-detection mode (ADR-0014): the optional
+        // local inference runtime above — the default, so an absent value is the shipped behavior —
+        // or the configured MinerU Cloud Provider. The closed set is the whole choice: a value
+        // outside it is refused at the moment it is written, and the cloud route is never selected
+        // by a URL, a fallback, or anything but this key.
+        new(
+            LayoutBackend,
+            SettingKind.String,
+            RequiresRestart: true,
+            Default: LayoutBackendNames.LayoutRuntime,
+            Maximum: 32,
+            AllowedValues: [LayoutBackendNames.LayoutRuntime, LayoutBackendNames.MinerUCloud]),
 
         // Console log verbosity, one key for the pipeline's root level and one for each of the two
         // fixed override categories. A change listener flips the level switch the running console
