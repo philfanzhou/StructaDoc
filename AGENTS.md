@@ -7,7 +7,7 @@ serving versioned API output.
 ## Maintenance model and rule precedence
 
 - This file is the single source of truth for constraints inside this repository.
-- Codex reads this file directly; Claude Code imports it through the root `CLAUDE.md`.
+- Codex reads this file directly; Claude Code v2.1.277+ also reads it directly, without a root `CLAUDE.md` import.
 - This file and the task/PR templates under `.github` jointly implement the unified
   project rules; when changing the project delivery policy, update the corresponding
   contributor documents in the same change.
