@@ -27,8 +27,8 @@ the platforms included in a published tag.
 
 The Node and .NET SDK stages run on the build host and produce static web assets and
 framework-dependent assemblies. The runtime base image and OS packages follow the
-target architecture. CI builds both complete images without publishing on pull
-requests, and publishing waits for that check as well as the existing tests.
+target architecture. CI builds both complete images only for a release tag, and publishing
+waits for that check as well as the existing tests.
 
 
 CI publishes the image to GitHub Container Registry only for a `v*` tag, and only after all eight check jobs pass, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
