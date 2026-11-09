@@ -16,24 +16,24 @@ Eight jobs run independently:
 
 8. **Build AMD64 and ARM64 images** builds both complete runtime images from the production Dockerfile with Buildx and QEMU, without pushing. This catches missing ARM64 base images, packages, and Dockerfile steps before publishing. The web and SDK stages use the native build platform.
 
-Two more publish, and not for the same events:
+Two more publish, both only for a release tag:
 
-9. **Publish image to GitHub Container Registry** waits for all eight, builds the same Dockerfile for `linux/amd64` and `linux/arm64`, and pushes one multi-platform tag to `ghcr.io`. A stable `v*` tag publishes the stable release names, a prerelease tag publishes only its exact version, and a push to `main` publishes `edge` and nothing else. See [Published Images](#published-images).
+9. **Publish image to GitHub Container Registry** waits for all eight, builds the same Dockerfile for `linux/amd64` and `linux/arm64`, and pushes one multi-platform tag to `ghcr.io`. A stable `v*` tag publishes the stable release names, a prerelease tag publishes only its exact version, and a push to `main` publishes nothing. See [Published Images](#published-images).
 10. **Publish GitHub release** runs for a `v*` tag alone. It waits for the image, then creates either a normal release for a stable tag or a prerelease for a tag with a SemVer prerelease suffix. Its notes are the ones GitHub generates from the pull requests merged since the previous tag, with the `docker pull` line placed above them.
 
 TRX results, Playwright HTML reports, screenshots, failure traces/videos, and container logs are uploaded as Actions artifacts. Temporary administrator credentials exist only in the isolated runner environment and are not repository secrets or production defaults.
 
 ## Published Images
 
-`ghcr.io/philfanzhou/structadoc` receives `latest`, `<version>`, and `<major>.<minor>` from a stable `v*` tag; only the exact `<version>` from a prerelease tag such as `v0.1.9-rc.1`; and `edge` from a push to `main`. Nothing else publishes.
+`ghcr.io/philfanzhou/structadoc` receives `latest`, `<version>`, and `<major>.<minor>` from a stable `v*` tag, and only the exact `<version>` from a prerelease tag such as `v0.1.9-rc.1`. Nothing else publishes: a push to `main` runs CI and pushes no image.
 
-`latest` names the newest stable release. Whoever pulls it did not choose a tag, and a `latest` reporting `0.0.0-dev` or an `-rc` version would be a development build handed to someone who never asked for one, so the rule that produces it is gated on a stable tag rather than given to whichever build published most recently.
+`latest` names the newest stable release. Whoever pulls it did not choose a tag, and a `latest` reporting an `-rc` version would be a release candidate handed to someone who never asked for one, so the rule that produces it is gated on a stable tag rather than given to whichever build published most recently.
 
-`edge` is whatever `main` currently is, and it is meant to move. It exists so that a change can be pulled and tried before anyone has decided on a version for it: the next push to the default branch overwrites it, and it reports `0.0.0-dev` because no release named a version for it. That is what makes it usable for trying something and what makes it unusable for a deployment, which names a version or a digest.
+There is no `edge` tag. A push to `main` runs every check job and publishes nothing, so every tag in the registry names a release and no mutable name follows the default branch.
 
-`sha-<commit>` is not published. The branch build produces `edge` instead: one name that moves, rather than one permanent name per push, none of which was pulled twice. A deployment that named a commit names a version instead, or a digest, which is the only immutable name in either case. Images already published under a commit name stay in the registry; no new ones appear.
+`sha-<commit>` is not published. A deployment that named a commit names a version instead, or a digest, which is the only immutable name in either case. Images already published under a commit name stay in the registry; no new ones appear.
 
-Releasing is one push. `git tag -a v0.1.0 && git push origin v0.1.0` produces a stable release, while `git tag -a v0.1.1-rc.1 && git push origin v0.1.1-rc.1` produces a GitHub prerelease and only the exact `0.1.1-rc.1` image tag. A prerelease never moves `latest` or stable major/minor names. The tag also supplies the `VERSION` build argument, so the version the registry advertises and the version the running service reports come from the same place and cannot drift. A build from the default branch passes no version and keeps the placeholder `Directory.Build.props` declares, which is why `edge` reports `0.0.0-dev` and a tagged release never does.
+Releasing is one push. `git tag -a v0.1.0 && git push origin v0.1.0` produces a stable release, while `git tag -a v0.1.1-rc.1 && git push origin v0.1.1-rc.1` produces a GitHub prerelease and only the exact `0.1.1-rc.1` image tag. A prerelease never moves `latest` or stable major/minor names. The tag also supplies the `VERSION` build argument, so the version the registry advertises and the version the running service reports come from the same place and cannot drift. The publishing job runs only for a release tag, so the image the registry receives always carries the tag's version rather than the placeholder `Directory.Build.props` declares.
 
 Both image-building jobs pass `SOURCE_REVISION`, and the container job then asks the running image for it. This is checked rather than assumed because nothing inside the image can derive it: `.dockerignore` excludes `.git`, so the SourceLink the SDK ships finds no repository and stamps nothing. A build argument that quietly stopped being passed would leave every deployment unable to say which commit it is, while every health check still passed.
 
