@@ -695,12 +695,10 @@ jobs:
     # way this split could have made the pipeline weaker: an image carrying a high-severity advisory
     # is exactly what should not acquire a registry tag.
     needs: [audit-web, build-and-test, libreoffice-integration, layout-worker, sdk-generation, database-contracts, container-and-browser, container-platforms]
-    # Two things publish and they publish different kinds of name. A release tag produces the names a
-    # deployment is pinned to. A push to the default branch produces `edge`, which is one mutable name
-    # meaning whatever `main` currently is; it exists so that a change can be pulled and tried before
-    # anyone has decided on a version for it. A pull request publishes nothing, and could not in any
-    # case, since a fork's token cannot write packages.
-    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+    # Publishing is a release-only concern. A version tag produces the names a deployment is pinned
+    # to; a push to the default branch runs CI and publishes nothing. A pull request publishes
+    # nothing either, and could not in any case, since a fork's token cannot write packages.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
       packages: write
@@ -719,13 +717,8 @@ jobs:
         run: |
           echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-          # Empty for anything that is not a release tag. The Dockerfile treats an empty VERSION as
-          # absent and keeps the placeholder Directory.Build.props declares, which is why `edge`
-          # reports `0.0.0-dev`: no release named a version for it, so it does not claim one.
-          version=''
-          case "$GITHUB_REF" in
-            refs/tags/v*) version="${GITHUB_REF#refs/tags/v}" ;;
-          esac
+          # Publishing runs only for a release tag, so the image always carries the tag's version.
+          version="${GITHUB_REF#refs/tags/v}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
@@ -742,18 +735,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # `latest` is gated on a stable tag rather than left unconditional, and that gate is what keeps
-      # the default branch and prereleases from taking it. Whoever pulls `latest` is whoever did not
-      # choose a tag, and handing them a development or release-candidate build they never asked for
-      # would break that contract.
+      # prereleases from taking it. Whoever pulls `latest` is whoever did not choose a tag, and
+      # handing them a release-candidate build they never asked for would break that contract.
       #
-      # `edge` is the opposite kind of name and is meant to move. It is overwritten by every push to
-      # `main`, which is what makes it usable for trying a change and useless for a deployment. The
-      # semver rules below produce nothing on a branch push, so `main` publishes `edge` alone.
-      #
-      # There is still no `sha-<commit>` rule. The branch build is back but the per-commit name is
-      # not: it left one permanent tag per push in a public registry and the old ones were never
-      # pulled again. A deployment that named a commit names a version, or a digest, which is the
-      # only immutable name in any case.
+      # There is no `sha-<commit>` rule. It left one permanent tag per push in a public registry and
+      # the old ones were never pulled again. A deployment that named a commit names a version, or a
+      # digest, which is the only immutable name in any case.
       - name: Decide tags
         id: metadata
         uses: docker/metadata-action@v6.2.0
@@ -767,7 +754,6 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=edge,branch=main
           labels: |
             org.opencontainers.image.title=StructaDoc
             org.opencontainers.image.description=Document parsing and structured result service in one container.
@@ -781,8 +767,8 @@ jobs:
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
-          # What the running service answers to /api/v1/system/info. An empty VERSION leaves the
-          # placeholder; the commit is always carried.
+          # What the running service answers to /api/v1/system/info. The version comes from the
+          # release tag; the commit is always carried.
           build-args: |
             VERSION=${{ steps.image.outputs.version }}
             SOURCE_REVISION=${{ github.sha }}
@@ -811,8 +797,8 @@ jobs:
     # might still fail to produce, and a release whose `docker pull` line does not resolve is worse
     # than a release that arrives a few minutes later.
     needs: [publish-image]
-    # Load-bearing rather than a restatement of `needs`: the job above runs for the default branch
-    # too, so this is what keeps a push to `main` from announcing a release. Only a tag names one.
+    # Load-bearing rather than a restatement of `needs`: a tag is the only event that names a
+    # release, so nothing else in this workflow can create one.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write

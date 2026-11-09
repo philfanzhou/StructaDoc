@@ -21,8 +21,8 @@ Ubuntu 24.04 Noble is explicit because the official .NET 10 image does not provi
 Newly published release images contain both `linux/amd64` and `linux/arm64` under the same
 tag. Docker selects the matching platform automatically, including ARM64 when Colima
 runs an `aarch64` VM on Apple Silicon. Existing version tags are unchanged; use a
-version published after multi-platform support was added, or a new `edge` image where
-that channel is available. `docker buildx imagetools inspect <image>:<tag>` lists
+version published after multi-platform support was added. `docker buildx imagetools
+inspect <image>:<tag>` lists
 the platforms included in a published tag.
 
 The Node and .NET SDK stages run on the build host and produce static web assets and
@@ -31,7 +31,7 @@ target architecture. CI builds both complete images without publishing on pull
 requests, and publishing waits for that check as well as the existing tests.
 
 
-CI publishes the image to GitHub Container Registry for every `v*` tag and every push to `main`, and only after all eight check jobs pass, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
+CI publishes the image to GitHub Container Registry only for a `v*` tag, and only after all eight check jobs pass, so an available tag is one that built, started under the security flags below, answered readiness, and served a browser flow:
 
 ```bash
 docker pull ghcr.io/philfanzhou/structadoc:latest
@@ -43,11 +43,10 @@ The repository is public and so is the package, so this needs no registry sign-i
 |---|---|
 | `latest` | the newest release |
 | `<version>`, `<major>.<minor>` | that release |
-| `edge` | the current `main`, which is not a release |
 
 `latest` is produced by a release tag alone, so no development build can take it. It still moves under a deployment that restarts, so name a version tag in production, or a digest to pin exactly.
 
-`edge` is for trying `main` before a release names it. Every push to the default branch overwrites it and it reports `0.0.0-dev`, so it answers whether a change works and nothing a deployment should rest on.
+A push to the default branch runs CI and publishes no image, so trying `main` before a release names it means building it locally rather than pulling a moving registry tag.
 
 `sha-<commit>` is not published. A deployment that followed one follows a version tag instead; images published under a commit name before this rule remain in the registry, but no new ones appear.
 
