@@ -64,18 +64,28 @@ public sealed record LayoutCloudConfigurationSnapshot
     /// The one-sentence reason a person can act on, in this service's own words — the bounded text
     /// the unsupported-capability error carries.
     /// </summary>
-    public string Describe() => State switch
+    public string Describe() => Describe("layout");
+
+    /// <summary>
+    /// The same reason, naming the non-archiving mode that asked: <c>layout</c> or
+    /// <c>recognition</c>. Both modes read the same default Provider configuration.
+    /// </summary>
+    public string Describe(string mode)
     {
-        LayoutCloudConfigurationState.Ready =>
-            "The MinerU Cloud layout configuration is usable.",
-        LayoutCloudConfigurationState.NoDefaultProvider =>
-            "no Provider configuration is marked default, so there is no MinerU Cloud service to send layout requests to",
-        LayoutCloudConfigurationState.DefaultProviderNotCloud =>
-            "the default Provider configuration is not a MinerU Cloud one, so the cloud layout backend has nothing to use",
-        LayoutCloudConfigurationState.DefaultProviderDisabled =>
-            "the default Provider configuration is disabled, so the cloud layout backend refuses to send anything",
-        LayoutCloudConfigurationState.CredentialMissing =>
-            "the default Provider configuration carries no credential, and MinerU Cloud requires one",
-        _ => "the MinerU Cloud layout configuration is not usable",
-    };
+        ArgumentException.ThrowIfNullOrWhiteSpace(mode);
+        return State switch
+        {
+            LayoutCloudConfigurationState.Ready =>
+                $"The MinerU Cloud {mode} configuration is usable.",
+            LayoutCloudConfigurationState.NoDefaultProvider =>
+                $"no Provider configuration is marked default, so there is no MinerU Cloud service to send {mode} requests to",
+            LayoutCloudConfigurationState.DefaultProviderNotCloud =>
+                $"the default Provider configuration is not a MinerU Cloud one, so the cloud {mode} backend has nothing to use",
+            LayoutCloudConfigurationState.DefaultProviderDisabled =>
+                $"the default Provider configuration is disabled, so the cloud {mode} backend refuses to send anything",
+            LayoutCloudConfigurationState.CredentialMissing =>
+                "the default Provider configuration carries no credential, and MinerU Cloud requires one",
+            _ => $"the MinerU Cloud {mode} configuration is not usable",
+        };
+    }
 }

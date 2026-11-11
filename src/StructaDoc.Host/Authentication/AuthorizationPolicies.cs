@@ -8,5 +8,6 @@ public static class AuthorizationPolicies
     public const string ParsesRead = "parses:read";
     public const string ParsesWrite = "parses:write";
     public const string LayoutDetect = "layout:detect";
+    public const string ImageRecognize = "image:recognize";
     public const string InteractiveUser = "interactive-user";
 }

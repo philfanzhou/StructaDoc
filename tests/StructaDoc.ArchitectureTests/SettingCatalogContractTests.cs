@@ -386,6 +386,21 @@ public sealed class SettingCatalogContractTests
     }
 
     [Fact]
+    public void Image_recognition_is_off_by_default_and_restart_bound()
+    {
+        // ADR-0015: the mode is an explicit administrator choice. The catalog default is off, the
+        // options class's default is off, and the section is one a bad stored value is dropped
+        // from rather than stopping the service.
+        var definition = Definition(SettingCatalog.RecognitionEnabled);
+        Assert.Equal(SettingKind.Boolean, definition.Kind);
+        Assert.Equal("false", definition.Default);
+        Assert.True(definition.RequiresRestart);
+        Assert.False(new RecognitionOptions().Enabled);
+        Assert.Equal(SettingCatalog.RecognitionSection, RecognitionOptions.SectionName);
+        Assert.Contains(SettingCatalog.RecognitionSection, SettingCatalog.RecoverableSections);
+    }
+
+    [Fact]
     public void Layout_runtime_ranges_match_the_bounds_validation_enforces()
     {
         var timeout = Definition(SettingCatalog.LayoutRuntimeTimeout);

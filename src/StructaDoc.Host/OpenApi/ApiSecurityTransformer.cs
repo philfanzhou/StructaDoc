@@ -35,7 +35,8 @@ internal sealed class ApiSecurityTransformer : IOpenApiOperationTransformer
                 or AuthorizationPolicies.DocumentsWrite
                 or AuthorizationPolicies.ParsesRead
                 or AuthorizationPolicies.ParsesWrite => RequireScope(operation, context.Document, policy),
-            AuthorizationPolicies.LayoutDetect => RequireApiClientScope(
+            AuthorizationPolicies.LayoutDetect
+                or AuthorizationPolicies.ImageRecognize => RequireApiClientScope(
                 operation, context.Document, policy),
             AuthorizationPolicies.Administrator =>
                 $"{BrowserOnly} The signed-in account must be an administrator.",

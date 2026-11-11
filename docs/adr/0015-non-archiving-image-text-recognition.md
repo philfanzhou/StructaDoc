@@ -1,6 +1,6 @@
 # ADR-0015: Non-Archiving Image Text Recognition
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-11
 - Related: [ADR-0013](./0013-non-archiving-layout-detection.md) (its change rule requires a new ADR
   for content recognition), [ADR-0014](./0014-cloud-layout-backend.md) (the cloud exchange this
@@ -41,7 +41,8 @@ a separate endpoint with a separate scope; the layout mode and its contract are 
 
 2. **Explicitly enabled, cloud only.** An administrator setting, `Recognition:Enabled` (default
    false, restart-bound like `Layout:Backend`), turns the mode on. When it is off, the route answers
-   the existing explicit unsupported-capability configuration error and makes no outbound request.
+   the explicit unsupported-capability configuration error (`503`, under the route's own code
+   `recognition-capability-unsupported`) and makes no outbound request.
    When it is on, it resolves the enabled default MinerU Cloud Provider configuration per request,
    exactly as ADR-0014 point 2 does, independently of `Layout:Backend`. The optional local layout
    runtime cannot serve this mode, because it detects layout only; no request ever falls back from
@@ -51,7 +52,9 @@ a separate endpoint with a separate scope; the layout mode and its contract are 
    overall deadline, bounded concurrency, caller cancellation, the archive in one bounded in-memory
    buffer, and the cloud batch identifier in request memory only. No Document, Parse Run, Page,
    Block, Asset, Artifact, or request-result record is created, and no image, archive, raw JSON, or
-   result is stored. Cloud-side retention stays outside this promise, as in ADR-0014 point 5.
+   result is stored. Cloud-side retention stays outside this promise, as in ADR-0014 point 5. The
+   bound on concurrent cloud exchanges is one budget shared with the cloud layout backend, because
+   both modes spend the same Provider account.
 
 4. **Provider-neutral answer built from Canonical Model terms.** The response keeps the layout
    response's frame fields — request ID, stored width and height, `top-left-origin-normalized`
@@ -61,9 +64,10 @@ a separate endpoint with a separate scope; the layout mode and its contract are 
    mapped back to the stored frame as ADR-0014 point 4 maps regions. Text-bearing blocks also carry
    `lines`, each with its `text` and normalized `bbox`, in the order the backend reports them, so a
    caller can keep one printed row together. Tables carry their recognized table as `html` content
-   and formulas as `latex`. Figures carry geometry only; no cropped assets, download URLs, or
-   Markdown are returned. All recognized text is untrusted; callers escape or sanitize it before
-   rendering.
+   and formulas as `latex`. Caption and footnote text the backend attaches to a table, figure, or
+   code block goes into the Block's `caption` and `footnote` fields, never into separate blocks.
+   Figures carry geometry only; no cropped assets, download URLs, or Markdown are returned. All
+   recognized text is untrusted; callers escape or sanitize it before rendering.
 
 5. **Honest output.** Malformed or incompatible cloud output is an error, never a false empty
    success; a page with no blocks is a valid empty answer. Recognition quality, confidence, and

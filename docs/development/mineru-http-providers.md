@@ -163,14 +163,49 @@ success. A page with no main blocks is a valid empty answer. The engine is repor
 its full extraction pipeline.
 
 The cloud API client carries the credential and the signed-transfer client never does; the two
-clients are the ones the full-parsing cloud adapter uses. In-flight exchanges are bounded by a
-fixed concurrency limit (4) inside the endpoint's in-flight cap, leaving the shared account room
-for Parse Runs. Nothing about the exchange is persisted, and the endpoint's no-logging rules
+clients are the ones the full-parsing cloud adapter uses. In-flight exchanges are bounded by one
+fixed, Host-wide concurrency limit (4), shared with the recognition mode below and held inside each
+endpoint's in-flight cap, leaving the shared account room for Parse Runs. Nothing about the exchange is persisted, and the endpoint's no-logging rules
 (image bytes, recognized content, raw responses, credentials, signed URLs) cover this route too.
 The minimal setup is: configure the existing MinerU Cloud Provider (the seeded `official`
 configuration plus its token), set `Layout:Backend` to `mineru-cloud`, and give the consumer an
 API key with `layout:detect` — the MinerU Provider token and the StructaDoc consumer API key are
 separate credentials.
+
+## MinerU Cloud Recognition Mode
+
+`MinerUCloudImageRecognitionProvider` serves the non-archiving image text-recognition mode
+(ADR-0015) when `Recognition:Enabled` is true, independently of `Layout:Backend`. It runs the
+exchange above unchanged — the same configuration snapshot, routes, credential handling,
+signed-transfer rules, 120-second overall deadline, 64 MiB in-memory archive bound, and the shared
+concurrency limit — with three differences:
+
+- The submission asks for the full recognition the answer needs: `is_ocr=true`,
+  `enable_table=true`, `enable_formula=true`. Recognition quality and reading order are the
+  cloud's; nothing corrects them, detects a language, or interprets the text.
+- Every code carries the `recognition` family instead of `layout`: the configuration states answer
+  `recognition-capability-unsupported`, the deadline `mineru-recognition-timeout`, malformed
+  output `mineru-recognition-cloud-layout-response-invalid`, and the per-leg failures
+  `mineru-recognition-cloud-{submit,status,upload,result}-…`.
+- The reduction keeps the content the layout mode discards. The page's `para_blocks` (MinerU's
+  final reading order) are read, or the `preproc_blocks` spelling the observed single-image answer
+  carries; `discarded_blocks` are not read. Each main block becomes one block with a Canonical
+  Model type (an unmapped type is `unknown` and keeps its text) and its box mapped to the stored
+  frame exactly as layout regions are. Its own `lines[]` and those of nested child `blocks[]` (a
+  table or figure body, list items) are collected into it; children whose type ends in `caption`
+  or `footnote` feed the block's `caption` or `footnote` instead. A line's text is its span
+  `content` joined with one space (none between two CJK characters, before closing punctuation, or
+  around full-width punctuation), with inline equations wrapped in `$…$`; each line with text keeps
+  its own box. Tables take the first `html` span as `html` content, formulas the interline
+  equation's `content` (or `latex`) as `latex` content, figures keep geometry only, and every other
+  type carries its lines plus their `\n`-joined text as `plain` content.
+
+Malformed output is rejected rather than answered: no layout entry, more than one page, mismatched
+proportions, a block or nested block without a type or box, `lines`, `spans`, or `blocks` that are
+not arrays, span text that is not a string, a text line without a box or with a box outside the
+page, nesting deeper than four levels, or more than 16,384 recognized lines. A page with no blocks
+is a valid empty answer. The minimal setup is the cloud layout backend's — the default MinerU Cloud
+Provider with its token — plus `Recognition:Enabled=true` and an API key with `image:recognize`.
 
 ## Parse Run Options
 

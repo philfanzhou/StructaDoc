@@ -213,6 +213,15 @@ public static class HostAuthenticationServiceCollectionExtensions
                     .RequireAuthenticatedUser()
                     .RequireAssertion(context =>
                         HasScope(context.User, AuthenticationScopes.LayoutDetect)))
+            // The image text-recognition endpoint (ADR-0015) follows the same API-client-only
+            // rule, under its own scope: `layout:detect` does not grant it, and it does not grant
+            // layout detection.
+            .AddPolicy(
+                AuthorizationPolicies.ImageRecognize,
+                policy => policy
+                    .RequireAuthenticatedUser()
+                    .RequireAssertion(context =>
+                        HasScope(context.User, AuthenticationScopes.ImageRecognize)))
             .AddPolicy(
                 AuthorizationPolicies.InteractiveUser,
                 policy => policy

@@ -24,6 +24,7 @@ internal sealed class ApiDocumentTransformer : IOpenApiDocumentTransformer
         ("/api/v1/parse-runs", ApiTags.ParseRuns),
         ("/api/v1/parse-execution", ApiTags.ParseRuns),
         ("/api/v1/layout", ApiTags.Layout),
+        ("/api/v1/image", ApiTags.Recognition),
         ("/api/v1/admin", ApiTags.Administration),
         ("/api/v1/session", ApiTags.Sessions),
         ("/api/v1/setup", ApiTags.Sessions),

@@ -29,6 +29,13 @@ keeps inference local. See
 [MinerU HTTP Provider Adapters](../development/mineru-http-providers.md#mineru-cloud-layout-backend)
 for the cloud exchange.
 
+This runtime detects layout only, so it cannot serve the image
+text-recognition mode of
+[ADR-0015](../adr/0015-non-archiving-image-text-recognition.md)
+(`POST /api/v1/image/recognize`): that mode is served only by the configured
+MinerU Cloud Provider when `Recognition:Enabled` is on, whichever layout
+backend is selected.
+
 ## What the Worker Does and Does Not Do
 
 - It serves one route, `POST /v1/layout/detect`, and nothing else: no task
