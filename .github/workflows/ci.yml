@@ -125,12 +125,34 @@ jobs:
         with:
           global-json-file: global.json
 
+      # The runner image resolves apt through /etc/apt/apt-mirrors.txt, which prefers
+      # azure.archive.ubuntu.com. That host lost DNS resolution for hours on 2026-11-11
+      # and both attempts of PR #210's run died waiting through 20-second fetch timeouts;
+      # this job burned its whole 20-minute limit inside those retries. Reorder the list
+      # so the canonical archive answers first, keep the Azure mirror and an independent
+      # kernel.org mirror as fallbacks. The browser smoke job does the same below.
+      - name: Reorder apt mirrors
+        run: |
+          printf '%s\n' \
+            'http://archive.ubuntu.com/ubuntu/' \
+            'http://azure.archive.ubuntu.com/ubuntu/' \
+            'http://mirrors.edge.kernel.org/ubuntu/' \
+            | sudo tee /etc/apt/apt-mirrors.txt
+
       # Keep this package list aligned with the LibreOffice component set in the production image.
       # The fixture test reaches Writer, Calc, and Impress imports through the same headless process
       # runner that production uses, so a missing filter fails here before an image can publish.
       - name: Install production LibreOffice components
         run: |
-          sudo apt-get update
+          # A transient update failure should cost one retry, not the job.
+          for attempt in 1 2 3; do
+            if sudo apt-get update; then
+              break
+            fi
+            echo "apt-get update failed on attempt ${attempt} of 3"
+            [ "${attempt}" -eq 3 ] && exit 1
+            sleep 15
+          done
           sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
             libreoffice-calc-nogui \
             libreoffice-core-nogui \
@@ -346,9 +368,32 @@ jobs:
         working-directory: web
         run: npm ci
 
+      # Same reorder as the LibreOffice job: --with-deps shells out to apt, and the
+      # 2026-11-11 DNS outage of azure.archive.ubuntu.com killed both attempts of
+      # PR #210 in this step, before any image was built or any test ran.
+      - name: Reorder apt mirrors
+        run: |
+          printf '%s\n' \
+            'http://archive.ubuntu.com/ubuntu/' \
+            'http://azure.archive.ubuntu.com/ubuntu/' \
+            'http://mirrors.edge.kernel.org/ubuntu/' \
+            | sudo tee /etc/apt/apt-mirrors.txt
+
+      # The Chromium download lands in the Playwright cache, so a retry only re-runs
+      # the apt dependency install; keeping three attempts bounds the cost of a flaky
+      # mirror at roughly a minute instead of the job.
       - name: Install Chromium
         working-directory: web
-        run: npx playwright install --with-deps chromium
+        run: |
+          for attempt in 1 2 3; do
+            if npx playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "playwright install failed on attempt ${attempt} of 3"
+            [ "${attempt}" -eq 3 ] && exit 1
+            sleep 15
+          done
+          exit 1
 
       - name: Build production image
         run: >-
