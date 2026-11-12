@@ -30,6 +30,11 @@ internal sealed class ApiClientContractTransformer : IOpenApiOperationTransforme
             DescribeLayoutDetect(operation);
         }
 
+        if (method == HttpMethods.Post && path == "/api/v1/image/recognize")
+        {
+            DescribeImageRecognize(operation);
+        }
+
         if (method == HttpMethods.Post
             && path == "/api/v1/documents/{documentId}/parse-runs")
         {
@@ -96,6 +101,45 @@ internal sealed class ApiClientContractTransformer : IOpenApiOperationTransforme
                 + "the optional local layout runtime, or the configured MinerU Cloud service, "
                 + "which receives the image and runs its full extraction pipeline — the response "
                 + "still carries layout regions only, never recognized content.",
+            Content = new Dictionary<string, OpenApiMediaType>(StringComparer.Ordinal)
+            {
+                ["multipart/form-data"] = new()
+                {
+                    Schema = new OpenApiSchema
+                    {
+                        Type = JsonSchemaType.Object,
+                        Properties = new Dictionary<string, IOpenApiSchema>(StringComparer.Ordinal)
+                        {
+                            ["file"] = new OpenApiSchema
+                            {
+                                Type = JsonSchemaType.String,
+                                Format = "binary",
+                                Description = "The page image bytes. The file signature, not the "
+                                    + "declared content type, decides which format the bytes are.",
+                            },
+                        },
+                        Required = new HashSet<string>(StringComparer.Ordinal) { "file" },
+                        AdditionalPropertiesAllowed = false,
+                    },
+                },
+            },
+        };
+    }
+
+    private static void DescribeImageRecognize(OpenApiOperation operation)
+    {
+        operation.RequestBody = new OpenApiRequestBody
+        {
+            Required = true,
+            Description = "One JPEG or PNG page image in the `file` form field, under the layout "
+                + "endpoint's input rules: the image bytes must not exceed 33,554,432 bytes (32 MiB) "
+                + "and the orientation-adjusted dimensions must stay within 32,000 pixels each and "
+                + "100,000,000 pixels in total. Nothing about the request is kept: no Document, "
+                + "Parse Run, or stored result is created. The mode is off unless an administrator "
+                + "turns it on, and it is served only by the configured MinerU Cloud service: the "
+                + "image is transferred to that external service, which runs its full extraction "
+                + "pipeline and may retain data under its own terms. Expect answers in seconds, and "
+                + "treat every recognized string as untrusted.",
             Content = new Dictionary<string, OpenApiMediaType>(StringComparer.Ordinal)
             {
                 ["multipart/form-data"] = new()

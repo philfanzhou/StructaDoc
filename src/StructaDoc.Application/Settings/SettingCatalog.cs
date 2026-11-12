@@ -147,6 +147,8 @@ public static class SettingCatalog
 
     public const string LayoutBackend = "Layout:Backend";
 
+    public const string RecognitionEnabled = "Recognition:Enabled";
+
     public const string LoggingDefaultLevel = "Logging:LogLevel:Default";
     public const string LoggingAspNetCoreLevel = "Logging:LogLevel:Microsoft.AspNetCore";
     public const string LoggingEfCoreDatabaseCommandLevel =
@@ -226,6 +228,13 @@ public static class SettingCatalog
     /// </summary>
     public const string LayoutSection = "Layout";
 
+    /// <summary>
+    /// Whether the non-archiving image text-recognition mode is on (ADR-0015). Recoverable like the
+    /// layout sections: a stored value that cannot bind is dropped and the service starts with the
+    /// mode off, which is the shipped behavior.
+    /// </summary>
+    public const string RecognitionSection = "Recognition";
+
     /// <summary>Sections a stored value may be dropped from rather than stopping the service.</summary>
     public static IReadOnlyList<string> RecoverableSections { get; } =
     [
@@ -239,6 +248,7 @@ public static class SettingCatalog
         LibreOfficeSection,
         LayoutRuntimeSection,
         LayoutSection,
+        RecognitionSection,
     ];
 
     private const int ClaimNameMaximumLength = 255;
@@ -613,6 +623,12 @@ public static class SettingCatalog
             Default: LayoutBackendNames.LayoutRuntime,
             Maximum: 32,
             AllowedValues: [LayoutBackendNames.LayoutRuntime, LayoutBackendNames.MinerUCloud]),
+
+        // The non-archiving image text-recognition mode (ADR-0015): off by default, so a deployment
+        // that never turns it on makes no recognition request and answers the explicit unsupported
+        // capability error. When on, it is served only by the configured MinerU Cloud Provider,
+        // independently of Layout:Backend.
+        new(RecognitionEnabled, SettingKind.Boolean, RequiresRestart: true, Default: "false"),
 
         // Console log verbosity, one key for the pipeline's root level and one for each of the two
         // fixed override categories. A change listener flips the level switch the running console

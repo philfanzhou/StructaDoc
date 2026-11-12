@@ -1,10 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Net.Http.Headers;
-using Microsoft.AspNetCore.Http.Extensions;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.WebUtilities;
 using ServiceMantle.Web.Http;
 using StructaDoc.Application.Providers;
 using StructaDoc.Contracts.Layout;
@@ -28,15 +24,6 @@ namespace StructaDoc.Host.Layout;
 /// </summary>
 public static class LayoutDetectEndpoints
 {
-    /// <summary>The multipart overhead allowance, in the same shape as the document upload bound.</summary>
-    private const long MultipartOverheadAllowance = 1024 * 1024;
-
-    private const int MaximumImageBytes = LayoutDetectionRequest.MaximumImageBytes;
-
-    private const int MaximumSectionHeaderCount = 16;
-
-    private const int MaximumSectionHeaderLength = 4096;
-
     /// <summary>
     /// The stable code of the adapters' deadline failure for the layout route (see MinerU HTTP
     /// Providers, "MinerU Layout Runtime" and "MinerU Cloud Layout Mode"): the one Provider error
@@ -68,7 +55,7 @@ public static class LayoutDetectEndpoints
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
             .ProducesProblem(StatusCodes.Status504GatewayTimeout)
             .RequireAuthorization(AuthorizationPolicies.LayoutDetect)
-            .AddEndpointFilter(new LayoutRequestSizeLimitFilter());
+            .AddEndpointFilter(new NonArchivingImageSizeLimitFilter());
         return endpoints;
     }
 
@@ -126,24 +113,9 @@ public static class LayoutDetectEndpoints
     {
         // Everything about the request shape is decided before the body is read or a slot is
         // taken: content type, then the multipart boundary.
-        if (!request.HasFormContentType
-            || !MediaTypeHeaderValue.TryParse(request.ContentType, out var requestMediaType)
-            || requestMediaType!.MediaType is not { } requestMediaTypeName
-            || !requestMediaTypeName.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase))
+        if (NonArchivingImageIntake.CheckShape(request, out var boundary) is { } shapeRejection)
         {
-            return LayoutOutcome.FromProblem(
-                StatusCodes.Status400BadRequest,
-                "layout-request-invalid",
-                "The request must use multipart/form-data.");
-        }
-
-        var boundary = request.GetMultipartBoundary();
-        if (string.IsNullOrEmpty(boundary))
-        {
-            return LayoutOutcome.FromProblem(
-                StatusCodes.Status400BadRequest,
-                "layout-request-invalid",
-                "The multipart request carries no boundary.");
+            return LayoutOutcome.FromRejection(shapeRejection);
         }
 
         // The cap is entered before the body is read, which is what bounds the memory the
@@ -160,41 +132,14 @@ public static class LayoutDetectEndpoints
 
         try
         {
-            var image = await ReadSingleImageFileAsync(request, boundary, cancellationToken);
-            if (image.Problem is not null)
+            var image = await NonArchivingImageIntake.ReadAsync(
+                request,
+                boundary,
+                "layout detection",
+                cancellationToken);
+            if (image.Rejection is { } rejection)
             {
-                return image.Problem;
-            }
-
-            var inspection = LayoutImageInspection.Parse(image.Bytes.Span);
-            if (inspection.Verdict == LayoutImageVerdict.Unsupported)
-            {
-                return LayoutOutcome.FromProblem(
-                    StatusCodes.Status415UnsupportedMediaType,
-                    "layout-media-type-unsupported",
-                    "The submitted image must be a JPEG or a PNG.");
-            }
-
-            if (inspection.Verdict == LayoutImageVerdict.PixelBoundExceeded)
-            {
-                return LayoutOutcome.FromProblem(
-                    StatusCodes.Status413PayloadTooLarge,
-                    "layout-input-too-large",
-                    $"The image exceeds the pixel bounds of {LayoutImageInspection.MaximumDimensionPixels} "
-                        + $"per dimension and {LayoutImageInspection.MaximumTotalPixels} in total.");
-            }
-
-            // The signature has decided the format. A declared content type that contradicts it —
-            // or names an unsupported format at all — is refused rather than trusted.
-            if (image.DeclaredMediaType is { } declared
-                && (!MediaTypeHeaderValue.TryParse(declared, out var declaredMediaType)
-                    || declaredMediaType!.MediaType is not { } declaredName
-                    || !declaredName.Equals(inspection.MediaType, StringComparison.OrdinalIgnoreCase)))
-            {
-                return LayoutOutcome.FromProblem(
-                    StatusCodes.Status415UnsupportedMediaType,
-                    "layout-media-type-unsupported",
-                    $"The declared content type does not match the submitted {inspection.MediaType} image.");
+                return LayoutOutcome.FromRejection(rejection);
             }
 
             // Capability first: whichever backend the administrator selected answers its own
@@ -202,14 +147,7 @@ public static class LayoutDetectEndpoints
             // Provider is absent, disabled, not a cloud one, or credential-less — before any bytes
             // are handed to an execution.
             var provider = resolver.Resolve(backendSelection);
-            var result = await provider.DetectLayoutAsync(
-                new LayoutDetectionRequest(
-                    image.Bytes,
-                    inspection.MediaType,
-                    inspection.StoredWidth,
-                    inspection.StoredHeight,
-                    inspection.ExifOrientation),
-                cancellationToken);
+            var result = await provider.DetectLayoutAsync(image.Request!, cancellationToken);
 
             request.HttpContext.TryGetServiceMantleCorrelationId(out var correlationId);
             var response = new LayoutDetectResponse(
@@ -227,7 +165,7 @@ public static class LayoutDetectEndpoints
                         region.Y1))
                     .ToArray())
             {
-                Orientation = inspection.ExifOrientation,
+                Orientation = image.Orientation,
                 Engine = result.Engine,
                 Model = result.Model,
                 Version = result.Version,
@@ -246,90 +184,6 @@ public static class LayoutDetectEndpoints
         {
             inFlightGate.Release();
         }
-    }
-
-    /// <summary>
-    /// Reads the one expected <c>file</c> section into bounded memory. Any second file section,
-    /// any form field, or a missing file section answers <c>400</c>; a section body that would
-    /// pass the byte bound answers <c>413</c>. Nothing on this path buffers to disk.
-    /// </summary>
-    private static async Task<LayoutImage> ReadSingleImageFileAsync(
-        HttpRequest request,
-        string boundary,
-        CancellationToken cancellationToken)
-    {
-        var reader = new MultipartReader(boundary, request.Body)
-        {
-            HeadersCountLimit = MaximumSectionHeaderCount,
-            HeadersLengthLimit = MaximumSectionHeaderLength,
-            BodyLengthLimit = MaximumImageBytes + MultipartOverheadAllowance,
-        };
-
-        while (await reader.ReadNextSectionAsync(cancellationToken) is { } section)
-        {
-            if (!ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition))
-            {
-                return LayoutImage.Rejected(StatusCodes.Status400BadRequest, "layout-request-invalid",
-                    "The multipart request carries a section without a usable content disposition.");
-            }
-
-            var isFileSection = disposition.FileName is not null || disposition.FileNameStar is not null;
-            if (!isFileSection
-                || !string.Equals(disposition.Name, "file", StringComparison.Ordinal))
-            {
-                return LayoutImage.Rejected(StatusCodes.Status400BadRequest, "layout-request-invalid",
-                    "Provide exactly one image in the 'file' form field.");
-            }
-
-            if (section.Body is null)
-            {
-                return LayoutImage.Rejected(StatusCodes.Status400BadRequest, "layout-request-invalid",
-                    "The 'file' form field carries no content.");
-            }
-
-            // Bounded in-memory buffering: the copy stops and answers 413 the moment the section
-            // would pass the image byte bound, so memory is bounded by the constant no matter
-            // what arrives.
-            var buffer = new MemoryStream();
-            var chunk = new byte[64 * 1024];
-            while (true)
-            {
-                var read = await section.Body.ReadAsync(chunk.AsMemory(), cancellationToken);
-                if (read == 0)
-                {
-                    break;
-                }
-
-                if (buffer.Length + read > MaximumImageBytes)
-                {
-                    return LayoutImage.Rejected(StatusCodes.Status413PayloadTooLarge, "layout-input-too-large",
-                        $"The image exceeds the {MaximumImageBytes}-byte layout detection limit.");
-                }
-
-                await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
-            }
-
-            if (buffer.Length == 0)
-            {
-                return LayoutImage.Rejected(StatusCodes.Status400BadRequest, "layout-request-invalid",
-                    "The 'file' form field is empty.");
-            }
-
-            // No section may follow the file: the boundary stream is read to its end, and any
-            // further section is rejected without buffering it.
-            if (await reader.ReadNextSectionAsync(cancellationToken) is not null)
-            {
-                return LayoutImage.Rejected(StatusCodes.Status400BadRequest, "layout-request-invalid",
-                    "Provide exactly one image in the 'file' form field.");
-            }
-
-            return new LayoutImage(
-                new ReadOnlyMemory<byte>(buffer.GetBuffer(), 0, checked((int)buffer.Length)),
-                section.ContentType);
-        }
-
-        return LayoutImage.Rejected(StatusCodes.Status400BadRequest, "layout-request-invalid",
-            "Provide exactly one image in the 'file' form field.");
     }
 
     /// <summary>
@@ -395,45 +249,12 @@ public static class LayoutDetectEndpoints
             });
     }
 
-    /// <summary>
-    /// Bounds the request body to the fixed layout image bound plus the multipart overhead
-    /// allowance, in the same two-sided shape as the document upload: the server stops draining a
-    /// body that cannot fit, and the bounded copy while buffering remains the authority on what
-    /// "too large" means for the image itself.
-    /// </summary>
-    private sealed class LayoutRequestSizeLimitFilter : IEndpointFilter
-    {
-        public ValueTask<object?> InvokeAsync(
-            EndpointFilterInvocationContext context,
-            EndpointFilterDelegate next)
-        {
-            var feature = context.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
-            if (feature is { IsReadOnly: false })
-            {
-                feature.MaxRequestBodySize = checked(MaximumImageBytes + MultipartOverheadAllowance);
-            }
-
-            return next(context);
-        }
-    }
-
     private sealed record LayoutOutcome(IResult Result, int Status, int RegionCount)
     {
         public static LayoutOutcome FromProblem(int statusCode, string code, string detail) =>
             new(LayoutProblem(statusCode, code, detail), statusCode, 0);
-    }
 
-    private readonly record struct LayoutImage(ReadOnlyMemory<byte> Bytes, string? DeclaredMediaType)
-    {
-        public LayoutOutcome? Problem { get; init; }
-
-        public static LayoutImage Rejected(int statusCode, string code, string detail) =>
-            new(ReadOnlyMemory<byte>.Empty, null)
-            {
-                Problem = new LayoutOutcome(
-                    LayoutProblem(statusCode, code, detail),
-                    statusCode,
-                    0),
-            };
+        public static LayoutOutcome FromRejection(ImageIntakeRejection rejection) =>
+            FromProblem(rejection.StatusCode, $"layout-{rejection.Kind}", rejection.Detail);
     }
 }

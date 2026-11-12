@@ -12,6 +12,9 @@ namespace StructaDoc.Application.Providers;
 /// image and judging its content is the inference runtime's job; a request that reaches the
 /// runtime un-decoded is handed over exactly as the caller supplied it.
 ///
+/// The same input shape serves the image text-recognition mode (ADR-0015), which shares the layout
+/// mode's input rules and limits; <see cref="IImageRecognitionProvider"/> takes it unchanged.
+///
 /// The optional inspection facts exist for a backend that does not decode the original itself: the
 /// cloud backend receives geometry in the orientation-applied frame and reports against the
 /// public contract's original-image frame, which needs the header-stored dimensions and the EXIF

@@ -49,7 +49,7 @@ const hasDefaultProvider = computed(() => providers.value.some(provider => provi
 // one field short of working, and the parse it would refuse happens on another page.
 function needsCredential(provider: any) { return typeInfo(provider.providerType)?.requiresCredential === true && !provider.hasCredential }
 const defaultProviderNeedingCredential = computed(() => providers.value.find(provider => provider.isDefault && provider.isEnabled && needsCredential(provider)))
-const clientScopeLabels: Record<string, string> = { 'documents:read': '查看文档', 'documents:write': '上传和管理文档', 'parses:read': '查看解析结果', 'parses:write': '开始和管理解析', 'layout:detect': '版面检测' }
+const clientScopeLabels: Record<string, string> = { 'documents:read': '查看文档', 'documents:write': '上传和管理文档', 'parses:read': '查看解析结果', 'parses:write': '开始和管理解析', 'layout:detect': '版面检测', 'image:recognize': '图片文字识别' }
 const newClient = ref({ name: '', scopes: ['documents:read', 'documents:write', 'parses:read', 'parses:write'] })
 const newAdministrator = ref({ username: '', displayName: '', password: '' })
 const ownPassword = ref({ currentPassword: '', newPassword: '', confirmPassword: '' })
@@ -117,6 +117,7 @@ const settingLabels: Record<string, string> = {
   'LayoutRuntime:Credential': '版面检测推理服务凭据',
   'LayoutRuntime:Timeout': '单次版面检测超时',
   'LayoutRuntime:MaxConcurrency': '版面检测并发数',
+  'Recognition:Enabled': '启用图片文字识别',
   'Storage:Provider': '存储方式',
   'Storage:RootPath': '本地目录',
   'Storage:ServiceUrl': '服务地址',
@@ -199,6 +200,7 @@ const settingAreas: SettingArea[] = [
   { id: 'libreoffice', label: 'Office 转 PDF（LibreOffice）', prefixes: ['LibreOffice:'], description: '镜像内 LibreOffice 的转换开关、并发与资源上限，在解析提供方需要 PDF 时使用。' },
   { id: 'layout', label: '版面检测后端', prefixes: ['Layout:'], description: '版面检测由哪个后端响应：默认使用下方可选的本地推理服务；选择 mineru-cloud 时改用已配置为默认且启用、带凭据的 MinerU 云端解析服务，云端会执行完整解析流水线，本服务仍不会存档任何请求数据。切换后需要重启。' },
   { id: 'layout-runtime', label: '版面检测推理服务', prefixes: ['LayoutRuntime:'], description: '可选的版面检测推理服务：地址留空表示未启用，此时版面检测请求会明确失败，不会退回完整解析。' },
+  { id: 'recognition', label: '图片文字识别', prefixes: ['Recognition:'], description: '不存档的图片文字识别接口（POST /api/v1/image/recognize）：默认关闭。开启后由已配置为默认且启用、带凭据的 MinerU 云端解析服务处理，图片会传给该外部服务，云端执行完整解析流水线；本服务不存档任何请求数据。与版面检测后端设置相互独立，切换后需要重启。' },
   { id: 'logging', label: '日志级别', prefixes: ['Logging:LogLevel:'], description: '控制台日志的过滤级别：默认级别与两个固定框架类别。改动即时生效，无需重启；被部署环境变量钉住的键在此只读。' },
   { id: 'oidc', label: '组织账号登录（OIDC）', prefixes: ['Oidc:'], ownPanel: true, description: '' },
   { id: 'storage', label: '文件存储', prefixes: ['Storage:'], ownPanel: true, description: '' },

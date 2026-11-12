@@ -14,11 +14,18 @@ public static class AuthenticationScopes
     /// </summary>
     public const string LayoutDetect = "layout:detect";
 
+    /// <summary>
+    /// The non-archiving image text-recognition endpoint (ADR-0015). An API-client permission only,
+    /// like <see cref="LayoutDetect"/>, and independent of it: neither scope grants the other.
+    /// </summary>
+    public const string ImageRecognize = "image:recognize";
+
     public static IReadOnlyList<string> All { get; } = Array.AsReadOnly(
-        [DocumentsRead, DocumentsWrite, ParsesRead, ParsesWrite, LayoutDetect]);
+        [DocumentsRead, DocumentsWrite, ParsesRead, ParsesWrite, LayoutDetect, ImageRecognize]);
 
     public static bool IsKnown(string scope)
     {
-        return scope is DocumentsRead or DocumentsWrite or ParsesRead or ParsesWrite or LayoutDetect;
+        return scope is DocumentsRead or DocumentsWrite or ParsesRead or ParsesWrite or LayoutDetect
+            or ImageRecognize;
     }
 }

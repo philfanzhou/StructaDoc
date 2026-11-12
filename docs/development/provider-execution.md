@@ -90,6 +90,42 @@ PNG in the `file` multipart field. The endpoint, not the contract, owns what rea
   receives back into it — so a consumer applying the reported orientation rotates exactly once. An
   explicitly empty region list is a documented success: the backend looked and found nothing.
 
+### Image Text Recognition
+
+`IImageRecognitionProvider` is the second non-archiving execution contract
+([ADR-0015](../adr/0015-non-archiving-image-text-recognition.md)), deliberately separate from the
+layout contract so a layout implementation can never return text. It takes the same inspected
+image input (`LayoutDetectionRequest`) and returns `ImageRecognitionResult`: blocks in the
+backend's reading order, each with a registered Canonical Model Block type, optional content in
+`plain`, `html`, or `latex`, a normalized box, its lines (text plus box) for text-bearing blocks,
+and optional `caption`/`footnote` text. Every box is in the stored frame of the original image.
+
+- The capability is declared by resolution: `IImageRecognitionProviderResolver.Resolve` returns
+  the registered implementation or throws `ProviderException`
+  `recognition-capability-unsupported` (Configuration category). `Recognition:Enabled` (default
+  false, restart-bound) decides whether `MinerUCloudImageRecognitionProvider` is registered at
+  all; nothing else can serve the mode, independently of `Layout:Backend`.
+- The adapter shares the cloud layout backend's exchange — HTTP clients, per-request
+  configuration source, and one Host-wide `MinerUCloudExchangeLimiter` (4 concurrent exchanges
+  across both modes) — and an architecture test holds that it references no persistence,
+  storage, or settings store.
+
+`POST /api/v1/image/recognize` serves the contract. It is guarded by the API-client-only
+`image:recognize` scope, takes the same single `file` image under the same intake as the layout
+endpoint (shared `NonArchivingImageIntake`: bounded in-memory read, signature check, byte and
+pixel bounds, EXIF orientation), and has its own fixed in-flight cap (8, `429
+recognition-overloaded`), so recognition load never changes how the layout route answers. Its
+outcomes use their own code family: `400 recognition-request-invalid`, `413
+recognition-input-too-large`, `415 recognition-media-type-unsupported`, `503
+recognition-capability-unsupported` (mode off, or no usable default cloud Provider), `504
+recognition-timeout`, `502 recognition-output-invalid` / `recognition-backend-unavailable` /
+`recognition-backend-rejected`, and `503 recognition-backend-unavailable` for configuration and
+security refusals. The response keeps the layout response's frame fields (request ID, stored
+width and height, `coordinateFrame`, orientation, engine, model, version, diagnostics) and
+returns `blocks` with a zero-based contiguous `sequence`, `type`, `content`, `contentFormat`, an
+object `bbox` (`x0`, `y0`, `x1`, `y1`), `lines`, and optional `caption` and `footnote`. One
+completion log line carries status, timing, and block and line counts only.
+
 ## Execution Snapshot
 
 `IParseRunExecutionContextStore` accepts only a current `ParseRunLease` and verifies:
@@ -145,6 +181,6 @@ See [Provider Result Intake](./provider-result-intake.md), [Provider Result Norm
 
 Automated coverage includes capabilities, redaction, duplicate Provider registration, encrypted Cloud checkpoint recovery, token isolation, signed-target SSRF controls, Local multipart, state/error mapping, stream ownership, immutable execution contexts, conditional stages and IDs, adoption, heartbeat concurrency, ZIP limits, Cloud/Local layout recognition, deterministic canonical mapping, and executor-to-commit integration. Real PostgreSQL, MySQL, MariaDB, production-image, and Chromium contracts pass in GitHub Actions.
 
-The layout contract is covered against an instrumented stub runtime: success with normalized regions, the single-route guarantee (any non-layout request fails the test), malformed and oversized output rejection, deadline expiry, cancellation with slot release, the concurrency bound, unsupported-capability resolution, registration with and without a runtime, and the structural no-persistence guarantee. The cloud backend carries its own suite against an instrumented stub cloud: the official protocol route-by-route (any non-protocol request fails the test), credential isolation between the API host and the signed hosts, the observed `layout.json` shapes (upright and EXIF-rotated) reduced to the public contract, nested line/span entries not duplicated, blank pages as valid empty answers, malformed and incompatible output rejection, the per-request configuration states, the overall deadline, cancellation, and the fixed concurrency bound. The public endpoint adds the end-to-end half: every outcome row is tested against the real host with a stub provider, backend selection for both values of `Layout:Backend` and the cloud configuration error are tested through the real registration, the stores stay empty after success, failure, timeout, cancellation, and concurrent runs, no temporary files appear on the path, and the `layout:detect` scope admits API clients while refusing every other scope and interactive sessions. The shipped runtime worker carries its own weight-free suite — wire conformance, the full-parsing guard, bounded concurrency, and the no-persistence and log hygiene inspections — plus an adapter-acceptance check that runs the real `MinerULayoutDetectionProvider` against the worker over HTTP ([Layout Runtime](../deployment/layout-runtime.md)).
+The layout contract is covered against an instrumented stub runtime: success with normalized regions, the single-route guarantee (any non-layout request fails the test), malformed and oversized output rejection, deadline expiry, cancellation with slot release, the concurrency bound, unsupported-capability resolution, registration with and without a runtime, and the structural no-persistence guarantee. The cloud backend carries its own suite against an instrumented stub cloud: the official protocol route-by-route (any non-protocol request fails the test), credential isolation between the API host and the signed hosts, the observed `layout.json` shapes (upright and EXIF-rotated) reduced to the public contract, nested line/span entries not duplicated, blank pages as valid empty answers, malformed and incompatible output rejection, the per-request configuration states, the overall deadline, cancellation, and the fixed concurrency bound. The public endpoint adds the end-to-end half: every outcome row is tested against the real host with a stub provider, backend selection for both values of `Layout:Backend` and the cloud configuration error are tested through the real registration, the stores stay empty after success, failure, timeout, cancellation, and concurrent runs, no temporary files appear on the path, and the `layout:detect` scope admits API clients while refusing every other scope and interactive sessions. The recognition mode has the same two halves. Against the instrumented stub cloud: the recognition submission switches, the observed flat `layout.json` and a synthetic nested word-list shape reduced to blocks with lines, table HTML, formula LaTeX, captions, and footnotes (upright and EXIF-rotated, block and line boxes alike), nested lines, spans, and child blocks never reported as peers, `para_blocks` preferred over `preproc_blocks`, malformed output rejected under `mineru-recognition-cloud-layout-response-invalid`, the configuration states, the deadline, cancellation, the bound shared with layout exchanges, and the off-by-default registration. Against the real host with a stub provider: the response shape, the off-by-default and missing-credential configuration errors through the real registration, the failure mapping, the shared input rules, the in-flight cap, empty stores and no temporary files, log hygiene, and the `image:recognize` scope refusing `layout:detect`-only clients, other scopes, and interactive sessions while `image:recognize` does not open the layout route. The shipped runtime worker carries its own weight-free suite — wire conformance, the full-parsing guard, bounded concurrency, and the no-persistence and log hygiene inspections — plus an adapter-acceptance check that runs the real `MinerULayoutDetectionProvider` against the worker over HTTP ([Layout Runtime](../deployment/layout-runtime.md)).
 
-Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, and deployment-specific base-URL trust policy. The final issue acceptance for the cloud backend — an end-to-end smoke through the deployed public endpoint with the deployment's real MinerU Cloud credential — is an environment input recorded on the issue, not a local test.
+Remaining work is upstream cancellation support, detailed attempt records, broader production fixtures, and deployment-specific base-URL trust policy. The final issue acceptance for the cloud layout backend and for the recognition mode — an end-to-end smoke through the deployed public endpoint with the deployment's real MinerU Cloud credential — is an environment input recorded on each issue, not a local test.

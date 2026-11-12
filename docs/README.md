@@ -29,6 +29,7 @@ This directory contains StructaDoc's architecture decisions, cross-component spe
 | [ADR-0012](./adr/0012-deterministic-document-outline.md) | Withdrawn | Proposed a deterministic Parse Run outline from declared document structure; withdrawn before acceptance because no caller needs it |
 | [ADR-0013](./adr/0013-non-archiving-layout-detection.md) | Accepted (points 2 and 4 superseded in part by ADR-0014) | Adopt a non-archiving image layout-detection mode as an explicit exception to the retained-document lifecycle |
 | [ADR-0014](./adr/0014-cloud-layout-backend.md) | Accepted | Serve the non-archiving layout mode through the configured MinerU Cloud Provider when explicitly selected |
+| [ADR-0015](./adr/0015-non-archiving-image-text-recognition.md) | Accepted | Add a separate, explicitly enabled, non-archiving image text-recognition mode served by the configured MinerU Cloud Provider |
 
 ## Specifications
 

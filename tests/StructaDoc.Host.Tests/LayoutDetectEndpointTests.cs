@@ -553,17 +553,17 @@ public sealed class LayoutDetectEndpointTests
         Assert.Equal(0, factory.Stub.RequestCount);
     }
 
-    private static async Task AssertProblemCodeAsync(HttpResponseMessage response, string code)
+    internal static async Task AssertProblemCodeAsync(HttpResponseMessage response, string code)
     {
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(code, body.GetProperty("code").GetString());
     }
 
-    private static string GetHeader(HttpResponseMessage response, string name) =>
+    internal static string GetHeader(HttpResponseMessage response, string name) =>
         response.Headers.TryGetValues(name, out var values) ? values.Single() : string.Empty;
 
-    private static async Task WaitForAsync(Func<bool> condition, TimeSpan timeout)
+    internal static async Task WaitForAsync(Func<bool> condition, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
@@ -596,7 +596,7 @@ public sealed class LayoutDetectEndpointTests
     /// is zeroed because nothing on the layout path verifies it — full decoding is the runtime's
     /// job — and the trailing bytes let a test carry a sentinel the logs must never contain.
     /// </summary>
-    private static byte[] CreatePng(int width, int height, byte[]? trailing = null)
+    internal static byte[] CreatePng(int width, int height, byte[]? trailing = null)
     {
         using var png = new MemoryStream();
         png.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
@@ -619,7 +619,7 @@ public sealed class LayoutDetectEndpointTests
     /// orientation is asked for, then SOF0 with the stored dimensions. The scan never needs to be
     /// real — the parse stops at the frame header.
     /// </summary>
-    private static byte[] CreateJpeg(int width, int height, int? orientation = null)
+    internal static byte[] CreateJpeg(int width, int height, int? orientation = null)
     {
         using var jpeg = new MemoryStream();
         jpeg.Write([0xFF, 0xD8]);
@@ -674,7 +674,7 @@ public sealed class LayoutDetectEndpointTests
         stream.WriteByte((byte)(value & 0xFF));
     }
 
-    private static MultipartFormDataContent CreateUpload(
+    internal static MultipartFormDataContent CreateUpload(
         byte[] content,
         string fileName,
         string mediaType)
@@ -686,7 +686,7 @@ public sealed class LayoutDetectEndpointTests
         return multipart;
     }
 
-    private static MultipartFormDataContent CreateShapedUpload(string shape, byte[] image) => shape switch
+    internal static MultipartFormDataContent CreateShapedUpload(string shape, byte[] image) => shape switch
     {
         "missing-file" => new MultipartFormDataContent
         {
@@ -708,7 +708,7 @@ public sealed class LayoutDetectEndpointTests
         return multipart;
     }
 
-    private static async Task<Dictionary<string, long>> TakeCountsAsync(
+    internal static async Task<Dictionary<string, long>> TakeCountsAsync(
         WebApplicationFactory<Program> factory)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -735,7 +735,7 @@ public sealed class LayoutDetectEndpointTests
         };
     }
 
-    private static async Task AssertNothingPersistedAsync(
+    internal static async Task AssertNothingPersistedAsync(
         WebApplicationFactory<Program> factory,
         Dictionary<string, long> before)
     {
@@ -758,7 +758,7 @@ public sealed class LayoutDetectEndpointTests
             path => Assert.Fail($"The layout path created a temporary file: {path}"));
     }
 
-    private static async Task<IssuedApiKey> CreateApiClientAsync(
+    internal static async Task<IssuedApiKey> CreateApiClientAsync(
         WebApplicationFactory<Program> factory,
         string scopes)
     {
