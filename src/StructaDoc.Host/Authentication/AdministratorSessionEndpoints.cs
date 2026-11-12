@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
 using ServiceMantle.Web.RateLimiting;
+using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Contracts.Authentication;
@@ -16,7 +17,8 @@ public static class AdministratorSessionEndpoints
 {
     public static IEndpointRouteBuilder MapAdministratorSessionEndpoints(
         this IEndpointRouteBuilder endpoints,
-        TimeSpan sessionLifetime)
+        TimeSpan sessionLifetime,
+        OidcAuthenticationOptions oidcOptions)
     {
         var group = endpoints.MapGroup("/api/v1/admin")
             .RequireServiceMantleSecurityResponseHeaders();
@@ -24,6 +26,17 @@ public static class AdministratorSessionEndpoints
         group.MapGet("/antiforgery", GetAntiforgeryToken)
             .AllowAnonymous()
             .Produces<AntiforgeryTokenResponse>();
+        // The identity-provider sign-in entry of the administration area. Unlike the password
+        // sign-in below it carries no credential to guess, so it shares none of the sign-in rate
+        // limiting; the pre-sign-in administrator gate on the callback is what bounds it. A
+        // redirect is the whole answer: the browser leaves for the identity provider and comes
+        // back either an administrator or on the fixed not-admin landing — never signed in as a
+        // plain workspace session it did not ask for.
+        group.MapGet("/session/login", (HttpContext context, string? returnUrl) =>
+                OidcSignInFlow.BeginSignInAsync(context, oidcOptions, returnUrl, administratorEntry: true, "/admin"))
+            .AllowAnonymous()
+            .Produces(StatusCodes.Status302Found)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         // The sign-in limiter (`servicemantle.management`) is isolated from the setup one, so a
         // burst of first-run claims cannot lock out sign-in or vice versa. The endpoint is
         // anonymous, so the partition is the caller's address; a StructaDoc principal carries no
@@ -153,6 +166,17 @@ public static class AdministratorSessionEndpoints
 
     private static IResult GetCurrentSession(ClaimsPrincipal user)
     {
+        // The endpoint reports the local administrator account behind the session. A subject that
+        // signed in through the identity provider may hold the administrator policy without
+        // having a local control-plane account to report, so it is answered with denial rather
+        // than a parse failure on a subject identifier that was never a local account id.
+        if (!user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.Administrator))
+        {
+            return Results.Problem(
+                statusCode: StatusCodes.Status403Forbidden,
+                title: "The session is not a local administrator session");
+        }
+
         return Results.Ok(new AdministratorSessionResponse(
             Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!),
             user.FindFirstValue(StructaDocClaimTypes.Username)!,

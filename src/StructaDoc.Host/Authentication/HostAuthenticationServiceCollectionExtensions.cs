@@ -129,10 +129,32 @@ public static class HostAuthenticationServiceCollectionExtensions
                 oidc.SignedOutCallbackPath = oidcOptions.SignedOutCallbackPath;
                 oidc.SignInScheme = AuthenticationSchemes.AdministratorCookie;
                 oidc.ResponseType = OpenIdConnectResponseType.Code;
+                // The code flow's standard response mode — and the only one several authorities
+                // deliver (SignaCore answers any other value with `unsupported_response_mode`).
+                // The framework's own default is `form_post`, which such an authority refuses.
+                // Paired with the code response type, `query` is also what makes the handler omit
+                // the parameter entirely, the encoding the OAuth specifications recommend.
+                oidc.ResponseMode = OpenIdConnectResponseMode.Query;
                 oidc.UsePkce = true;
-                oidc.SaveTokens = false;
+                // The tokens stay inside the data-protected, HttpOnly cookie ticket: the browser
+                // and its scripts never see them, and the stored ID token is what the standard
+                // RP-initiated logout later presents as `id_token_hint` — the parameter SignaCore
+                // resolves the signing-out application from.
+                oidc.SaveTokens = true;
                 oidc.MapInboundClaims = false;
                 oidc.GetClaimsFromUserInfoEndpoint = true;
+                // No client telemetry parameters on the authorize or end-session redirects: the
+                // request carries exactly what discovery, PKCE, and the configuration ask for.
+                oidc.DisableTelemetry = true;
+                // The handshake cookies follow the host's own cookie profile rather than the
+                // framework nonce default (`SameSite=None`, `Secure=Always`), which a browser
+                // refuses on the plain-HTTP profile this service can legitimately be served
+                // under. Lax survives that profile and carries on the top-level sign-in
+                // redirect chain, exactly like the session cookie itself.
+                oidc.NonceCookie.SameSite = SameSiteMode.Lax;
+                oidc.NonceCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+                oidc.CorrelationCookie.SameSite = SameSiteMode.Lax;
+                oidc.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
                 oidc.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
@@ -143,7 +165,7 @@ public static class HostAuthenticationServiceCollectionExtensions
                     ClockSkew = TimeSpan.FromMinutes(1),
                 };
                 oidc.Scope.Clear();
-                foreach (var scope in oidcOptions.Scopes.Distinct(StringComparer.Ordinal))
+                foreach (var scope in oidcOptions.EffectiveScopes.Distinct(StringComparer.Ordinal))
                 {
                     oidc.Scope.Add(scope);
                 }
@@ -156,12 +178,31 @@ public static class HostAuthenticationServiceCollectionExtensions
                             context.Principal,
                             context.SecurityToken.Issuer,
                             oidcOptions);
+                        // The pre-sign-in administrator gate of the administration entry
+                        // (`/api/v1/admin/session/login`): a sign-in started there may establish a
+                        // session only for an administrator. Failing validation prevents the
+                        // sign-in entirely — no ticket and no cookie are written, and an existing
+                        // session is neither replaced nor extended. The role mapping itself is the
+                        // generic claim configuration, so which role value admits an
+                        // administrator is a deployment decision, not code.
+                        if (OidcSignInFlow.IsAdministratorEntry(context.Properties)
+                            && !context.Principal!.HasClaim(
+                                StructaDocClaimTypes.Administrator,
+                                bool.TrueString))
+                        {
+                            context.Fail(OidcSignInFlow.AdminGateFailure);
+                        }
+
                         return Task.CompletedTask;
                     },
+                    // Every protocol failure lands on one bounded SPA outcome for the entry the
+                    // flow started at; no failure detail beyond that code reaches the browser.
                     OnRemoteFailure = context =>
                     {
                         context.HandleResponse();
-                        context.Response.Redirect("/?authentication=failed");
+                        context.Response.Redirect(OidcSignInFlow.FailureLanding(
+                            context.Failure,
+                            context.Properties));
                         return Task.CompletedTask;
                     },
                 };

@@ -501,7 +501,8 @@ app.MapDocumentAccessGrantEndpoints();
 
 app.MapSetupEndpoints(authenticationTuningOptions.AdministratorSessionLifetime);
 app.MapAdministratorSessionEndpoints(
-    authenticationTuningOptions.AdministratorSessionLifetime);
+    authenticationTuningOptions.AdministratorSessionLifetime,
+    oidcOptions);
 app.MapInteractiveSessionEndpoints(oidcOptions);
 app.MapAdministratorAccountEndpoints(
     authenticationTuningOptions.AdministratorSessionLifetime);

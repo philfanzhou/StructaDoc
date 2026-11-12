@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AuthShell from '../components/AuthShell.vue'
+import { authenticationOutcome } from '../authOutcome'
 import { mutate, resetAntiforgery } from '../api'
 import { message } from '../messages'
 import { loadSession, safeReturnUrl, session } from '../session'
@@ -12,7 +13,20 @@ const username = ref('')
 const password = ref('')
 const busy = ref(false)
 const target = computed(() => safeReturnUrl(route.query.returnUrl, '/admin'))
-const loginUrl = computed(() => `/api/v1/session/login?returnUrl=${encodeURIComponent(target.value)}`)
+// The administration's own identity-provider entry, not the workspace one: a sign-in started here
+// is accepted only for an administrator, and a refusal lands back on this page with a bounded
+// outcome rather than leaving a workspace session behind.
+const loginUrl = computed(() => `/api/v1/admin/session/login?returnUrl=${encodeURIComponent(target.value)}`)
+
+// A completed upstream sign-in lands here with one bounded outcome code; show its fixed message
+// and strip it from the URL so it cannot replay on refresh. The return URL survives the strip.
+const outcome = authenticationOutcome(route.query.authentication)
+if (outcome) {
+  message(outcome, true)
+  const query = { ...route.query }
+  delete query.authentication
+  router.replace({ path: route.path, query })
+}
 
 async function signIn() {
   busy.value = true

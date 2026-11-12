@@ -1,7 +1,7 @@
 # Authentication
 
 - Status: Implementation note
-- Last updated: 2026-10-17
+- Last updated: 2026-11-12
 
 ## Current Boundary
 
@@ -19,6 +19,12 @@ The browser never receives OIDC access or identity tokens. Cookie and API-key va
 
 OIDC uses Authorization Code flow with PKCE, standard discovery and token validation, and configurable scope and role-claim mapping. The stable authorization key is `(issuer, subject)`, not email, display name, username, or a Provider-private identifier.
 
+The flow runs on ASP.NET Core's own OpenID Connect handler; no Provider SDK is referenced. The authorization request uses the code flow's standard `query` response mode — several authorities, SignaCore included, answer any other encoding with `unsupported_response_mode` — and S256 PKCE. The tokens returned by the token endpoint are kept inside the encrypted, HttpOnly application cookie and never reach browser JavaScript; the stored ID token is what the standard RP-initiated logout later sends as `id_token_hint`.
+
+Two browser entries start the same flow. The workspace entry (`GET /api/v1/session/login`) establishes a session for any valid subject. The administration entry (`GET /api/v1/admin/session/login`) arms a pre-sign-in gate: a subject whose verified ID token does not carry the configured administrator role is refused before any session is written — no ticket, no cookie — and lands on the administration sign-in page. Every protocol failure lands on one bounded outcome of the entry that started it — `denied`, `not-admin`, `unavailable`, or `failed` — carried as `?authentication=<code>` on `/signin` or `/admin/signin`, which the web application shows as one fixed message each and then removes from the address bar. No other failure detail reaches the browser.
+
+Sign-out of an OIDC session (`POST /api/v1/session/logout`) hands the browser to the authority's end-session endpoint — with the stored ID token as `id_token_hint` and the request-composed `SignedOutCallbackPath` as `post_logout_redirect_uri` — and revokes the local session on the same response. An authority that publishes no usable end-session endpoint cannot be handed the browser; the local session still ends and the caller stays on this origin.
+
 Configuration is under `Oidc`:
 
 ```json
@@ -30,13 +36,13 @@ Configuration is under `Oidc`:
     "ClientSecret": "from-secret-store",
     "RequireHttpsMetadata": true,
     "Scopes": ["openid", "profile", "email"],
-    "RoleClaimType": "role",
+    "RoleClaim": "role",
     "AdministratorRole": "structadoc-admin"
   }
 }
 ```
 
-SignaCore and other standards-compliant OIDC Providers can be configured without Provider-specific business code. Inject `ClientSecret` through a deployment secret.
+SignaCore and other standards-compliant OIDC Providers can be configured without Provider-specific business code. Inject `ClientSecret` through a deployment secret. A SignaCore client registers as Confidential with the authorization-code grant, registers the callback and post-logout URIs the administration page reports, and requests `openid profile` only — SignaCore publishes no `email` scope, so the shipped scope list's `email` entry is removed through `Oidc:Scopes`. The administrator role is whichever role value the deployment's accounts carry, mapped through `Oidc:AdministratorRole`; the role claim must arrive in the ID token, which is where SignaCore puts it.
 
 ## Control Plane
 

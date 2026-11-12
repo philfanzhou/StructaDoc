@@ -34,7 +34,7 @@ public static class OidcSettingsEndpoints
             fault.DetailFor(SettingCatalog.OidcSection),
             options.CallbackPath,
             options.SignedOutCallbackPath,
-            options.Scopes));
+            options.EffectiveScopes));
     }
 
     private static async Task<IResult> TestAsync(
