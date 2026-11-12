@@ -154,10 +154,15 @@ public static class OidcSignInFlow
 
     private static string NormalizeReturnUrl(string? returnUrl, string fallback)
     {
+        // The boundary is the leading single slash alone, exactly the rule the SPA mirrors in its
+        // own safeReturnUrl: a value that starts with one '/' stays on this origin, '//' is a
+        // scheme-relative escape, and everything else (including scheme-absolute URLs, which never
+        // start with '/') falls back. Deliberately no Uri.TryCreate absolute check: on Linux it
+        // accepts any '/…' path as an absolute file URI, which used to reject every deep-link
+        // return URL of a Linux deployment.
         if (string.IsNullOrWhiteSpace(returnUrl)
             || !returnUrl.StartsWith('/')
-            || returnUrl.StartsWith("//", StringComparison.Ordinal)
-            || Uri.TryCreate(returnUrl, UriKind.Absolute, out _))
+            || returnUrl.StartsWith("//", StringComparison.Ordinal))
         {
             return fallback;
         }
