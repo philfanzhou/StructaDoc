@@ -1,11 +1,24 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AuthShell from '../components/AuthShell.vue'
+import { authenticationOutcome } from '../authOutcome'
+import { message } from '../messages'
 import { safeReturnUrl, session } from '../session'
 
 const route = useRoute()
+const router = useRouter()
 const loginUrl = computed(() => `/api/v1/session/login?returnUrl=${encodeURIComponent(safeReturnUrl(route.query.returnUrl, '/'))}`)
+
+// A completed upstream sign-in lands here with one bounded outcome code; show its fixed message
+// and strip it from the URL so it cannot replay on refresh. The return URL survives the strip.
+const outcome = authenticationOutcome(route.query.authentication)
+if (outcome) {
+  message(outcome, true)
+  const query = { ...route.query }
+  delete query.authentication
+  router.replace({ path: route.path, query })
+}
 </script>
 
 <template>

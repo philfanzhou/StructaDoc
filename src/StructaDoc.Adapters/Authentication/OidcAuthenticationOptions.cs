@@ -11,7 +11,21 @@ public sealed class OidcAuthenticationOptions
     public bool RequireHttpsMetadata { get; init; } = true;
     public string CallbackPath { get; init; } = "/signin-oidc";
     public string SignedOutCallbackPath { get; init; } = "/signout-callback-oidc";
-    public string[] Scopes { get; init; } = ["openid", "profile", "email"];
+
+    /// <summary>
+    /// The configured scope list. The default is deliberately empty rather than
+    /// <c>openid profile email</c>: the configuration binder appends indexed values to a
+    /// non-empty default array instead of replacing it, so a deployment's shorter list — SignaCore
+    /// deployments in particular must not request <c>email</c>, which it does not support — could
+    /// never take effect. An empty list means the documented default through
+    /// <see cref="EffectiveScopes"/>.
+    /// </summary>
+    public string[] Scopes { get; init; } = [];
+
+    /// <summary>The scopes a sign-in requests: the configured list, or the documented
+    /// <c>openid profile email</c> default when nothing is configured.</summary>
+    public string[] EffectiveScopes => Scopes.Length > 0 ? Scopes : ["openid", "profile", "email"];
+
     public string NameClaim { get; init; } = "name";
     public string EmailClaim { get; init; } = "email";
     public string RoleClaim { get; init; } = "role";
@@ -45,7 +59,8 @@ public sealed class OidcAuthenticationOptions
             throw new InvalidOperationException("Oidc:CallbackPath must be an application-relative path.");
         }
 
-        if (Scopes.Length == 0 || !Scopes.Contains("openid", StringComparer.Ordinal))
+        var scopes = EffectiveScopes;
+        if (scopes.Length == 0 || !scopes.Contains("openid", StringComparer.Ordinal))
         {
             throw new InvalidOperationException("Oidc:Scopes must contain openid.");
         }

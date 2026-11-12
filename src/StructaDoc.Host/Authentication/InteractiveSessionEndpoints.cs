@@ -29,33 +29,16 @@ public static class InteractiveSessionEndpoints
         // comes back signed in. Undeclared, the one operation that returns no body at all reads
         // like the ones that forgot to say.
         group.MapGet("/login", (HttpContext context, string? returnUrl) =>
-            BeginLogin(context, oidcOptions, returnUrl))
+            OidcSignInFlow.BeginSignInAsync(context, oidcOptions, returnUrl, administratorEntry: false, "/"))
             .AllowAnonymous()
             .Produces(StatusCodes.Status302Found)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         group.MapPost("/logout", LogoutAsync)
             .RequireAuthorization(AuthorizationPolicies.InteractiveUser)
             .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status302Found)
             .ProducesProblem(StatusCodes.Status400BadRequest);
         return endpoints;
-    }
-
-    private static IResult BeginLogin(
-        HttpContext context,
-        OidcAuthenticationOptions options,
-        string? returnUrl)
-    {
-        if (!options.Enabled)
-        {
-            return Results.Problem(
-                statusCode: StatusCodes.Status503ServiceUnavailable,
-                title: "OIDC authentication is disabled");
-        }
-
-        var destination = NormalizeReturnUrl(returnUrl);
-        return Results.Challenge(
-            new AuthenticationProperties { RedirectUri = destination },
-            [AuthenticationSchemes.OpenIdConnect]);
     }
 
     private static async Task<IResult> LogoutAsync(
@@ -74,15 +57,34 @@ public static class InteractiveSessionEndpoints
                 title: "Antiforgery validation failed");
         }
 
-        await context.SignOutAsync(AuthenticationSchemes.AdministratorCookie);
+        // The upstream sign-out runs first, while the cookie ticket still holds the tokens saved
+        // at sign-in: the end-session redirect carries the stored ID token as `id_token_hint`,
+        // which is how SignaCore and other authorities resolve which application is signing out
+        // before they honor the registered post-logout redirect. The local session is deleted
+        // afterwards, on the same response the redirect is already the answer of.
         if (options.Enabled
             && context.User.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.User))
         {
-            return Results.SignOut(
-                new AuthenticationProperties { RedirectUri = "/" },
-                [AuthenticationSchemes.OpenIdConnect]);
+            try
+            {
+                await context.SignOutAsync(
+                    AuthenticationSchemes.OpenIdConnect,
+                    new AuthenticationProperties { RedirectUri = "/" });
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // An authority that publishes no usable end-session endpoint cannot be handed
+                // the browser. The local session still ends, and the caller stays on this
+                // origin with the plain signed-out answer.
+                await context.SignOutAsync(AuthenticationSchemes.AdministratorCookie);
+                return Results.NoContent();
+            }
+
+            await context.SignOutAsync(AuthenticationSchemes.AdministratorCookie);
+            return Results.Empty;
         }
 
+        await context.SignOutAsync(AuthenticationSchemes.AdministratorCookie);
         return Results.NoContent();
     }
 
@@ -106,18 +108,5 @@ public static class InteractiveSessionEndpoints
                 || user.HasClaim(StructaDocClaimTypes.Administrator, bool.TrueString)),
             oidcEnabled,
             setupRequired);
-    }
-
-    private static string NormalizeReturnUrl(string? returnUrl)
-    {
-        if (string.IsNullOrWhiteSpace(returnUrl)
-            || !returnUrl.StartsWith('/')
-            || returnUrl.StartsWith("//", StringComparison.Ordinal)
-            || Uri.TryCreate(returnUrl, UriKind.Absolute, out _))
-        {
-            return "/";
-        }
-
-        return returnUrl;
     }
 }

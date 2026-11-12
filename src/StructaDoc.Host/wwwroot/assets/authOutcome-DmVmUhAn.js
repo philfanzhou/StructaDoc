@@ -1,0 +1,1 @@
+var e={denied:`登录已被取消，请重试。`,"not-admin":`该账号没有管理员权限，请使用管理员账号登录。`,unavailable:`暂时无法连接身份平台，请稍后重试。`,failed:`登录失败，请重试。`};function t(t){return typeof t==`string`?e[t]:void 0}export{t};
