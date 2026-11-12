@@ -27,6 +27,13 @@ public sealed class LayoutDetectionContractTests
         typeof(LayoutBackendSelection),
         typeof(ILayoutCloudConfigurationSource),
         typeof(LayoutCloudConfigurationSnapshot),
+        typeof(IImageRecognitionProvider),
+        typeof(IImageRecognitionProviderResolver),
+        typeof(ImageRecognitionProviderResolver),
+        typeof(ImageRecognitionResult),
+        typeof(ImageRecognitionBlock),
+        typeof(ImageRecognitionLine),
+        typeof(ImageRecognitionBox),
     ];
 
     private static readonly Type[] AdapterTypes =
@@ -35,6 +42,9 @@ public sealed class LayoutDetectionContractTests
         typeof(MinerUCloudLayoutDetectionProvider),
         typeof(LayoutRuntimeOptions),
         typeof(LayoutOptions),
+        typeof(MinerUCloudImageRecognitionProvider),
+        typeof(MinerUCloudExchangeLimiter),
+        typeof(RecognitionOptions),
     ];
 
     [Fact]
@@ -64,7 +74,8 @@ public sealed class LayoutDetectionContractTests
                     type.Name.StartsWith("LayoutDetection", StringComparison.Ordinal)
                         || type.Name.StartsWith("LayoutRuntime", StringComparison.Ordinal)
                         || type.Name.StartsWith("LayoutBackend", StringComparison.Ordinal)
-                        || type.Name.StartsWith("LayoutCloud", StringComparison.Ordinal),
+                        || type.Name.StartsWith("LayoutCloud", StringComparison.Ordinal)
+                        || type.Name.StartsWith("ImageRecognition", StringComparison.Ordinal),
                     $"{product.GetName().Name} defines {type.Name}."));
         }
     }
@@ -113,6 +124,19 @@ public sealed class LayoutDetectionContractTests
         Assert.False(typeof(ILayoutDetectionProvider).IsAssignableFrom(typeof(MinerUCloudParseProvider)));
         Assert.False(typeof(IParseProvider).IsAssignableFrom(typeof(MinerULayoutDetectionProvider)));
         Assert.False(typeof(IParseProvider).IsAssignableFrom(typeof(MinerUCloudLayoutDetectionProvider)));
+    }
+
+    [Fact]
+    public void Recognition_is_a_separate_contract_from_layout_and_from_parsing()
+    {
+        // ADR-0015: recognized text is returned on its own route only. No layout adapter can be
+        // resolved as a recognition one (so a layout client never receives text), no recognition
+        // adapter as a layout or parsing one, and no parsing provider as either.
+        Assert.False(typeof(IImageRecognitionProvider).IsAssignableFrom(typeof(MinerULayoutDetectionProvider)));
+        Assert.False(typeof(IImageRecognitionProvider).IsAssignableFrom(typeof(MinerUCloudLayoutDetectionProvider)));
+        Assert.False(typeof(IImageRecognitionProvider).IsAssignableFrom(typeof(MinerUCloudParseProvider)));
+        Assert.False(typeof(ILayoutDetectionProvider).IsAssignableFrom(typeof(MinerUCloudImageRecognitionProvider)));
+        Assert.False(typeof(IParseProvider).IsAssignableFrom(typeof(MinerUCloudImageRecognitionProvider)));
     }
 
     [Fact]

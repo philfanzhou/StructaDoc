@@ -1,0 +1,590 @@
+{
+  "pdf_info": [
+    {
+      "page_idx": 0,
+      "page_size": [
+        446.0,
+        631.0
+      ],
+      "_backend": "hybrid",
+      "_ocr_enable": true,
+      "_version_name": "3.4.4",
+      "preproc_blocks": [
+        {
+          "type": "text",
+          "bbox": [
+            30,
+            20,
+            300,
+            50
+          ],
+          "lines": [
+            {
+              "bbox": [
+                30,
+                20,
+                300,
+                50
+              ],
+              "spans": [
+                {
+                  "type": "text",
+                  "bbox": [
+                    30,
+                    20,
+                    300,
+                    50
+                  ],
+                  "content": "Preproc spelling only",
+                  "score": 0.97
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "para_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            30,
+            20,
+            300,
+            50
+          ],
+          "lines": [
+            {
+              "bbox": [
+                30,
+                20,
+                300,
+                50
+              ],
+              "spans": [
+                {
+                  "type": "text",
+                  "bbox": [
+                    30,
+                    20,
+                    300,
+                    50
+                  ],
+                  "content": "Unit 3 Word List",
+                  "score": 0.97
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "bbox": [
+            30,
+            60,
+            420,
+            200
+          ],
+          "blocks": [
+            {
+              "type": "table_caption",
+              "bbox": [
+                30,
+                60,
+                420,
+                76
+              ],
+              "lines": [
+                {
+                  "bbox": [
+                    30,
+                    60,
+                    420,
+                    76
+                  ],
+                  "spans": [
+                    {
+                      "type": "text",
+                      "bbox": [
+                        30,
+                        60,
+                        420,
+                        76
+                      ],
+                      "content": "Table 1 Core words",
+                      "score": 0.97
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "table_body",
+              "bbox": [
+                30,
+                80,
+                420,
+                200
+              ],
+              "lines": [
+                {
+                  "bbox": [
+                    30,
+                    80,
+                    420,
+                    200
+                  ],
+                  "spans": [
+                    {
+                      "type": "table",
+                      "bbox": [
+                        30,
+                        80,
+                        420,
+                        200
+                      ],
+                      "html": "<table><tr><td>apple</td><td>n.</td><td>苹果</td></tr><tr><td>borrow</td><td>v.</td><td>借</td></tr></table>",
+                      "score": 0.97
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "table_footnote",
+              "bbox": [
+                30,
+                184,
+                420,
+                200
+              ],
+              "lines": [
+                {
+                  "bbox": [
+                    30,
+                    184,
+                    420,
+                    200
+                  ],
+                  "spans": [
+                    {
+                      "type": "text",
+                      "bbox": [
+                        30,
+                        184,
+                        420,
+                        200
+                      ],
+                      "content": "Synthetic table note",
+                      "score": 0.97
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            30,
+            210,
+            420,
+            260
+          ],
+          "lines": [
+            {
+              "bbox": [
+                30,
+                210,
+                420,
+                232
+              ],
+              "spans": [
+                {
+                  "type": "text",
+                  "bbox": [
+                    30,
+                    210,
+                    120,
+                    232
+                  ],
+                  "content": "careful",
+                  "score": 0.97
+                },
+                {
+                  "type": "text",
+                  "bbox": [
+                    130,
+                    210,
+                    170,
+                    232
+                  ],
+                  "content": "adj.",
+                  "score": 0.97
+                },
+                {
+                  "type": "text",
+                  "bbox": [
+                    180,
+                    210,
+                    300,
+                    232
+                  ],
+                  "content": "小心的",
+                  "score": 0.97
+                }
+              ]
+            },
+            {
+              "bbox": [
+                30,
+                236,
+                420,
+                260
+              ],
+              "spans": [
+                {
+                  "type": "text",
+                  "bbox": [
+                    30,
+                    236,
+                    120,
+                    260
+                  ],
+                  "content": "decide",
+                  "score": 0.97
+                },
+                {
+                  "type": "text",
+                  "bbox": [
+                    130,
+                    236,
+                    170,
+                    260
+                  ],
+                  "content": "v.",
+                  "score": 0.97
+                },
+                {
+                  "type": "text",
+                  "bbox": [
+                    180,
+                    236,
+                    300,
+                    260
+                  ],
+                  "content": "决定",
+                  "score": 0.97
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "bbox": [
+            30,
+            270,
+            420,
+            330
+          ],
+          "blocks": [
+            {
+              "type": "text",
+              "bbox": [
+                30,
+                270,
+                420,
+                298
+              ],
+              "lines": [
+                {
+                  "bbox": [
+                    30,
+                    270,
+                    420,
+                    298
+                  ],
+                  "spans": [
+                    {
+                      "type": "text",
+                      "bbox": [
+                        30,
+                        270,
+                        420,
+                        298
+                      ],
+                      "content": "1. eager adj. 渴望的",
+                      "score": 0.97
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "bbox": [
+                30,
+                302,
+                420,
+                330
+              ],
+              "lines": [
+                {
+                  "bbox": [
+                    30,
+                    302,
+                    420,
+                    330
+                  ],
+                  "spans": [
+                    {
+                      "type": "text",
+                      "bbox": [
+                        30,
+                        302,
+                        420,
+                        330
+                      ],
+                      "content": "2. fierce adj. 凶猛的",
+                      "score": 0.97
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "interline_equation",
+          "bbox": [
+            30,
+            340,
+            240,
+            370
+          ],
+          "lines": [
+            {
+              "bbox": [
+                30,
+                340,
+                240,
+                370
+              ],
+              "spans": [
+                {
+                  "type": "interline_equation",
+                  "bbox": [
+                    30,
+                    340,
+                    240,
+                    370
+                  ],
+                  "content": "a^2 + b^2 = c^2",
+                  "score": 0.97
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            30,
+            380,
+            420,
+            400
+          ],
+          "lines": [
+            {
+              "bbox": [
+                30,
+                380,
+                420,
+                400
+              ],
+              "spans": [
+                {
+                  "type": "text",
+                  "bbox": [
+                    30,
+                    380,
+                    110,
+                    400
+                  ],
+                  "content": "Area is",
+                  "score": 0.97
+                },
+                {
+                  "type": "inline_equation",
+                  "bbox": [
+                    115,
+                    380,
+                    160,
+                    400
+                  ],
+                  "content": "\\pi r^2",
+                  "score": 0.97
+                },
+                {
+                  "type": "text",
+                  "bbox": [
+                    160,
+                    380,
+                    165,
+                    400
+                  ],
+                  "content": ".",
+                  "score": 0.97
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "image",
+          "bbox": [
+            30,
+            410,
+            300,
+            560
+          ],
+          "blocks": [
+            {
+              "type": "image_body",
+              "bbox": [
+                30,
+                410,
+                300,
+                540
+              ],
+              "lines": [
+                {
+                  "bbox": [
+                    30,
+                    410,
+                    300,
+                    540
+                  ],
+                  "spans": [
+                    {
+                      "type": "image",
+                      "bbox": [
+                        30,
+                        410,
+                        300,
+                        540
+                      ],
+                      "image_path": "images/synthetic-apple.jpg",
+                      "score": 0.97
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "image_caption",
+              "bbox": [
+                30,
+                542,
+                300,
+                560
+              ],
+              "lines": [
+                {
+                  "bbox": [
+                    30,
+                    542,
+                    300,
+                    560
+                  ],
+                  "spans": [
+                    {
+                      "type": "text",
+                      "bbox": [
+                        30,
+                        542,
+                        300,
+                        560
+                      ],
+                      "content": "Figure 1 A synthetic apple",
+                      "score": 0.97
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "aside_text",
+          "bbox": [
+            320,
+            410,
+            420,
+            440
+          ],
+          "lines": [
+            {
+              "bbox": [
+                320,
+                410,
+                420,
+                440
+              ],
+              "spans": [
+                {
+                  "type": "text",
+                  "bbox": [
+                    320,
+                    410,
+                    420,
+                    440
+                  ],
+                  "content": "Synthetic margin note",
+                  "score": 0.97
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "type": "header",
+          "bbox": [
+            30,
+            0,
+            300,
+            15
+          ],
+          "lines": [
+            {
+              "bbox": [
+                30,
+                0,
+                300,
+                15
+              ],
+              "spans": [
+                {
+                  "type": "text",
+                  "bbox": [
+                    30,
+                    0,
+                    300,
+                    15
+                  ],
+                  "content": "Discarded synthetic header",
+                  "score": 0.97
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "_backend": "hybrid",
+  "_version_name": "3.4.4"
+}

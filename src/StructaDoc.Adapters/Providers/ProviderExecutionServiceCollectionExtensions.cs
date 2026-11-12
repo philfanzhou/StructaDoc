@@ -65,15 +65,13 @@ public static class ProviderExecutionServiceCollectionExtensions
         if (layoutOptions.ToBackend() == LayoutBackend.MinerUCloud)
         {
             services.AddSingleton(LayoutBackendSelection.ForCloud());
-            services.TryAddSingleton(_ => new ProviderHttpClientOwner(
-                CreateProviderApiHttpClient(),
-                CreateSignedTransferHttpClient()));
-            services.AddScoped<ILayoutCloudConfigurationSource, EfCoreLayoutCloudConfigurationSource>();
+            AddCloudExchangeServices(services);
             services.AddScoped<ILayoutDetectionProvider>(serviceProvider =>
                 new MinerUCloudLayoutDetectionProvider(
                     serviceProvider.GetRequiredService<ProviderHttpClientOwner>().ProviderApiClient,
                     serviceProvider.GetRequiredService<ProviderHttpClientOwner>().SignedTransferClient,
-                    serviceProvider.GetRequiredService<ILayoutCloudConfigurationSource>()));
+                    serviceProvider.GetRequiredService<ILayoutCloudConfigurationSource>(),
+                    limiter: serviceProvider.GetRequiredService<MinerUCloudExchangeLimiter>()));
             services.AddScoped<ILayoutDetectionProviderResolver>(serviceProvider =>
                 new LayoutDetectionProviderResolver(
                     serviceProvider.GetServices<ILayoutDetectionProvider>()));
@@ -99,6 +97,60 @@ public static class ProviderExecutionServiceCollectionExtensions
             new LayoutDetectionProviderResolver(
                 serviceProvider.GetServices<ILayoutDetectionProvider>()));
         return services;
+    }
+
+    /// <summary>
+    /// Registers the non-archiving image text-recognition mode (ADR-0015) for the bound
+    /// <paramref name="options"/>.
+    ///
+    /// Off — the shipped state — registers no <see cref="IImageRecognitionProvider"/> at all, so the
+    /// resolution answers the explicit unsupported-capability error and no request leaves the
+    /// process. On registers the MinerU Cloud adapter, which resolves the default Provider
+    /// configuration per request through the same <see cref="ILayoutCloudConfigurationSource"/>
+    /// the cloud layout backend uses, independently of <c>Layout:Backend</c>, and shares that
+    /// backend's HTTP clients and its one cloud exchange bound. Nothing else can serve the mode, so
+    /// no fallback exists.
+    /// </summary>
+    public static IServiceCollection AddStructaDocImageRecognition(
+        this IServiceCollection services,
+        RecognitionOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (!options.Enabled)
+        {
+            services.AddSingleton<IImageRecognitionProviderResolver>(_ =>
+                new ImageRecognitionProviderResolver(Enumerable.Empty<IImageRecognitionProvider>()));
+            return services;
+        }
+
+        AddCloudExchangeServices(services);
+        services.AddScoped<IImageRecognitionProvider>(serviceProvider =>
+            new MinerUCloudImageRecognitionProvider(
+                serviceProvider.GetRequiredService<ProviderHttpClientOwner>().ProviderApiClient,
+                serviceProvider.GetRequiredService<ProviderHttpClientOwner>().SignedTransferClient,
+                serviceProvider.GetRequiredService<ILayoutCloudConfigurationSource>(),
+                limiter: serviceProvider.GetRequiredService<MinerUCloudExchangeLimiter>()));
+        services.AddScoped<IImageRecognitionProviderResolver>(serviceProvider =>
+            new ImageRecognitionProviderResolver(
+                serviceProvider.GetServices<IImageRecognitionProvider>()));
+        return services;
+    }
+
+    /// <summary>
+    /// What every cloud image exchange needs, registered once whichever mode asks first: the shared
+    /// Provider HTTP clients (created here only when the parse providers are not registered), the
+    /// per-request configuration source — scoped because it reads the request-scoped business
+    /// database context — and the Host-wide exchange bound, a singleton so it bounds something.
+    /// </summary>
+    private static void AddCloudExchangeServices(IServiceCollection services)
+    {
+        services.TryAddSingleton(_ => new ProviderHttpClientOwner(
+            CreateProviderApiHttpClient(),
+            CreateSignedTransferHttpClient()));
+        services.TryAddScoped<ILayoutCloudConfigurationSource, EfCoreLayoutCloudConfigurationSource>();
+        services.TryAddSingleton<MinerUCloudExchangeLimiter>();
     }
 
     private static HttpClient CreateProviderApiHttpClient()

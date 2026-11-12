@@ -165,10 +165,13 @@ Registered scopes are:
 - `parses:read`
 - `parses:write`
 - `layout:detect`
+- `image:recognize`
 
 Scopes are independent. Provider configuration remains administrator-only.
 
 `layout:detect` opens the non-archiving layout endpoint (`POST /api/v1/layout/detect`, [ADR-0013](../adr/0013-non-archiving-layout-detection.md)) and is the one scope that does not admit an interactive session: that endpoint is for machine callers, so its authorization policy requires an authenticated API client holding the scope and refuses a signed-in browser session outright, unlike the four document/parse scopes, which an interactive session reaches without holding any scope.
+
+`image:recognize` opens the non-archiving image text-recognition endpoint (`POST /api/v1/image/recognize`, [ADR-0015](../adr/0015-non-archiving-image-text-recognition.md)) under the same API-client-only rule. It is independent of `layout:detect` in both directions: a layout client receives no recognized text and cannot reach the recognition route, and a recognition client cannot call layout detection.
 
 A scope says which verbs a key may use. It says nothing about whose resources they may be used on, which is decided by ownership: a client is a workspace principal keyed by `(structadoc:api-client, <client id>)`, it owns what it uploads, and it reaches nothing else unless a grant names it. See [Resource Boundary](#resource-boundary).
 

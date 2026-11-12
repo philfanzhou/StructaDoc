@@ -28,6 +28,7 @@ using StructaDoc.Host.Migrations;
 using StructaDoc.Host.OpenApi;
 using StructaDoc.Host.ParseRuns;
 using StructaDoc.Host.Providers;
+using StructaDoc.Host.Recognition;
 using StructaDoc.Host.Resources;
 using StructaDoc.Host.Settings;
 using StructaDoc.Host.Setup;
@@ -256,6 +257,17 @@ var layoutOptions = RecoverableConfigurationBinder.Bind(
     source => source.GetSection(LayoutOptions.SectionName).Get<LayoutOptions>()
         ?? new LayoutOptions(),
     options => options.Validate());
+// Whether the non-archiving image text-recognition mode is on (ADR-0015). Off by default;
+// recoverable for the same reason: a stored value that cannot bind is dropped and the service
+// starts with the mode off.
+var recognitionOptions = RecoverableConfigurationBinder.Bind(
+    settingsConfiguration,
+    settingsStartupFault,
+    SettingCatalog.RecognitionSection,
+    "image recognition configuration",
+    source => source.GetSection(RecognitionOptions.SectionName).Get<RecognitionOptions>()
+        ?? new RecognitionOptions(),
+    _ => { });
 ingestionOptions.Validate();
 var oidcOptions = OidcConfigurationBinder.Bind(settingsConfiguration, settingsStartupFault);
 // The Authentication section's tuning half binds from the settings-aware configuration rather than
@@ -283,6 +295,10 @@ builder.Services.AddStructaDocLayoutDetection(layoutRuntimeOptions, layoutOption
 // the adapter extension because the adapter extension owns the runtime contract, not the public
 // endpoint's admission behavior.
 builder.Services.AddSingleton<LayoutDetectInFlightGate>();
+builder.Services.AddStructaDocImageRecognition(recognitionOptions);
+// The recognition endpoint's own overload bound, for the layout gate's reason and kept separate
+// from it so recognition traffic never changes how the layout route answers.
+builder.Services.AddSingleton<ImageRecognizeInFlightGate>();
 builder.Services.AddStructaDocProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
@@ -502,6 +518,9 @@ app.MapParseExportEndpoints();
 // The public non-archiving layout-detection endpoint (ADR-0013): API clients holding the
 // `layout:detect` scope only; interactive sessions are deliberately not admitted.
 app.MapLayoutDetectEndpoints();
+// The public non-archiving image text-recognition endpoint (ADR-0015): API clients holding the
+// `image:recognize` scope only, and only when Recognition:Enabled is on.
+app.MapImageRecognizeEndpoints();
 app.MapResourceDeletionEndpoints();
 
 app.MapServiceMantleHealthEndpoints();

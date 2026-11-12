@@ -116,7 +116,8 @@ public static class StructaDocApiDescription
                 or AuthorizationPolicies.DocumentsWrite
                 or AuthorizationPolicies.ParsesRead
                 or AuthorizationPolicies.ParsesWrite
-                or AuthorizationPolicies.LayoutDetect);
+                or AuthorizationPolicies.LayoutDetect
+                or AuthorizationPolicies.ImageRecognize);
     }
 
     private static bool IsServiceApiOperation(ApiDescription description) =>

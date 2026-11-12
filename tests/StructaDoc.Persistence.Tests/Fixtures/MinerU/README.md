@@ -64,3 +64,17 @@ rotated case — the rotated test differs only in the request's stored dimension
 orientation, which is exactly the mapping under test. Nested `lines[].spans[]` entries
 are present on purpose: `MinerUCloudLayoutDetectionProviderTests` asserts they are not
 reported as peer regions.
+
+## Cloud recognition fixture
+
+`cloud-recognition-wordlist.json` is hand-authored synthetic data in the same `layout.json`
+structure, for the image text-recognition reduction (ADR-0015). It is a printed word list on a
+446x631 page (the proportions of a 1240x1754 image) whose `para_blocks` cover the nested shapes
+MinerU's middle JSON uses beside the flat one above: a table with `table_caption`, `table_body`
+(an HTML span), and `table_footnote` children; a text block whose lines hold separate word,
+part-of-speech, and definition spans; a list whose items are nested text blocks; an interline
+equation spelled with `content`; an inline equation inside a text line; a figure with
+`image_body` and `image_caption` children; and an `aside_text` block outside the registered
+types. A `preproc_blocks` array and a `discarded_blocks` header are present on purpose:
+`MinerUCloudImageRecognitionProviderTests` asserts that `para_blocks` wins and that discarded
+blocks are not read. Every word, definition, and number is synthetic.

@@ -54,6 +54,7 @@ public sealed class ApiDescriptionTests
     [InlineData("/api/v1/documents/{documentId}/parse-runs", "post", "parses:write")]
     [InlineData("/api/v1/parse-runs/{id}", "get", "parses:read")]
     [InlineData("/api/v1/layout/detect", "post", "layout:detect")]
+    [InlineData("/api/v1/image/recognize", "post", "image:recognize")]
     public async Task A_scope_gated_operation_names_its_scope_and_offers_the_credential(
         string path,
         string method,
@@ -104,6 +105,42 @@ public sealed class ApiDescriptionTests
             .Select(status => status.Name));
         Assert.Contains("429", operation.GetProperty("responses").EnumerateObject()
             .Select(status => status.Name));
+    }
+
+    [Fact]
+    public async Task Image_recognition_is_described_as_an_api_client_only_external_transfer()
+    {
+        using var document = await ReadDescriptionAsync();
+        var operation = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/v1/image/recognize")
+            .GetProperty("post");
+        var described = operation.GetProperty("description").GetString();
+
+        Assert.Equal("RecognizeImage", operation.GetProperty("operationId").GetString());
+        Assert.Contains("image:recognize", described);
+        Assert.Contains("A browser session is not admitted", described);
+
+        // The request contract states the shared input bounds, the non-archiving behavior, and —
+        // the part that separates it from the layout route's default backend — that the image goes
+        // to an external service.
+        var requestBody = operation.GetProperty("requestBody").GetProperty("description").GetString();
+        Assert.Contains("32 MiB", requestBody);
+        Assert.Contains("Nothing about the request is kept", requestBody);
+        Assert.Contains("MinerU Cloud", requestBody);
+        Assert.Contains("external service", requestBody);
+        Assert.Contains("untrusted", requestBody);
+
+        Assert.Equal(
+            "Recognition",
+            operation.GetProperty("tags").EnumerateArray().Single().GetString());
+        Assert.Contains("504", operation.GetProperty("responses").EnumerateObject()
+            .Select(status => status.Name));
+
+        // The answer is described with its blocks, lines, and object bounding boxes.
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        Assert.True(schemas.TryGetProperty("ImageRecognizeResponse", out _));
+        Assert.True(schemas.GetProperty("ImageRecognizeBlock").GetProperty("properties").TryGetProperty("lines", out _));
+        Assert.True(schemas.GetProperty("ImageRecognizeLine").GetProperty("properties").TryGetProperty("bbox", out _));
     }
 
     [Theory]
