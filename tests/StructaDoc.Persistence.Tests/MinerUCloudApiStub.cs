@@ -67,6 +67,8 @@ internal sealed class CloudApiStub : HttpMessageHandler
     public const string ResultUrl = "https://files.example/result.zip";
 
     private int inFlight;
+
+    private readonly object captureGate = new();
     private int pollCount;
 
     public Dictionary<string, HttpStatusCode> FailLeg { get; } = [];
@@ -107,10 +109,19 @@ internal sealed class CloudApiStub : HttpMessageHandler
             body,
             request.Content?.Headers.ContentLength,
             request.Content?.Headers.ContentType?.MediaType);
-        Requests.Add(captured);
+        // Several exchanges hit the stub at once (the shared concurrency-bound test drives six),
+        // so both the capture list and the peak observation must be made under one lock. A plain
+        // List.Add can lose an entry when two requests append to the same slot, which once turned
+        // the bound test's 6 result requests into 5 (#212); an unlocked Math.Max can only
+        // under-report the peak, but the lock keeps both answers exact.
+        int current;
+        lock (captureGate)
+        {
+            Requests.Add(captured);
+            current = Interlocked.Increment(ref inFlight);
+            PeakInFlight = Math.Max(PeakInFlight, current);
+        }
 
-        var current = Interlocked.Increment(ref inFlight);
-        PeakInFlight = Math.Max(PeakInFlight, current);
         try
         {
             if (DelayEveryRequest)
