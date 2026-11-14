@@ -99,6 +99,26 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
     }
 
     [Fact]
+    public async Task Local_administrator_session_keeps_its_claims_under_oidc_claim_mapping()
+    {
+        // The claim mapping is for identity-provider sessions. A deployment may point
+        // Oidc:NameClaim at any claim name — here an internal one the local administrator
+        // carries — without renaming what that administrator's own session reports.
+        using var mappedFactory = factory.WithWebHostBuilder(builder =>
+            builder.UseSetting("Oidc:NameClaim", "structadoc_username"));
+        using var client = mappedFactory.CreateClient();
+        await client.LoginAsAdministratorAsync();
+
+        var session = await client.GetFromJsonAsync<InteractiveSessionResponse>(
+            "/api/v1/session",
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(session);
+        Assert.True(session.Authenticated);
+        Assert.Equal("StructaDoc Test Administrator", session.DisplayName);
+        Assert.Null(session.Email);
+    }
+
+    [Fact]
     public async Task Security_stamp_change_revokes_existing_cookie()
     {
         using var isolatedFactory = new StructaDocWebApplicationFactory();

@@ -99,6 +99,42 @@ public sealed class OidcInteractiveSessionTests
     }
 
     [Fact]
+    public async Task Configured_claim_mappings_carry_the_session_display_name_and_email()
+    {
+        // An authority that writes its profile claims under non-standard names is what
+        // Oidc:NameClaim and Oidc:EmailClaim exist for: the ID token below carries no `name`
+        // claim at all, and the UserInfo response still answers with the standard one, so only
+        // the configured mapping can surface either value. The standard names remain the
+        // fallback a default mapping and a local administrator resolve through.
+        using var host = OidcHost(settings: new Dictionary<string, string?>
+        {
+            ["Oidc:NameClaim"] = "display_name",
+            ["Oidc:EmailClaim"] = "mail",
+        });
+        host.Authority.ProfileIdTokenClaims = new Dictionary<string, object?>
+        {
+            ["display_name"] = "Custom Named Identity",
+            ["mail"] = "identity@example.test",
+        };
+        using var client = Client(host.Factory);
+        var handshake = await StartSignInAsync(client, "/api/v1/session/login");
+
+        using var callback = await CompleteSignInAsync(
+            client,
+            handshake,
+            host.Authority.CodeForRole(handshake.Query, role: null));
+        Assert.Equal(HttpStatusCode.Found, callback.StatusCode);
+
+        var session = await client.GetFromJsonAsync<InteractiveSessionResponse>(
+            "/api/v1/session",
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(session);
+        Assert.True(session.Authenticated);
+        Assert.Equal("Custom Named Identity", session.DisplayName);
+        Assert.Equal("identity@example.test", session.Email);
+    }
+
+    [Fact]
     public async Task Administration_entry_signs_in_a_subject_with_the_administrator_role()
     {
         using var host = OidcHost();
@@ -309,7 +345,10 @@ public sealed class OidcInteractiveSessionTests
         }
     }
 
-    private static OidcHostScope OidcHost(bool discoveryFails = false, bool hasEndSessionEndpoint = true)
+    private static OidcHostScope OidcHost(
+        bool discoveryFails = false,
+        bool hasEndSessionEndpoint = true,
+        IDictionary<string, string?>? settings = null)
     {
         var authority = new OidcTestAuthority
         {
@@ -325,6 +364,13 @@ public sealed class OidcInteractiveSessionTests
             builder.UseSetting("Oidc:RequireHttpsMetadata", "true");
             builder.UseSetting("Oidc:Scopes:0", "openid");
             builder.UseSetting("Oidc:Scopes:1", "profile");
+            if (settings is not null)
+            {
+                foreach (var (key, value) in settings)
+                {
+                    builder.UseSetting(key, value);
+                }
+            }
             // The OpenID Connect handler builds its backchannel around the options'
             // BackchannelHttpHandler, so the in-process authority becomes the endpoint the host
             // actually calls; no production network is involved.
