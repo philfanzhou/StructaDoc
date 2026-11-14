@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace StructaDoc.Host.Tests;
@@ -25,6 +26,8 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
 
     /// <summary>Set to fail the next discovery retrieval, the way an unreachable authority does.</summary>
     internal bool DiscoveryFails { get; set; }
+
+    internal bool HasEndSessionEndpoint { get; init; } = true;
 
     internal readonly ConcurrentQueue<Dictionary<string, string>> TokenForms = [];
 
@@ -65,12 +68,15 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
                 authorization_endpoint = Issuer + "/oauth2/authorize",
                 token_endpoint = Issuer + "/oauth2/token",
                 userinfo_endpoint = Issuer + "/oauth2/userinfo",
-                end_session_endpoint = Issuer + "/oauth2/session/end",
+                end_session_endpoint = HasEndSessionEndpoint ? Issuer + "/oauth2/session/end" : null,
                 response_types_supported = new[] { "code" },
                 subject_types_supported = new[] { "public" },
                 id_token_signing_alg_values_supported = new[] { "RS256" },
                 scopes_supported = new[] { "openid", "profile" },
                 code_challenge_methods_supported = new[] { "S256" },
+            }, new JsonSerializerOptions
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             }));
         }
 

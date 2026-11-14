@@ -211,25 +211,29 @@ public sealed class OidcInteractiveSessionTests
             response.Headers.Location!.OriginalString);
     }
 
-    [Fact]
-    public async Task Logout_redirects_to_end_session_with_the_stored_id_token_hint()
+    [Theory]
+    [InlineData("/api/v1/session/login", null)]
+    [InlineData("/api/v1/admin/session/login", OidcTestAuthority.AdministratorRole)]
+    public async Task Logout_form_redirects_to_end_session_with_the_stored_id_token_hint(
+        string loginPath,
+        string? role)
     {
         using var host = OidcHost();
         using var client = Client(host.Factory);
-        var handshake = await StartSignInAsync(client, "/api/v1/session/login");
+        var handshake = await StartSignInAsync(client, loginPath);
         using var callback = await CompleteSignInAsync(
             client,
             handshake,
-            host.Authority.CodeForRole(handshake.Query, role: null));
+            host.Authority.CodeForRole(handshake.Query, role));
         Assert.Equal(HttpStatusCode.Found, callback.StatusCode);
 
-        // The principal changed from anonymous to signed-in, so the antiforgery token is fetched
-        // fresh, exactly as the SPA does after a completed sign-in.
+        // The SPA sends the signed-in user's antiforgery token in the form body.
         var antiforgery = await client.GetAntiforgeryTokenAsync();
-        using var logout = new HttpRequestMessage(HttpMethod.Post, "/api/v1/session/logout");
-        logout.Headers.Add(antiforgery.HeaderName, antiforgery.RequestToken);
-
-        using var response = await client.SendAsync(logout, TestContext.Current.CancellationToken);
+        using var form = new FormUrlEncodedContent([
+            KeyValuePair.Create("__RequestVerificationToken", antiforgery.RequestToken),
+        ]);
+        using var response = await client.PostAsync(
+            "/api/v1/session/logout?redirectToHome=true", form, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Found, response.StatusCode);
         var location = response.Headers.Location!;
@@ -253,6 +257,47 @@ public sealed class OidcInteractiveSessionTests
         Assert.False(session.Authenticated);
     }
 
+    [Fact]
+    public async Task Logout_form_returns_home_when_the_authority_has_no_end_session_endpoint()
+    {
+        using var host = OidcHost(hasEndSessionEndpoint: false);
+        using var client = Client(host.Factory);
+        var handshake = await StartSignInAsync(client, "/api/v1/admin/session/login");
+        using var callback = await CompleteSignInAsync(client, handshake, host.Authority.Code(handshake.Query));
+        Assert.Equal(HttpStatusCode.Found, callback.StatusCode);
+        var antiforgery = await client.GetAntiforgeryTokenAsync();
+
+        using var form = new FormUrlEncodedContent([
+            KeyValuePair.Create("__RequestVerificationToken", antiforgery.RequestToken),
+        ]);
+        using var response = await client.PostAsync(
+            "/api/v1/session/logout?redirectToHome=true", form, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+        Assert.Equal("/", response.Headers.Location!.OriginalString);
+        var session = await client.GetFromJsonAsync<InteractiveSessionResponse>(
+            "/api/v1/session", TestContext.Current.CancellationToken);
+        Assert.NotNull(session);
+        Assert.False(session.Authenticated);
+    }
+
+    [Fact]
+    public async Task Local_administrator_logout_without_a_form_returns_no_content()
+    {
+        using var host = OidcHost();
+        using var client = Client(host.Factory);
+        await client.LoginAsAdministratorAsync();
+
+        using var response = await client.PostAsync(
+            "/api/v1/session/logout", content: null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var session = await client.GetFromJsonAsync<InteractiveSessionResponse>(
+            "/api/v1/session", TestContext.Current.CancellationToken);
+        Assert.NotNull(session);
+        Assert.False(session.Authenticated);
+    }
+
     private sealed record OidcHostScope(
         WebApplicationFactory<Program> Factory,
         OidcTestAuthority Authority) : IDisposable
@@ -264,9 +309,13 @@ public sealed class OidcInteractiveSessionTests
         }
     }
 
-    private static OidcHostScope OidcHost(bool discoveryFails = false)
+    private static OidcHostScope OidcHost(bool discoveryFails = false, bool hasEndSessionEndpoint = true)
     {
-        var authority = new OidcTestAuthority { DiscoveryFails = discoveryFails };
+        var authority = new OidcTestAuthority
+        {
+            DiscoveryFails = discoveryFails,
+            HasEndSessionEndpoint = hasEndSessionEndpoint,
+        };
         var factory = new StructaDocWebApplicationFactory().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Oidc:Enabled", "true");

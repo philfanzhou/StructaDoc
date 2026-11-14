@@ -35,6 +35,10 @@ public static class InteractiveSessionEndpoints
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         group.MapPost("/logout", LogoutAsync)
             .RequireAuthorization(AuthorizationPolicies.InteractiveUser)
+            .WithDescription("Ends the interactive session. A browser form can submit the antiforgery token "
+                + "as `__RequestVerificationToken`. For an OIDC session with an end-session endpoint, "
+                + "the response redirects there. For local-only sign-out, set `redirectToHome=true` "
+                + "to redirect to `/`; otherwise the response is `204`.")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status302Found)
             .ProducesProblem(StatusCodes.Status400BadRequest);
@@ -44,7 +48,8 @@ public static class InteractiveSessionEndpoints
     private static async Task<IResult> LogoutAsync(
         HttpContext context,
         IAntiforgery antiforgery,
-        OidcAuthenticationOptions options)
+        OidcAuthenticationOptions options,
+        bool? redirectToHome)
     {
         try
         {
@@ -62,6 +67,7 @@ public static class InteractiveSessionEndpoints
         // which is how SignaCore and other authorities resolve which application is signing out
         // before they honor the registered post-logout redirect. The local session is deleted
         // afterwards, on the same response the redirect is already the answer of.
+        var remoteSignOut = false;
         if (options.Enabled
             && context.User.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.User))
         {
@@ -70,22 +76,23 @@ public static class InteractiveSessionEndpoints
                 await context.SignOutAsync(
                     AuthenticationSchemes.OpenIdConnect,
                     new AuthenticationProperties { RedirectUri = "/" });
+                remoteSignOut = true;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 // An authority that publishes no usable end-session endpoint cannot be handed
-                // the browser. The local session still ends, and the caller stays on this
-                // origin with the plain signed-out answer.
-                await context.SignOutAsync(AuthenticationSchemes.AdministratorCookie);
-                return Results.NoContent();
+                // the browser. Continue with local sign-out.
             }
-
-            await context.SignOutAsync(AuthenticationSchemes.AdministratorCookie);
-            return Results.Empty;
         }
 
         await context.SignOutAsync(AuthenticationSchemes.AdministratorCookie);
-        return Results.NoContent();
+        if (remoteSignOut)
+        {
+            return Results.Empty;
+        }
+
+        // The SPA opts into a navigation even when sign-out finishes on this origin.
+        return redirectToHome == true ? Results.Redirect("/") : Results.NoContent();
     }
 
     private static InteractiveSessionResponse ToResponse(
