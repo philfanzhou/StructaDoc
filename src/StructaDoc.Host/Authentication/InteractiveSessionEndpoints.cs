@@ -21,7 +21,7 @@ public static class InteractiveSessionEndpoints
                     IAdministratorProvisioningService provisioning,
                     CancellationToken cancellationToken) => Results.Ok(ToResponse(
                     user,
-                    oidcOptions.Enabled,
+                    oidcOptions,
                     !await provisioning.AnyAdministratorExistsAsync(cancellationToken))))
             .AllowAnonymous()
             .Produces<InteractiveSessionResponse>();
@@ -97,10 +97,14 @@ public static class InteractiveSessionEndpoints
 
     private static InteractiveSessionResponse ToResponse(
         ClaimsPrincipal user,
-        bool oidcEnabled,
+        OidcAuthenticationOptions oidcOptions,
         bool setupRequired)
     {
         var authenticated = user.Identity?.IsAuthenticated == true;
+        // The display name and email of an identity-provider session follow the configured claim
+        // mapping; every other principal — a local administrator, an API client — keeps its own
+        // claims untouched, so the OIDC configuration never renames what those sessions report.
+        var isOidcUser = user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.User);
         return new InteractiveSessionResponse(
             authenticated,
             authenticated ? user.FindFirstValue(StructaDocClaimTypes.SubjectType) : null,
@@ -109,11 +113,39 @@ public static class InteractiveSessionEndpoints
                     ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
                 : null,
             authenticated ? user.FindFirstValue(StructaDocClaimTypes.ExternalIssuer) : null,
-            authenticated ? user.FindFirstValue(ClaimTypes.Name) ?? user.FindFirstValue("name") : null,
-            authenticated ? user.FindFirstValue(ClaimTypes.Email) ?? user.FindFirstValue("email") : null,
+            authenticated
+                ? (isOidcUser
+                    ? ProfileClaim(user, oidcOptions.NameClaim, ClaimTypes.Name, "name")
+                    : user.FindFirstValue(ClaimTypes.Name))
+                : null,
+            authenticated
+                ? (isOidcUser
+                    ? ProfileClaim(user, oidcOptions.EmailClaim, ClaimTypes.Email, "email")
+                    : user.FindFirstValue(ClaimTypes.Email))
+                : null,
             authenticated && (user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.Administrator)
                 || user.HasClaim(StructaDocClaimTypes.Administrator, bool.TrueString)),
-            oidcEnabled,
+            oidcOptions.Enabled,
             setupRequired);
+    }
+
+    // Where the display name and email of an identity-provider session come from. The OIDC handler
+    // keeps inbound claims under their raw names (MapInboundClaims is off), so a deployment whose
+    // authority writes them to a non-standard claim — `Oidc:NameClaim`/`Oidc:EmailClaim` — is read
+    // here from the merged principal, which is also where the UserInfo endpoint's claims have
+    // already landed. The standard names stay as fallbacks, so a default mapping resolves exactly
+    // as it did before the mapping was configurable.
+    private static string? ProfileClaim(ClaimsPrincipal user, params string[] claimTypes)
+    {
+        foreach (var claimType in claimTypes)
+        {
+            var value = user.FindFirstValue(claimType);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 }

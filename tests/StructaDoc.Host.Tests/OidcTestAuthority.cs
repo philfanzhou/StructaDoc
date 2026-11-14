@@ -29,6 +29,13 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
 
     internal bool HasEndSessionEndpoint { get; init; } = true;
 
+    /// <summary>
+    /// Profile claims the minted ID tokens carry instead of the default <c>name</c> claim: the
+    /// shape of an authority that writes its profile claims under non-standard names, which is
+    /// what the configured claim mappings exist for.
+    /// </summary>
+    internal Dictionary<string, object?>? ProfileIdTokenClaims { get; set; }
+
     internal readonly ConcurrentQueue<Dictionary<string, string>> TokenForms = [];
 
     internal string? LastIdToken { get; private set; }
@@ -140,8 +147,19 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
             ["iat"] = now,
             ["exp"] = now + 300,
             ["nonce"] = nonce,
-            ["name"] = "Test Identity",
         };
+        if (ProfileIdTokenClaims is null)
+        {
+            payload["name"] = "Test Identity";
+        }
+        else
+        {
+            foreach (var (claim, value) in ProfileIdTokenClaims)
+            {
+                payload[claim] = value;
+            }
+        }
+
         if (role is not null)
         {
             payload["role"] = role;
