@@ -1,7 +1,7 @@
 # Authentication
 
 - Status: Implementation note
-- Last updated: 2026-11-12
+- Last updated: 2026-11-14
 
 ## Current Boundary
 
@@ -23,7 +23,7 @@ The flow runs on ASP.NET Core's own OpenID Connect handler; no Provider SDK is r
 
 Two browser entries start the same flow. The workspace entry (`GET /api/v1/session/login`) establishes a session for any valid subject. The administration entry (`GET /api/v1/admin/session/login`) arms a pre-sign-in gate: a subject whose verified ID token does not carry the configured administrator role is refused before any session is written — no ticket, no cookie — and lands on the administration sign-in page. Every protocol failure lands on one bounded outcome of the entry that started it — `denied`, `not-admin`, `unavailable`, or `failed` — carried as `?authentication=<code>` on `/signin` or `/admin/signin`, which the web application shows as one fixed message each and then removes from the address bar. No other failure detail reaches the browser.
 
-Sign-out of an OIDC session (`POST /api/v1/session/logout`) hands the browser to the authority's end-session endpoint — with the stored ID token as `id_token_hint` and the request-composed `SignedOutCallbackPath` as `post_logout_redirect_uri` — and revokes the local session on the same response. An authority that publishes no usable end-session endpoint cannot be handed the browser; the local session still ends and the caller stays on this origin.
+The workspace and administration area submit an antiforgery-protected browser form to `POST /api/v1/session/logout?redirectToHome=true`. For an OIDC session, including an OIDC administrator, the browser navigates to the authority's end-session endpoint with the stored ID token as `id_token_hint` and the request-composed `SignedOutCallbackPath` as `post_logout_redirect_uri`. StructaDoc ends its local session on the same response. For a local administrator or an authority without an end-session endpoint, `redirectToHome=true` returns the browser to `/` after ending the local session. With the parameter omitted, local-only sign-out returns `204`.
 
 Configuration is under `Oidc`:
 
@@ -131,7 +131,7 @@ resolution matters.
 2. `POST /api/v1/admin/session` with username/password JSON and `X-CSRF-TOKEN`.
 3. After successful sign-in, fetch a new antiforgery token because the principal changed from anonymous to administrator.
 4. Send that new token on subsequent Cookie-authenticated writes.
-5. `DELETE /api/v1/admin/session` signs out and also requires antiforgery validation.
+5. The browser signs out through `POST /api/v1/session/logout`. `DELETE /api/v1/admin/session` remains available for callers that only need to end the local session and also requires antiforgery validation.
 
 Authentication failure returns `401` without revealing whether an account is absent, disabled, or has the wrong password. API endpoints do not redirect to an HTML login page.
 

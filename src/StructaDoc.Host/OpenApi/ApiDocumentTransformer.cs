@@ -95,7 +95,7 @@ internal sealed class ApiDocumentTransformer : IOpenApiDocumentTransformer
 
         var audience = documentName == StructaDocApiDescription.DocumentName
             ? "This consumer document contains only operations available to an API client credential."
-            : "This operator document also contains browser-only administration, setup, and session operations. Their writes require the antiforgery token from `GET /api/v1/admin/antiforgery` in the `X-CSRF-TOKEN` header. Generate API client SDKs from `/api/v1/openapi.json` instead.";
+            : "This operator document also contains browser-only administration, setup, and session operations. Their writes require the antiforgery token from `GET /api/v1/admin/antiforgery`. Send it in the `X-CSRF-TOKEN` header or, for the sign-out form, in the `__RequestVerificationToken` field. Generate API client SDKs from `/api/v1/openapi.json` instead.";
 
         return $"""
             Document ingestion, asynchronous parsing, and normalized structured results.
