@@ -155,6 +155,7 @@ internal sealed class MinerUCloudImageExchange
         {
             using var exchange = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             exchange.CancelAfter(deadline);
+            var stage = "batch-submission";
             try
             {
                 var (batchId, uploadUri) = await SubmitBatchAsync(cloud, request, exchange.Token);
@@ -163,8 +164,11 @@ internal sealed class MinerUCloudImageExchange
                     request,
                     batchId,
                     uploadUri,
+                    current => stage = current,
                     exchange.Token);
+                stage = "result-download";
                 using var archive = await DownloadArchiveAsync(resultUri, exchange.Token);
+                stage = "result-processing";
                 using var page = ReadPage(archive, request);
                 exchange.Token.ThrowIfCancellationRequested();
                 return reduce(page, cloud);
@@ -174,7 +178,8 @@ internal sealed class MinerUCloudImageExchange
                 throw new ProviderException(
                     mode.TimeoutErrorCode,
                     $"The MinerU Cloud {mode.Name} exchange exceeded its overall deadline.",
-                    ProviderFailureCategory.Transient);
+                    ProviderFailureCategory.Transient)
+                { FailureStage = stage };
             }
         }
         finally
@@ -255,20 +260,24 @@ internal sealed class MinerUCloudImageExchange
         LayoutDetectionRequest request,
         string batchId,
         Uri uploadUri,
+        Action<string> setStage,
         CancellationToken exchangeToken)
     {
         while (true)
         {
+            setStage("cloud-status-poll");
             var (state, fullZipUrl) = await GetBatchStateAsync(cloud, batchId, exchangeToken);
             switch (state)
             {
                 case "waiting-file":
+                    setStage("image-upload");
                     await UploadAsync(request, uploadUri, exchangeToken);
                     break;
 
                 case "pending":
                 case "converting":
                 case "running":
+                    setStage("cloud-processing");
                     await Task.Delay(PollInterval, exchangeToken);
                     break;
 

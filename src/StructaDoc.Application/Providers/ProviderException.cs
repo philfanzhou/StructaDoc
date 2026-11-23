@@ -35,6 +35,8 @@ public sealed class ProviderException : Exception
 
     public ProviderFailureCategory Category { get; }
 
+    public string? FailureStage { get; init; }
+
     public bool Retryable => Category == ProviderFailureCategory.Transient;
 
     private static string ValidateSafeMessage(string safeMessage)

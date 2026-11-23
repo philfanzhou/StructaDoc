@@ -87,7 +87,7 @@ result APIs, retention, and cleanup behavior are unchanged.
    separate from the existing document and parse scopes. Runtime endpoints, model
    locations, and credentials stay administrator-controlled within the settings and
    secret foundation of [ADR-0011](0011-settings-and-secret-foundation.md). Logs carry
-   request identifiers, timing, counts, and status only — never image bytes, body
+   request identifiers, timing, counts, status, and the cloud exchange stage on timeout — never image bytes, body
    content, raw model responses, credentials, or signed URLs.
 
 6. **Caller responsibilities.** The caller retains original images and accepted
