@@ -69,7 +69,7 @@ public static class LayoutDetectEndpoints
     {
         // One completion event per request, and nothing else on the path logs: it carries the
         // request's correlation identifier (from the log scope the correlation middleware opens),
-        // the elapsed time, the region count, and the status — never image bytes, detected
+        // the elapsed time, region count, status and timeout stage — never image bytes, detected
         // content, or anything the backend said (ADR-0013 point 5). The category is a literal
         // because the endpoint class is static and cannot be the logger's type argument.
         var logger = loggerFactory.CreateLogger("StructaDoc.Host.Layout.LayoutDetectEndpoints");
@@ -97,10 +97,11 @@ public static class LayoutDetectEndpoints
 
         stopwatch.Stop();
         logger.LogInformation(
-            "Layout detection ended with status {Status} after {ElapsedMilliseconds} ms and {RegionCount} regions.",
+            "Layout detection ended with status {Status} after {ElapsedMilliseconds} ms and {RegionCount} regions. Timeout stage: {TimeoutStage}.",
             outcome.Status,
             stopwatch.ElapsedMilliseconds,
-            outcome.RegionCount);
+            outcome.RegionCount,
+            outcome.TimeoutStage);
         return outcome.Result;
     }
 
@@ -205,7 +206,7 @@ public static class LayoutDetectEndpoints
             return LayoutOutcome.FromProblem(
                 StatusCodes.Status504GatewayTimeout,
                 "layout-timeout",
-                exception.Message);
+                exception.Message) with { TimeoutStage = exception.FailureStage };
         }
 
         return exception.Category switch
@@ -251,6 +252,8 @@ public static class LayoutDetectEndpoints
 
     private sealed record LayoutOutcome(IResult Result, int Status, int RegionCount)
     {
+        public string? TimeoutStage { get; init; }
+
         public static LayoutOutcome FromProblem(int statusCode, string code, string detail) =>
             new(LayoutProblem(statusCode, code, detail), statusCode, 0);
 

@@ -246,6 +246,7 @@ public sealed class MinerUCloudLayoutDetectionProviderTests
             TestContext.Current.CancellationToken));
 
         Assert.Equal("mineru-layout-timeout", exception.ErrorCode);
+        Assert.Equal("cloud-processing", exception.FailureStage);
         Assert.Equal(ProviderFailureCategory.Transient, exception.Category);
         Assert.True(exception.Retryable);
         Assert.Equal(0, cloud.Requests.Count(request => request.Uri.AbsoluteUri == ResultUrl));
