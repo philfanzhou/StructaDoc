@@ -178,7 +178,8 @@ internal sealed class MinerUCloudImageExchange
                 throw new ProviderException(
                     mode.TimeoutErrorCode,
                     $"The MinerU Cloud {mode.Name} exchange exceeded its overall deadline.",
-                    ProviderFailureCategory.Transient) { FailureStage = stage };
+                    ProviderFailureCategory.Transient)
+                { FailureStage = stage };
             }
         }
         finally

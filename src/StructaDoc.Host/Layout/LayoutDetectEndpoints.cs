@@ -36,14 +36,10 @@ public static class LayoutDetectEndpoints
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
+        // The OpenAPI transformer describes the body without Accepts metadata, which would
+        // reject non-multipart requests with 415 before the handler can return its contract's 400.
         endpoints.MapPost("/api/v1/layout/detect", DetectLayoutAsync)
             .WithName("DetectLayout")
-            // No `Accepts` metadata here, unlike the document upload: that metadata makes the
-            // platform answer a non-multipart request with its own 415 before the handler runs,
-            // while this endpoint's settled contract answers 400 `layout-request-invalid` for a
-            // request that is not multipart at all and reserves 415 for a media-type problem with
-            // the image itself. The request body is described explicitly by the OpenAPI contract
-            // transformer instead.
             .Produces<LayoutDetectResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
@@ -206,7 +202,8 @@ public static class LayoutDetectEndpoints
             return LayoutOutcome.FromProblem(
                 StatusCodes.Status504GatewayTimeout,
                 "layout-timeout",
-                exception.Message) with { TimeoutStage = exception.FailureStage };
+                exception.Message) with
+            { TimeoutStage = exception.FailureStage };
         }
 
         return exception.Category switch
