@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Host.Workers;
+using StructaDoc.Testing;
 using StructaDoc.Testing.Persistence;
 
 namespace StructaDoc.Host.Tests;
@@ -107,7 +108,7 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
             // pool is released. The business database opts out of pooling in its connection string.
             SqliteConnection.ClearAllPools();
 
-            Directory.Delete(testDirectory, recursive: true);
+            TestDirectory.Delete(testDirectory);
         }
     }
 }

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using StructaDoc.Adapters.Conversion;
 using StructaDoc.Adapters.Documents;
 using StructaDoc.Application.Conversion;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -130,7 +131,7 @@ public sealed class LibreOfficeIntegrationTests
         {
             if (Directory.Exists(temporaryRoot))
             {
-                Directory.Delete(temporaryRoot, recursive: true);
+                TestDirectory.Delete(temporaryRoot);
             }
         }
     }

@@ -4,6 +4,7 @@ using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Adapters.Persistence.Providers;
 using StructaDoc.Application.Providers;
 using StructaDoc.Migrations.Sqlite;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -214,7 +215,7 @@ public sealed class LayoutCloudConfigurationSourceTests
             await Context.DisposeAsync();
             if (System.IO.Directory.Exists(Directory))
             {
-                System.IO.Directory.Delete(Directory, recursive: true);
+                TestDirectory.Delete(Directory);
             }
         }
     }

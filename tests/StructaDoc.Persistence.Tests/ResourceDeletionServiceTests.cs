@@ -10,6 +10,7 @@ using StructaDoc.Application.Resources;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Domain.Resources;
 using StructaDoc.Migrations.Sqlite;
+using StructaDoc.Testing;
 using StructaDoc.Testing.Persistence;
 
 namespace StructaDoc.Persistence.Tests;
@@ -521,7 +522,7 @@ public sealed class ResourceDeletionServiceTests
 
         public ValueTask DisposeAsync()
         {
-            System.IO.Directory.Delete(Directory, recursive: true);
+            TestDirectory.Delete(Directory);
             return ValueTask.CompletedTask;
         }
     }

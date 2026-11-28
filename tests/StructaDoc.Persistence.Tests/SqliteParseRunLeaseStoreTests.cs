@@ -5,6 +5,7 @@ using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Migrations.Sqlite;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -403,7 +404,7 @@ public sealed class SqliteParseRunLeaseStoreTests
 
         public ValueTask DisposeAsync()
         {
-            Directory.Delete(DirectoryPath, recursive: true);
+            TestDirectory.Delete(DirectoryPath);
             return ValueTask.CompletedTask;
         }
     }

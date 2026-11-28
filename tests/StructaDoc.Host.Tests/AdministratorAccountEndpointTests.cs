@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using StructaDoc.Contracts.Authentication;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Host.Tests;
 
@@ -53,7 +54,7 @@ public sealed class AdministratorAccountTestFactory : WebApplicationFactory<Prog
         if (disposing && Directory.Exists(testDirectory))
         {
             SqliteConnection.ClearAllPools();
-            Directory.Delete(testDirectory, recursive: true);
+            TestDirectory.Delete(testDirectory);
         }
     }
 }

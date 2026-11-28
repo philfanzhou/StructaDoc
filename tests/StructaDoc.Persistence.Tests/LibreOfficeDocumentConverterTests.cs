@@ -1,5 +1,6 @@
 using StructaDoc.Adapters.Conversion;
 using StructaDoc.Application.Conversion;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -130,7 +131,7 @@ public sealed class LibreOfficeDocumentConverterTests
             Converter.Dispose();
             if (Directory.Exists(directoryPath))
             {
-                Directory.Delete(directoryPath, recursive: true);
+                TestDirectory.Delete(directoryPath);
             }
         }
     }

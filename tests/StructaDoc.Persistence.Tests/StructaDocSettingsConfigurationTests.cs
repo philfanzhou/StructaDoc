@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Settings;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -188,7 +189,7 @@ public sealed class StructaDocSettingsConfigurationTests : IDisposable
 
         if (Directory.Exists(directory))
         {
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 

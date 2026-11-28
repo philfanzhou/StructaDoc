@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using StructaDoc.Host.Settings;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Host.Tests;
 
@@ -84,7 +85,7 @@ public sealed class ContainerDefaultsTests : IDisposable
     {
         if (Directory.Exists(directory))
         {
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 }

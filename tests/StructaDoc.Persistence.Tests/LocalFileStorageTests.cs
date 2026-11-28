@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Storage;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -189,7 +190,7 @@ public sealed class LocalFileStorageTests
 
         public void Dispose()
         {
-            Directory.Delete(Path, recursive: true);
+            TestDirectory.Delete(Path);
         }
     }
 }

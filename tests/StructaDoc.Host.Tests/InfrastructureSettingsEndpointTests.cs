@@ -7,6 +7,7 @@ using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Settings;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Host.Tests;
 
@@ -76,7 +77,7 @@ public sealed class InfrastructureSettingsEndpointTests
         {
             if (Directory.Exists(candidatePath))
             {
-                Directory.Delete(candidatePath, recursive: true);
+                TestDirectory.Delete(candidatePath);
             }
         }
     }

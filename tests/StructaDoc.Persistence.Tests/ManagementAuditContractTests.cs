@@ -10,6 +10,7 @@ using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.Settings;
 using StructaDoc.Application.Settings;
 using StructaDoc.Migrations.Sqlite;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -351,7 +352,7 @@ public sealed class ManagementAuditContractTests
             SqliteConnection.ClearAllPools();
             if (Directory.Exists(directory))
             {
-                Directory.Delete(directory, recursive: true);
+                TestDirectory.Delete(directory);
             }
         }
     }
