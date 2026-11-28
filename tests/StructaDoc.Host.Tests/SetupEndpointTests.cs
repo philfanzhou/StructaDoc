@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.Setup;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Host.Tests;
 
@@ -196,7 +197,7 @@ public sealed class SetupEndpointTests
             if (disposing && Directory.Exists(testDirectory))
             {
                 SqliteConnection.ClearAllPools();
-                Directory.Delete(testDirectory, recursive: true);
+                TestDirectory.Delete(testDirectory);
             }
         }
     }

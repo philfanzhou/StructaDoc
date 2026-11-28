@@ -11,6 +11,7 @@ using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.Providers;
 using StructaDoc.Contracts.Settings;
 using StructaDoc.Contracts.Setup;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Host.Tests;
 
@@ -380,7 +381,7 @@ public sealed class ManagementAuditRecordPointTests(StructaDocWebApplicationFact
             if (Directory.Exists(directory))
             {
                 SqliteConnection.ClearAllPools();
-                Directory.Delete(directory, recursive: true);
+                TestDirectory.Delete(directory);
             }
         }
 

@@ -11,6 +11,7 @@ using ServiceMantle;
 using ServiceMantle.Web.RateLimiting;
 using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.Setup;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Host.Tests;
 
@@ -432,7 +433,7 @@ public sealed class ServiceMantleRateLimitingSecurityHeadersTests(StructaDocWebA
             if (disposing && Directory.Exists(testDirectory))
             {
                 Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-                Directory.Delete(testDirectory, recursive: true);
+                TestDirectory.Delete(testDirectory);
             }
         }
     }

@@ -19,6 +19,7 @@ using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Domain.Resources;
 using StructaDoc.Migrations.Sqlite;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -834,7 +835,7 @@ public sealed class DerivedOutputDeletionInventoryTests
         {
             try
             {
-                Directory.Delete(rootPath, recursive: true);
+                TestDirectory.Delete(rootPath);
             }
             catch (DirectoryNotFoundException)
             {

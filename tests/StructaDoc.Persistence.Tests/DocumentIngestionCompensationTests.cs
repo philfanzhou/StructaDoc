@@ -4,6 +4,7 @@ using StructaDoc.Adapters.Documents;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Documents;
+using StructaDoc.Testing;
 using StructaDoc.Testing.Persistence;
 
 namespace StructaDoc.Persistence.Tests;
@@ -52,7 +53,7 @@ public sealed class DocumentIngestionCompensationTests
         }
         finally
         {
-            Directory.Delete(testDirectory, recursive: true);
+            TestDirectory.Delete(testDirectory);
         }
     }
 }

@@ -9,6 +9,7 @@ using StructaDoc.Application.Canonical;
 using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -834,7 +835,7 @@ public sealed partial class MinerUResultNormalizerTests
 
         public void Dispose()
         {
-            Directory.Delete(RootPath, recursive: true);
+            TestDirectory.Delete(RootPath);
         }
     }
 

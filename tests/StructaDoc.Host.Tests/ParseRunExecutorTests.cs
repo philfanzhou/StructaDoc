@@ -488,7 +488,7 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
                             TestContext.Current.CancellationToken));
                 Assert.True(
                     recoveredLease.ParseRunId == parseRunId,
-                    $"Recovery claimed run {recoveredLease.ParseRunId} instead of this test's run {parseRunId}; an earlier test left a queued run behind.");
+                    $"Recovery claimed run {recoveredLease.ParseRunId} instead of this test's run {parseRunId}.");
                 await scope.ServiceProvider.GetRequiredService<ParseRunExecutor>().ExecuteAsync(
                     recoveredLease,
                     alreadyRunning: false,
@@ -819,6 +819,45 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
                     StringComparison.Ordinal)));
     }
 
+    [Fact]
+    public async Task A_run_left_queued_by_an_earlier_test_is_not_executed_in_place_of_the_current_one()
+    {
+        // Every test here claims the earliest due queued run of the database the whole class
+        // shares, and the maintenance worker returns the runs earlier tests leave behind to
+        // "queued" on its own clock. This is the guard that ExecuteAsync removes those before it
+        // writes the test's own run: without it the run below, due a minute ago, is what the next
+        // claim takes, and the test's own run is what the test after that takes instead.
+        var earlierRunId = Guid.Empty;
+        await ExecuteAsync(
+            new TestParseProvider(failSubmission: false),
+            afterExecution: async (services, parseRunId) =>
+            {
+                earlierRunId = parseRunId;
+                await using var scope = services.CreateAsyncScope();
+                await scope.ServiceProvider.GetRequiredService<StructaDocDbContext>().ParseRuns
+                    .Where(run => run.Id == parseRunId)
+                    .ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(run => run.Status, ParseRunStatuses.Queued)
+                            .SetProperty(run => run.NextAttemptAtUtc, DateTime.UtcNow.AddMinutes(-1)),
+                        TestContext.Current.CancellationToken);
+            });
+
+        var provider = new TestParseProvider(failSubmission: false);
+        var result = await ExecuteAsync(
+            provider,
+            afterExecution: async (services, _) =>
+            {
+                await using var scope = services.CreateAsyncScope();
+                Assert.False(await scope.ServiceProvider.GetRequiredService<StructaDocDbContext>().ParseRuns
+                    .AnyAsync(run => run.Id == earlierRunId, TestContext.Current.CancellationToken));
+            });
+
+        Assert.NotEqual(earlierRunId, result.ParseRunId);
+        Assert.Equal(ParseRunStatuses.Succeeded, result.Status);
+        Assert.Equal(1, provider.SubmitCount);
+    }
+
     private async Task<ExecutionResult> ExecuteAsync(
         IParseProvider provider,
         string sourceMediaType = "application/pdf",
@@ -870,6 +909,20 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
 
         await using (var scope = application.Services.CreateAsyncScope())
         {
+            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
+
+            // Tests in this class share one database and leave runs behind on purpose: a retry
+            // waiting for its next attempt, a claim or an execution interrupted mid-way. The
+            // maintenance worker this host keeps running returns each of them to "queued" on its
+            // own clock — a retry 30 s after its failure, an interrupted claim or execution once
+            // its lease lapses — and the claim further down takes the earliest due queued run. In
+            // a full-suite run slow enough for one of them to come due again, that is the earlier
+            // test's run and not this one, and every test after it inherits the run left unclaimed
+            // behind it. Every test here asserts only on the run it creates in this scope, so
+            // earlier runs are removed first; their Segments, Pages, Blocks, Assets, and Artifacts
+            // go with them by the configured cascade.
+            await dbContext.ParseRuns.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+
             var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
             await using var source = new MemoryStream(sourceBytes, writable: false);
             storedSource = await storage.WriteAsync(
@@ -913,7 +966,6 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
                 StorageRef = storedSource.StorageRef,
                 CreatedAtUtc = nowUtc,
             };
-            var dbContext = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
             dbContext.Documents.Add(document);
             dbContext.ProviderConfigs.Add(new ProviderConfigEntity
             {
@@ -966,13 +1018,12 @@ public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactor
                 $"executor-test-{parseRunId:N}",
                 nowUtc,
                 TimeSpan.FromMinutes(2)));
-            // The claim takes the globally earliest queued run, so a queued run left behind by
-            // an earlier test would be executed here while this test's own run stayed
-            // "queued" and every later assertion reported the wrong run's outcome. Fail fast
-            // on exactly that contamination instead.
+            // The claim takes the earliest due queued run. Earlier tests' runs are removed before
+            // this one is written, so anything else here is a run this test itself left queued,
+            // and every later assertion would report that run's outcome instead. Fail fast on it.
             Assert.True(
                 lease.ParseRunId == parseRunId,
-                $"The executor claimed run {lease.ParseRunId} instead of this test's run {parseRunId}; an earlier test left a queued run behind.");
+                $"The executor claimed run {lease.ParseRunId} instead of this test's run {parseRunId}.");
             if (largePdfPageCount.HasValue && !executeLargePdfThroughExecutor)
             {
                 await using var session = scope.ServiceProvider

@@ -9,6 +9,7 @@ using StructaDoc.Application.Storage;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Domain.Resources;
 using StructaDoc.Host.Workers;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Host.Tests;
 
@@ -488,7 +489,7 @@ public sealed class ResourceCleanupWorkerTests
         public async ValueTask DisposeAsync()
         {
             await serviceProvider.DisposeAsync();
-            Directory.Delete(directoryPath, recursive: true);
+            TestDirectory.Delete(directoryPath);
         }
     }
 }

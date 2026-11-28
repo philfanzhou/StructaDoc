@@ -4,6 +4,7 @@ using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.ProviderResults;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -347,7 +348,7 @@ public sealed class ProviderResultIntakeTests
 
         public void Dispose()
         {
-            Directory.Delete(StoragePath, recursive: true);
+            TestDirectory.Delete(StoragePath);
         }
     }
 

@@ -7,6 +7,7 @@ using StructaDoc.Application.Authentication;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.Resources;
 using StructaDoc.Migrations.Sqlite;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -112,7 +113,7 @@ public sealed class ParseRunExecutionStrategyTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 

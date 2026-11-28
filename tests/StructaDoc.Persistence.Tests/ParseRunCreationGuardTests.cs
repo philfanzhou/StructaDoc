@@ -6,6 +6,7 @@ using StructaDoc.Application.Authentication;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Domain.Resources;
 using StructaDoc.Migrations.Sqlite;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -172,7 +173,7 @@ public sealed class ParseRunCreationGuardTests
 
         public ValueTask DisposeAsync()
         {
-            System.IO.Directory.Delete(Directory, recursive: true);
+            TestDirectory.Delete(Directory);
             return ValueTask.CompletedTask;
         }
     }

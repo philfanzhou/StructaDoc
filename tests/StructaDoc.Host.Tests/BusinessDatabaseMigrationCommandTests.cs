@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Host.Migrations;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Host.Tests;
 
@@ -290,7 +291,7 @@ public sealed class BusinessDatabaseMigrationCommandTests : IDisposable
     {
         if (Directory.Exists(directory))
         {
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 

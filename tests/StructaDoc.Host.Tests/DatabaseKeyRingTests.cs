@@ -17,6 +17,7 @@ using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Authentication;
 using StructaDoc.Contracts.Settings;
 using StructaDoc.Host.Authentication;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Host.Tests;
 
@@ -283,7 +284,7 @@ public sealed class DatabaseKeyRingTests
             if (Directory.Exists(directory))
             {
                 SqliteConnection.ClearAllPools();
-                Directory.Delete(directory, recursive: true);
+                TestDirectory.Delete(directory);
             }
         }
 

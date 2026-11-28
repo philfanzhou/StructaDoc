@@ -9,6 +9,7 @@ using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.ControlPlane.Entities;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Migrations.Sqlite;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -124,7 +125,7 @@ public sealed class LegacyAdministratorMigrationTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 }

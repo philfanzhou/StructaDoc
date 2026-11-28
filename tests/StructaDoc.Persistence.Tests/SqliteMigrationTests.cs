@@ -5,6 +5,7 @@ using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Domain.ParseRuns;
 using StructaDoc.Migrations.Sqlite;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -66,7 +67,7 @@ public sealed class SqliteMigrationTests
         }
         finally
         {
-            Directory.Delete(testDirectory, recursive: true);
+            TestDirectory.Delete(testDirectory);
         }
     }
 
@@ -110,7 +111,7 @@ public sealed class SqliteMigrationTests
         }
         finally
         {
-            Directory.Delete(testDirectory, recursive: true);
+            TestDirectory.Delete(testDirectory);
         }
     }
 
@@ -195,7 +196,7 @@ public sealed class SqliteMigrationTests
         }
         finally
         {
-            Directory.Delete(testDirectory, recursive: true);
+            TestDirectory.Delete(testDirectory);
         }
     }
 

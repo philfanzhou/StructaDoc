@@ -4,6 +4,7 @@ using ServiceMantle.Bootstrap;
 using ServiceMantle.Migration;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.Persistence;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
 
@@ -61,7 +62,7 @@ public sealed class ServiceMantleMigrationOrchestrationTests
         finally
         {
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 
@@ -167,7 +168,7 @@ public sealed class ServiceMantleMigrationOrchestrationTests
         finally
         {
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 

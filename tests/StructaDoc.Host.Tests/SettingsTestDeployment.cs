@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using StructaDoc.Contracts.Authentication;
+using StructaDoc.Testing;
 
 namespace StructaDoc.Host.Tests;
 
@@ -66,7 +67,7 @@ internal sealed class SettingsTestDeployment : IDisposable
         if (Directory.Exists(directory))
         {
             SqliteConnection.ClearAllPools();
-            Directory.Delete(directory, recursive: true);
+            TestDirectory.Delete(directory);
         }
     }
 
