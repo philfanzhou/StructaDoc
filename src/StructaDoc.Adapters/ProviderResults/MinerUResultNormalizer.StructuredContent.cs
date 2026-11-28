@@ -173,5 +173,7 @@ public sealed partial class MinerUResultNormalizer
     }
 
     private static ProviderResultNormalizationException InvalidStructuredContent() =>
-        Failure("mineru-result-structured-content-invalid", "The MinerU structured-content artifact has an invalid structure.");
+        Failure(
+            "mineru-result-structured-content-invalid",
+            "The MinerU structured-content artifact has an invalid structure.");
 }

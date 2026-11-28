@@ -15,8 +15,6 @@ public static class PrincipalIdentity
 {
     public const string ApiClientIssuer = "structadoc:api-client";
 
-    public static string ApiClientSubject(Guid clientId) => clientId.ToString("D");
-
     public static bool IsApiClient(string? issuer) =>
         string.Equals(issuer, ApiClientIssuer, StringComparison.Ordinal);
 

@@ -2,15 +2,12 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using ServiceMantle;
 using ServiceMantle.Web.Http;
-using ServiceMantle.Web.Logging;
 using StructaDoc.Host.Logging;
 
 namespace StructaDoc.Host.Tests;
@@ -23,8 +20,8 @@ namespace StructaDoc.Host.Tests;
 // run against the real Host pipeline through the shared factory and hold that responses endpoints
 // produce themselves are unchanged.
 [Collection("Console output")]
-public sealed class ProblemDetailsTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ProblemDetailsTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     private const string ThrowRoute = "/problem-details-probe/unhandled";
     private const string StandaloneCancellationRoute = "/problem-details-probe/standalone-cancellation";
@@ -50,7 +47,8 @@ public sealed class ProblemDetailsTests(StructaDocWebApplicationFactory factory)
         // The one relationship the fixed fields have to the rest of the response: the body's
         // correlation ID is the value the correlation middleware already put in the header, so a
         // consumer report matches both the response and the log entry to the same request.
-        using (var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)))
+        using (var body = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)))
         {
             AssertFixedFallbackFields(body);
             Assert.Equal(
@@ -194,7 +192,7 @@ public sealed class ProblemDetailsTests(StructaDocWebApplicationFactory factory)
         builder.Services.AddServiceMantle(
             ServiceId.Parse("structadoc"),
             InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"));
-        builder.Services.AddStructaDocConsoleLogging(new StructaDocConsoleLogSwitches());
+        builder.Services.AddConsoleLogging(new ConsoleLogSwitches());
         builder.WebHost.UseTestServer();
 
         var app = builder.Build();

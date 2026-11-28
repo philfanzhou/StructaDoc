@@ -20,8 +20,8 @@ namespace StructaDoc.Host.Tests;
 /// in: the action, target, outcome, and operator of the row each point writes, read straight out
 /// of the control-plane SQLite file the rows persist to.
 /// </summary>
-public sealed class ManagementAuditRecordPointTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ManagementAuditRecordPointTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Successful_login_records_the_account_and_outcome()
@@ -33,7 +33,7 @@ public sealed class ManagementAuditRecordPointTests(StructaDocWebApplicationFact
 
         Assert.Equal("interactive_admin", login.OperatorSource);
         Assert.Equal(
-            StructaDocWebApplicationFactory.AdministratorUsername,
+            HostWebApplicationFactory.AdministratorUsername,
             login.OperatorDisplayName);
         Assert.Equal(1, login.Outcome);
         Assert.Equal("admin_session", login.TargetType);
@@ -49,7 +49,7 @@ public sealed class ManagementAuditRecordPointTests(StructaDocWebApplicationFact
         using var login = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/session")
         {
             Content = JsonContent.Create(new AdministratorLoginRequest(
-                StructaDocWebApplicationFactory.AdministratorUsername,
+                HostWebApplicationFactory.AdministratorUsername,
                 "definitely-wrong-password")),
         };
         login.Headers.Add(token.HeaderName, token.RequestToken);
@@ -60,7 +60,7 @@ public sealed class ManagementAuditRecordPointTests(StructaDocWebApplicationFact
 
         Assert.Equal("anonymous", failed.OperatorSource);
         Assert.Equal(
-            $"login-attempt:{StructaDocWebApplicationFactory.AdministratorUsername}",
+            $"login-attempt:{HostWebApplicationFactory.AdministratorUsername}",
             failed.OperatorId);
         Assert.Equal(2, failed.Outcome);
         Assert.Equal("admin_session", failed.TargetType);
@@ -93,7 +93,7 @@ public sealed class ManagementAuditRecordPointTests(StructaDocWebApplicationFact
         Assert.Equal(created!.Id.ToString("D"), record.TargetId);
         Assert.Equal("interactive_admin", record.OperatorSource);
         Assert.Equal(
-            StructaDocWebApplicationFactory.AdministratorUsername,
+            HostWebApplicationFactory.AdministratorUsername,
             record.OperatorDisplayName);
         Assert.Contains("\"username\":\"audited-admin\"", record.MetadataJson, StringComparison.Ordinal);
     }
@@ -206,7 +206,7 @@ public sealed class ManagementAuditRecordPointTests(StructaDocWebApplicationFact
         Assert.Equal(SettingCatalog.OidcNameClaim, record.TargetId);
         Assert.Equal("interactive_admin", record.OperatorSource);
         Assert.Equal(
-            StructaDocWebApplicationFactory.AdministratorUsername,
+            HostWebApplicationFactory.AdministratorUsername,
             record.OperatorDisplayName);
 
         // A setting's value is never part of the record: the key name and the outcome are all.

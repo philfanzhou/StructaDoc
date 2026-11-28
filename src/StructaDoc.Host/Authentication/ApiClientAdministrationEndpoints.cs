@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Authentication;
@@ -57,7 +56,7 @@ public static class ApiClientAdministrationEndpoints
         HttpContext context,
         IAntiforgery antiforgery,
         IApiClientAdministrationService service,
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
@@ -85,13 +84,13 @@ public static class ApiClientAdministrationEndpoints
             auditRecorder,
             logger,
             user,
-            StructaDocManagementAudit.Actions.ApiClientCreated,
+            ManagementAuditCatalog.Actions.ApiClientCreated,
             issuedClient.Client.Id.ToString("D"),
             issuedClient.Client.Name,
             ManagementAuditOutcome.Success,
             "An API client was created.",
             timeProvider,
-            HostManagementAudit.ClientAddress(context),
+            ManagementAudit.ClientAddress(context),
             cancellationToken);
 
         context.Response.Headers.CacheControl = "no-store";
@@ -165,7 +164,7 @@ public static class ApiClientAdministrationEndpoints
         HttpContext context,
         IAntiforgery antiforgery,
         IApiClientAdministrationService service,
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
@@ -188,7 +187,7 @@ public static class ApiClientAdministrationEndpoints
             auditRecorder,
             logger,
             user,
-            StructaDocManagementAudit.Actions.ApiClientRevoked,
+            ManagementAuditCatalog.Actions.ApiClientRevoked,
             id.ToString("D"),
             id.ToString("D"),
             status == ApiClientMutationStatus.NotFound
@@ -198,7 +197,7 @@ public static class ApiClientAdministrationEndpoints
                 ? "The revocation named an API client that does not exist."
                 : "An API client was revoked.",
             timeProvider,
-            HostManagementAudit.ClientAddress(context),
+            ManagementAudit.ClientAddress(context),
             cancellationToken);
 
         return status == ApiClientMutationStatus.NotFound
@@ -211,7 +210,7 @@ public static class ApiClientAdministrationEndpoints
     /// never enters an audit field.
     /// </summary>
     private static async Task RecordClientAuditAsync(
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger logger,
         ClaimsPrincipal user,
         ManagementAuditAction action,
@@ -224,10 +223,10 @@ public static class ApiClientAdministrationEndpoints
         CancellationToken cancellationToken)
     {
         var auditEvent = ManagementAuditEvent.Create(
-            HostManagementAudit.AdministratorOperator(user),
+            ManagementAudit.AdministratorOperator(user),
             action,
             ManagementAuditTarget.Create(
-                StructaDocManagementAudit.TargetTypes.ApiClient,
+                ManagementAuditCatalog.TargetTypes.ApiClient,
                 clientId),
             outcome,
             clientIp: clientIp,
@@ -238,7 +237,7 @@ public static class ApiClientAdministrationEndpoints
             },
             timeProvider: timeProvider);
 
-        await HostManagementAudit.RecordAsync(
+        await ManagementAudit.RecordAsync(
             auditRecorder,
             logger,
             auditEvent,

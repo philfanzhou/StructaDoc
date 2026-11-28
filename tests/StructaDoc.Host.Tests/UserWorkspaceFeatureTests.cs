@@ -11,8 +11,8 @@ using StructaDoc.Domain.ParseRuns;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class UserWorkspaceFeatureTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Canonical_result_api_hides_provider_json_and_document_cleanup_is_recoverable()
@@ -52,8 +52,28 @@ public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory fa
                 CompletedAtUtc = DateTime.UtcNow,
             });
             db.ParsePages.Add(new ParsePageEntity { ParseRunId = runId, Number = 1 });
-            db.ParseAssets.Add(new ParseAssetEntity { Id = assetId, ParseRunId = runId, Name = "example.png", MediaType = "image/png", SizeBytes = 5, Sha256 = "d59386e0ae4353e9d73de00b09a1b3e91c746c0915ab91670c2c9d092323ce2a", StorageRef = assetRef, CreatedAtUtc = DateTime.UtcNow });
-            db.ParseBlocks.Add(new ParseBlockEntity { Id = blockId, ParseRunId = runId, Sequence = 0, PageNumber = 1, Type = "text", Content = "stable content", ProviderDataJson = "{\"privateProviderField\":true}", SourceLocatorJson = "{\"raw\":true}" });
+            db.ParseAssets.Add(new ParseAssetEntity
+            {
+                Id = assetId,
+                ParseRunId = runId,
+                Name = "example.png",
+                MediaType = "image/png",
+                SizeBytes = 5,
+                Sha256 = "d59386e0ae4353e9d73de00b09a1b3e91c746c0915ab91670c2c9d092323ce2a",
+                StorageRef = assetRef,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+            db.ParseBlocks.Add(new ParseBlockEntity
+            {
+                Id = blockId,
+                ParseRunId = runId,
+                Sequence = 0,
+                PageNumber = 1,
+                Type = "text",
+                Content = "stable content",
+                ProviderDataJson = "{\"privateProviderField\":true}",
+                SourceLocatorJson = "{\"raw\":true}"
+            });
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
@@ -86,7 +106,8 @@ public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory fa
                     cancellationToken: TestContext.Current.CancellationToken);
         }
         Assert.True(completed, "The persistent cleanup worker did not finish within the test timeout.");
-        Assert.False(File.Exists(Path.Combine(factory.StorageRootPath, assetRef.Replace('/', Path.DirectorySeparatorChar))));
+        Assert.False(
+            File.Exists(Path.Combine(factory.StorageRootPath, assetRef.Replace('/', Path.DirectorySeparatorChar))));
     }
 
     [Fact]
@@ -153,12 +174,53 @@ public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory fa
                 CompletedAtUtc = DateTime.UtcNow,
             });
             db.ParsePages.Add(new ParsePageEntity { ParseRunId = runId, Number = 1 });
-            db.ParseAssets.Add(new ParseAssetEntity { Id = assetId, ParseRunId = runId, Name = "example.png", MediaType = "image/png", SizeBytes = 7, Sha256 = PayloadSha256, StorageRef = refs[0], CreatedAtUtc = DateTime.UtcNow });
+            db.ParseAssets.Add(new ParseAssetEntity
+            {
+                Id = assetId,
+                ParseRunId = runId,
+                Name = "example.png",
+                MediaType = "image/png",
+                SizeBytes = 7,
+                Sha256 = PayloadSha256,
+                StorageRef = refs[0],
+                CreatedAtUtc = DateTime.UtcNow
+            });
             // The Block points at the Asset, which is the one relationship inside a run that is not
             // a cascade. A deletion that leaves the Asset row unreachable would fail here.
-            db.ParseBlocks.Add(new ParseBlockEntity { Id = Guid.NewGuid(), ParseRunId = runId, Sequence = 0, PageNumber = 1, Type = "image", AssetId = assetId });
-            db.ParseArtifacts.Add(new ParseArtifactEntity { Id = Guid.NewGuid(), ParseRunId = runId, Type = "markdown", Name = "document.md", MediaType = "text/markdown", SizeBytes = 7, Sha256 = PayloadSha256, StorageRef = refs[1], CreatedAtUtc = DateTime.UtcNow });
-            db.ParseSegments.Add(new ParseSegmentEntity { Id = segmentId, ParseRunId = runId, Index = 0, StartPage = 1, EndPage = 1, StorageRef = refs[3], SizeBytes = 7, Sha256 = PayloadSha256, Status = ParseRunStatuses.Succeeded, UpdatedAtUtc = DateTime.UtcNow });
+            db.ParseBlocks.Add(new ParseBlockEntity
+            {
+                Id = Guid.NewGuid(),
+                ParseRunId = runId,
+                Sequence = 0,
+                PageNumber = 1,
+                Type = "image",
+                AssetId = assetId
+            });
+            db.ParseArtifacts.Add(new ParseArtifactEntity
+            {
+                Id = Guid.NewGuid(),
+                ParseRunId = runId,
+                Type = "markdown",
+                Name = "document.md",
+                MediaType = "text/markdown",
+                SizeBytes = 7,
+                Sha256 = PayloadSha256,
+                StorageRef = refs[1],
+                CreatedAtUtc = DateTime.UtcNow
+            });
+            db.ParseSegments.Add(new ParseSegmentEntity
+            {
+                Id = segmentId,
+                ParseRunId = runId,
+                Index = 0,
+                StartPage = 1,
+                EndPage = 1,
+                StorageRef = refs[3],
+                SizeBytes = 7,
+                Sha256 = PayloadSha256,
+                Status = ParseRunStatuses.Succeeded,
+                UpdatedAtUtc = DateTime.UtcNow
+            });
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
@@ -210,7 +272,8 @@ public sealed class UserWorkspaceFeatureTests(StructaDocWebApplicationFactory fa
         foreach (var storageRef in refs)
         {
             Assert.False(
-                File.Exists(Path.Combine(factory.StorageRootPath, storageRef.Replace('/', Path.DirectorySeparatorChar))),
+                File.Exists(
+                    Path.Combine(factory.StorageRootPath, storageRef.Replace('/', Path.DirectorySeparatorChar))),
                 $"Stored object '{storageRef}' outlived the Parse Run it belonged to.");
         }
 

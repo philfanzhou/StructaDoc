@@ -4,7 +4,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,8 +22,8 @@ using StructaDoc.Host.ParseRuns;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ParseExportEndpointTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     private static readonly byte[] ImageBytes =
         [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02, 0x03];
@@ -365,7 +364,7 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
             $"/api/v1/documents/{seeded.DocumentId:D}/access-grants",
             new DocumentAccessGrantRequest(
                 PrincipalIdentity.ApiClientIssuer,
-                PrincipalIdentity.ApiClientSubject(created.Client.Id),
+                created.Client.Id.ToString("D"),
                 ["read"]),
             TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, grantResponse.StatusCode);
@@ -443,8 +442,23 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
                 .ExecuteUpdateAsync(
                     setters => setters.SetProperty(parseRun => parseRun.ResultSchemaVersion, "1.0"),
                     TestContext.Current.CancellationToken);
-            dbContext.ParsePages.Add(new ParsePageEntity { ParseRunId = seeded.ParseRunId, Number = 1, Width = 612, Height = 792, Unit = "point" });
-            dbContext.ParseBlocks.Add(new ParseBlockEntity { Id = Guid.NewGuid(), ParseRunId = seeded.ParseRunId, Sequence = 0, PageNumber = 1, Type = "text", Content = "Stored before 1.1" });
+            dbContext.ParsePages.Add(new ParsePageEntity
+            {
+                ParseRunId = seeded.ParseRunId,
+                Number = 1,
+                Width = 612,
+                Height = 792,
+                Unit = "point"
+            });
+            dbContext.ParseBlocks.Add(new ParseBlockEntity
+            {
+                Id = Guid.NewGuid(),
+                ParseRunId = seeded.ParseRunId,
+                Sequence = 0,
+                PageNumber = 1,
+                Type = "text",
+                Content = "Stored before 1.1"
+            });
             await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
@@ -581,7 +595,10 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
         Assert.Equal("![](segment-0001-figure.png)", secondMarkdown);
     }
 
-    private async Task<Guid> SeedSucceededRunAsync(bool sourceIsPdf, int assetCount = 1, WebApplicationFactory<Program>? host = null)
+    private async Task<Guid> SeedSucceededRunAsync(
+        bool sourceIsPdf,
+        int assetCount = 1,
+        WebApplicationFactory<Program>? host = null)
         => (await SeedSucceededResultAsync(sourceIsPdf, assetCount, host)).ParseRunId;
 
     private async Task<SeededResult> SeedSucceededResultAsync(
@@ -736,10 +753,17 @@ public sealed class ParseExportEndpointTests(StructaDocWebApplicationFactory fac
 
         public int CreateCallCount { get; private set; }
 
-        public Task<string?> GetHtmlEntityTagAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default) =>
+        public Task<string?> GetHtmlEntityTagAsync(
+            Guid parseRunId,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>(Fingerprint);
 
-        public Task<ParseResultContent?> CreateAsync(Guid parseRunId, string format, ResourceAccessContext access, CancellationToken cancellationToken = default)
+        public Task<ParseResultContent?> CreateAsync(
+            Guid parseRunId,
+            string format,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default)
         {
             CreateCallCount++;
             var bytes = "<!doctype html><p>preview</p>"u8.ToArray();

@@ -7,8 +7,8 @@ using StructaDoc.Host.Workers;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class ParseRunMaintenanceWorkerTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ParseRunMaintenanceTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Due_retry_is_returned_to_queue()

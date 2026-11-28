@@ -66,8 +66,14 @@ public sealed class ContainerImageContractTests
 
         Assert.Contains("Test-BuildEndpoint", PowerShellBuildScript, StringComparison.Ordinal);
         Assert.Contains("probe_endpoint", BashBuildScript, StringComparison.Ordinal);
-        Assert.Contains("https://repo.huaweicloud.com/repository/nuget/v3/index.json", PowerShellBuildScript, StringComparison.Ordinal);
-        Assert.Contains("https://repo.huaweicloud.com/repository/nuget/v3/index.json", BashBuildScript, StringComparison.Ordinal);
+        Assert.Contains(
+            "https://repo.huaweicloud.com/repository/nuget/v3/index.json",
+            PowerShellBuildScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "https://repo.huaweicloud.com/repository/nuget/v3/index.json",
+            BashBuildScript,
+            StringComparison.Ordinal);
         Assert.Contains("https://mirrors.tuna.tsinghua.edu.cn/ubuntu", PowerShellBuildScript, StringComparison.Ordinal);
         Assert.Contains("https://mirrors.tuna.tsinghua.edu.cn/ubuntu", BashBuildScript, StringComparison.Ordinal);
         Assert.Contains("'build'", PowerShellBuildScript, StringComparison.Ordinal);

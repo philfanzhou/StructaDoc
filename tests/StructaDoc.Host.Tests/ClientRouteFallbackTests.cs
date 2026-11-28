@@ -2,8 +2,8 @@ using System.Net;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class ClientRouteFallbackTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ClientRouteFallbackTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     // The workspace and the administration area are client-side routes of one SPA, so the Host
     // answers unmatched navigation paths with the application shell. That fallback must not

@@ -93,7 +93,9 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
                 new Microsoft.IdentityModel.Tokens.RsaSecurityKey(_rsa) { KeyId = "test-kid" });
             return Json(JsonSerializer.Serialize(new
             {
-                keys = new[] { new { kty = "RSA", kid = "test-kid", use = "sig", alg = "RS256", n = key.N, e = key.E } },
+                keys = new[]
+                {
+                    new { kty = "RSA", kid = "test-kid", use = "sig", alg = "RS256", n = key.N, e = key.E } },
             }));
         }
 

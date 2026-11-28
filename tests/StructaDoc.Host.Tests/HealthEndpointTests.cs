@@ -7,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 using ServiceMantle.Health;
 using ServiceMantle.Installation;
 using StructaDoc.Adapters.ControlPlane;
-using StructaDoc.Adapters.Settings;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Settings;
 using StructaDoc.Host.Health;
@@ -15,14 +14,14 @@ using StructaDoc.Host.Health;
 namespace StructaDoc.Host.Tests;
 
 // The live and readiness endpoints are the ServiceMantle health endpoints reading one
-// StructaDocHealthSnapshotSource per request. Live never resolves application state. Readiness is
+// HealthSnapshotSource per request. Live never resolves application state. Readiness is
 // 200 only for the Completed + Succeeded + Reachable snapshot, which holds the contract the
 // replaced health checks published: the control-plane database answers, the business database
 // carries no startup fault, and the business database still answers. The body is JSON with a fixed
 // field set and a stable error code per failure form; only the status code is a deployment's
 // contract, which is what the Docker HEALTHCHECK and CI use.
-public sealed class HealthEndpointTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class HealthEndpointTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     private const string TooNewMigrationId = "20990101000000_FromTheFuture";
 
@@ -125,7 +124,7 @@ public sealed class HealthEndpointTests(StructaDocWebApplicationFactory factory)
         Assert.Equal("completed", root.GetProperty("phase").GetString());
         Assert.Equal("failed", root.GetProperty("migrationStatus").GetString());
         Assert.Equal(
-            StructaDocHealthSnapshotSource.DatabaseStartupFaultErrorCode,
+            HealthSnapshotSource.DatabaseStartupFaultErrorCode,
             root.GetProperty("errorCode").GetString());
 
         // Live never resolves application state, so the same fault leaves it answering 200 —
@@ -157,7 +156,7 @@ public sealed class HealthEndpointTests(StructaDocWebApplicationFactory factory)
         Assert.Equal("not_ready", root.GetProperty("status").GetString());
         Assert.Equal("unreachable", root.GetProperty("databaseStatus").GetString());
         Assert.Equal(
-            StructaDocHealthSnapshotSource.ControlPlaneUnreachableErrorCode,
+            HealthSnapshotSource.ControlPlaneUnreachableErrorCode,
             root.GetProperty("errorCode").GetString());
     }
 
@@ -190,7 +189,7 @@ public sealed class HealthEndpointTests(StructaDocWebApplicationFactory factory)
         Assert.Equal("succeeded", root.GetProperty("migrationStatus").GetString());
         Assert.Equal("unreachable", root.GetProperty("databaseStatus").GetString());
         Assert.Equal(
-            StructaDocHealthSnapshotSource.DatabaseUnreachableErrorCode,
+            HealthSnapshotSource.DatabaseUnreachableErrorCode,
             root.GetProperty("errorCode").GetString());
     }
 
@@ -259,7 +258,7 @@ public sealed class HealthEndpointTests(StructaDocWebApplicationFactory factory)
         return deployment.CreateFactory(builder => builder.ConfigureServices(
             (context, services) =>
             {
-                services.AddSingleton(StructaDocSettingsConfiguration.Create(
+                services.AddSingleton(SettingsConfiguration.Create(
                     context.Configuration,
                     new ControlPlaneOptions
                     {

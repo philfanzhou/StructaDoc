@@ -21,8 +21,6 @@ public sealed class SettingsStartupFault
     /// <summary>Each dropped configuration section, for example <c>Oidc</c>, and why.</summary>
     public IReadOnlyDictionary<string, string> Faults => faults;
 
-    public bool HasFault => faults.Count > 0;
-
     public string? DetailFor(string section)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(section);

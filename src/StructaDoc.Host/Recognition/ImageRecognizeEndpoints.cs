@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using ServiceMantle.Web.Http;
 using StructaDoc.Application.Providers;
 using StructaDoc.Contracts.ParseRuns;
 using StructaDoc.Contracts.Recognition;

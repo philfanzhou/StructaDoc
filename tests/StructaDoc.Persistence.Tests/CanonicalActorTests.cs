@@ -66,8 +66,14 @@ public sealed class CanonicalActorTests
 
     [Theory]
     [InlineData("https://identity.example", "subject\0value", "oidc:https://identity.example|subject\0value")]
-    [InlineData(PrincipalIdentity.ApiClientIssuer, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "api-client:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")]
-    [InlineData(CanonicalActor.AdministratorIssuer, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "administrator:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")]
+    [InlineData(
+            PrincipalIdentity.ApiClientIssuer,
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "api-client:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")]
+    [InlineData(
+            CanonicalActor.AdministratorIssuer,
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "administrator:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")]
     public void Canonical_actor_projects_to_the_existing_legacy_display_form(
         string issuer,
         string subject,

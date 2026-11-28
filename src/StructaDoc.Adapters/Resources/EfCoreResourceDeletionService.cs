@@ -12,12 +12,18 @@ using StructaDoc.Domain.Resources;
 
 namespace StructaDoc.Adapters.Resources;
 
-public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext, IFileStorage fileStorage) : IResourceDeletionService
+public sealed class EfCoreResourceDeletionService(
+    StructaDocDbContext dbContext,
+    IFileStorage fileStorage) : IResourceDeletionService
 {
     private static readonly string[] FinalStatuses = ParseRunStatuses.Final;
     private const int DeletionAttempts = 3;
 
-    public async Task<ResourceDeletionResult> RequestDocumentDeletionAsync(Guid documentId, ResourceAccessContext access, DateTime nowUtc, CancellationToken cancellationToken = default)
+    public async Task<ResourceDeletionResult> RequestDocumentDeletionAsync(
+        Guid documentId,
+        ResourceAccessContext access,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
     {
         for (var attempt = 0; attempt < DeletionAttempts; attempt++)
         {
@@ -81,11 +87,21 @@ public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext,
             $"Document '{documentId:D}' kept changing while deletion was requested.");
     }
 
-    public async Task<ResourceDeletionResult> RequestParseRunDeletionAsync(Guid parseRunId, ResourceAccessContext access, DateTime nowUtc, CancellationToken cancellationToken = default)
+    public async Task<ResourceDeletionResult> RequestParseRunDeletionAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        DateTime nowUtc,
+        CancellationToken cancellationToken = default)
     {
-        var run = await ApplyRunAccess(dbContext.ParseRuns.Where(item => item.Id == parseRunId), access, DocumentPermissions.Delete).SingleOrDefaultAsync(cancellationToken);
+        var run = await ApplyRunAccess(
+            dbContext.ParseRuns.Where(item => item.Id == parseRunId),
+            access,
+            DocumentPermissions.Delete).SingleOrDefaultAsync(cancellationToken);
         if (run is null) return new(ResourceDeletionStatus.NotFound);
-        if (run.LifecycleState != ResourceLifecycleStates.Active) return new(ResourceDeletionStatus.AlreadyPending, await ExistingJobIdAsync(CleanupTargetTypes.ParseRun, parseRunId, cancellationToken));
+        if (run.LifecycleState != ResourceLifecycleStates.Active)
+            return new(
+                ResourceDeletionStatus.AlreadyPending,
+                await ExistingJobIdAsync(CleanupTargetTypes.ParseRun, parseRunId, cancellationToken));
         if (!FinalStatuses.Contains(run.Status)) return new(ResourceDeletionStatus.ActiveParseRuns);
         var refs = (await StorageRefsForRunsAsync(
                 dbContext.ParseRuns.Where(item => item.Id == parseRunId),
@@ -100,7 +116,13 @@ public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext,
         return new(ResourceDeletionStatus.Accepted, job.Id);
     }
 
-    private Task<Guid?> ExistingJobIdAsync(string type, Guid id, CancellationToken cancellationToken) => dbContext.CleanupJobs.AsNoTracking().Where(job => job.TargetType == type && job.TargetId == id).Select(job => (Guid?)job.Id).SingleOrDefaultAsync(cancellationToken);
+    private Task<Guid?> ExistingJobIdAsync(
+        string type,
+        Guid id,
+        CancellationToken cancellationToken) => dbContext.CleanupJobs.AsNoTracking()
+            .Where(job => job.TargetType == type && job.TargetId == id)
+            .Select(job => (Guid?)job.Id)
+            .SingleOrDefaultAsync(cancellationToken);
     private async Task<IReadOnlyList<string>> StorageRefsForRunsAsync(
         IQueryable<ParseRunEntity> runs,
         CancellationToken cancellationToken)
@@ -230,11 +252,34 @@ public sealed class EfCoreResourceDeletionService(StructaDocDbContext dbContext,
 
     private sealed record StorageRefRow(Guid ParseRunId, Guid Id, string StorageRef);
 
-    private static CleanupJobEntity NewJob(string type, Guid id, IReadOnlyList<string> refs, DateTime now) => new() { Id = Guid.NewGuid(), TargetType = type, TargetId = id, StorageRefsJson = JsonSerializer.Serialize(refs), Status = CleanupJobStatuses.Pending, NextAttemptAtUtc = now, CreatedAtUtc = now, UpdatedAtUtc = now };
+    private static CleanupJobEntity NewJob(string type, Guid id, IReadOnlyList<string> refs, DateTime now) => new()
+    {
+        Id = Guid.NewGuid(),
+        TargetType = type,
+        TargetId = id,
+        StorageRefsJson = JsonSerializer.Serialize(refs),
+        Status = CleanupJobStatuses.Pending,
+        NextAttemptAtUtc = now,
+        CreatedAtUtc = now,
+        UpdatedAtUtc = now
+    };
 
-    private static IQueryable<DocumentEntity> ApplyAccess(IQueryable<DocumentEntity> query, ResourceAccessContext access, DocumentPermissions permission) => access.IsAdministrator ? query : access.HasPrincipalIdentity ? ApplyPrincipalAccess(query, DocumentOwnerIdentity.From(access), permission) : query.Where(_ => false);
+    private static IQueryable<DocumentEntity> ApplyAccess(
+        IQueryable<DocumentEntity> query,
+        ResourceAccessContext access,
+        DocumentPermissions permission) => access.IsAdministrator ? query : access.HasPrincipalIdentity ? ApplyPrincipalAccess(query, DocumentOwnerIdentity.From(access), permission) : query.Where(_ => false);
     private static IQueryable<ParseRunEntity> ApplyRunAccess(IQueryable<ParseRunEntity> query, ResourceAccessContext access, DocumentPermissions permission) => access.IsAdministrator ? query : access.HasPrincipalIdentity ? ApplyPrincipalRunAccess(query, DocumentOwnerIdentity.From(access), permission) : query.Where(_ => false);
 
-    private static IQueryable<DocumentEntity> ApplyPrincipalAccess(IQueryable<DocumentEntity> query, DocumentOwnerIdentity owner, DocumentPermissions permission) => query.Where(document => document.OwnerIssuer == owner.Issuer && document.OwnerSubject == owner.Subject || document.AccessGrants.Any(grant => grant.PrincipalIssuer == owner.Issuer && grant.PrincipalSubject == owner.Subject && (grant.Permissions & (int)permission) == (int)permission));
-    private static IQueryable<ParseRunEntity> ApplyPrincipalRunAccess(IQueryable<ParseRunEntity> query, DocumentOwnerIdentity owner, DocumentPermissions permission) => query.Where(run => run.Document.OwnerIssuer == owner.Issuer && run.Document.OwnerSubject == owner.Subject || run.Document.AccessGrants.Any(grant => grant.PrincipalIssuer == owner.Issuer && grant.PrincipalSubject == owner.Subject && (grant.Permissions & (int)permission) == (int)permission));
+    private static IQueryable<DocumentEntity> ApplyPrincipalAccess(
+        IQueryable<DocumentEntity> query,
+        DocumentOwnerIdentity owner,
+        DocumentPermissions permission) => query.Where(
+            document => document.OwnerIssuer == owner.Issuer && document.OwnerSubject == owner.Subject || document.AccessGrants.Any(
+                grant => grant.PrincipalIssuer == owner.Issuer && grant.PrincipalSubject == owner.Subject && (grant.Permissions & (int)permission) == (int)permission));
+    private static IQueryable<ParseRunEntity> ApplyPrincipalRunAccess(
+        IQueryable<ParseRunEntity> query,
+        DocumentOwnerIdentity owner,
+        DocumentPermissions permission) => query.Where(
+            run => run.Document.OwnerIssuer == owner.Issuer && run.Document.OwnerSubject == owner.Subject || run.Document.AccessGrants.Any(
+                grant => grant.PrincipalIssuer == owner.Issuer && grant.PrincipalSubject == owner.Subject && (grant.Permissions & (int)permission) == (int)permission));
 }

@@ -113,7 +113,8 @@ public sealed partial class MinerULayoutDetectionProviderTests
     [InlineData("""{"width":2480,"height":3508,"regions":[{"label":"text","x0":0,"y0":0,"x1":"1","y1":1}]}""")]
     [InlineData("""{"width":2480,"height":3508,"regions":[{"label":"text","x0":0,"y0":0,"x1":1.5,"y1":1}]}""")]
     [InlineData("""{"width":2480,"height":3508,"regions":[{"label":"text","x0":0.8,"y0":0,"x1":0.5,"y1":1}]}""")]
-    [InlineData("""{"width":2480,"height":3508,"regions":[{"label":"title of something long enough to be a sentence","x0":0,"y0":0,"x1":1,"y1":1}]}""")]
+    [InlineData(
+            """{"width":2480,"height":3508,"regions":[{"label":"title of something long enough to be a sentence","x0":0,"y0":0,"x1":1,"y1":1}]}""")]
     public async Task Malformed_runtime_output_is_rejected_with_bounded_diagnostics(string body)
     {
         var runtime = new LayoutOnlyRuntimeStub(_ => Task.FromResult(JsonResponse(body)));
@@ -334,7 +335,7 @@ public sealed partial class MinerULayoutDetectionProviderTests
     public void Registration_without_a_runtime_configures_no_layout_implementation()
     {
         using var services = new ServiceCollection()
-            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions(), new LayoutOptions())
+            .AddLayoutDetection(new LayoutRuntimeOptions(), new LayoutOptions())
             .BuildServiceProvider();
 
         var resolver = services.GetRequiredService<ILayoutDetectionProviderResolver>();
@@ -350,7 +351,7 @@ public sealed partial class MinerULayoutDetectionProviderTests
     public void Registration_with_a_runtime_resolves_the_layout_adapter()
     {
         using var services = new ServiceCollection()
-            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions
+            .AddLayoutDetection(new LayoutRuntimeOptions
             {
                 BaseUrl = "https://runtime.example/prefix",
                 Credential = "runtime-credential",
@@ -372,7 +373,7 @@ public sealed partial class MinerULayoutDetectionProviderTests
         // both branches — runtime configured and the shipped unset state — have to publish it:
         // what the endpoint resolves with is exactly what was bound here.
         using var configured = new ServiceCollection()
-            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions
+            .AddLayoutDetection(new LayoutRuntimeOptions
             {
                 BaseUrl = "https://runtime.example/prefix",
                 Timeout = TimeSpan.FromSeconds(45),
@@ -388,7 +389,7 @@ public sealed partial class MinerULayoutDetectionProviderTests
         Assert.Same(published, selection.RuntimeConfiguration);
 
         using var unset = new ServiceCollection()
-            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions(), new LayoutOptions())
+            .AddLayoutDetection(new LayoutRuntimeOptions(), new LayoutOptions())
             .BuildServiceProvider();
         Assert.Null(unset.GetRequiredService<LayoutRuntimeConfiguration>().BaseUri);
         Assert.Equal(

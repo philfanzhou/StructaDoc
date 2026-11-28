@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ServiceMantle.Migration;
 using StructaDoc.Adapters.Authentication;
@@ -12,12 +11,12 @@ namespace StructaDoc.Adapters.Persistence;
 /// provider lease. The step order is fixed: InnoDB preflight, legacy administrator import when the
 /// database already exists, then the migrations of the configured assembly.
 /// </summary>
-public sealed class StructaDocMigrationExecutor(
+public sealed class MigrationExecutor(
     IServiceProvider serviceProvider,
     StructaDocDbContext dbContext,
     IBusinessDatabaseMigrationPreflight preflight,
     DatabaseOptions databaseOptions,
-    ILogger<StructaDocMigrationExecutor> logger) : IDatabaseMigrationExecutor
+    ILogger<MigrationExecutor> logger) : IDatabaseMigrationExecutor
 {
     /// <summary>
     /// Compares the applied entries of <c>__EFMigrationsHistory</c> with the migration list of the

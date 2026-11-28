@@ -1,7 +1,5 @@
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.RateLimiting;
 using StructaDoc.Adapters.Authentication;
-using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Settings;
 using StructaDoc.Host.Authentication;

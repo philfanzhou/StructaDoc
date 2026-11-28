@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -12,11 +11,11 @@ using StructaDoc.Host.Settings;
 
 namespace StructaDoc.Host.Authentication;
 
-public static class HostAuthenticationServiceCollectionExtensions
+public static class AuthenticationServiceCollectionExtensions
 {
-    public static IServiceCollection AddStructaDocHostAuthentication(
+    public static IServiceCollection AddHostAuthentication(
         this IServiceCollection services,
-        StructaDocAuthenticationOptions options,
+        AuthenticationBootstrapOptions options,
         AuthenticationTuningOptions tuningOptions,
         OidcAuthenticationOptions oidcOptions,
         IDataProtectionProvider keyRing,
@@ -32,7 +31,7 @@ public static class HostAuthenticationServiceCollectionExtensions
         tuningOptions.Validate();
         oidcOptions.Validate();
 
-        services.AddStructaDocAuthenticationPersistence();
+        services.AddAuthenticationPersistence();
 
         // The key ring is supplied rather than configured here because one of the stored settings is
         // encrypted and has to be read before this container exists. Registering the same instance

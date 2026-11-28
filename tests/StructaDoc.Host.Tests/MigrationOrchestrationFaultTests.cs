@@ -1,10 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Adapters.ControlPlane;
-using StructaDoc.Adapters.Settings;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Settings;
 
@@ -128,7 +126,7 @@ public sealed class MigrationOrchestrationFaultTests
         return deployment.CreateFactory(builder => builder.ConfigureServices(
             (context, services) =>
             {
-                services.AddSingleton(StructaDocSettingsConfiguration.Create(
+                services.AddSingleton(SettingsConfiguration.Create(
                     context.Configuration,
                     new ControlPlaneOptions
                     {

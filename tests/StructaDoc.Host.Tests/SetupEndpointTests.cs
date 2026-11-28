@@ -149,7 +149,7 @@ public sealed class SetupEndpointTests
     {
         // Unattended deployments provision through configuration, which must leave nothing for an
         // anonymous caller to claim.
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
 
         var status = await client.GetFromJsonAsync<SetupStatusResponse>(

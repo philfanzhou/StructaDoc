@@ -922,7 +922,10 @@ internal static class DocumentIdentityMigrationContract
                     options,
                     "SELECT indexdef FROM pg_indexes WHERE tablename = 'documents' AND indexname = 'ix_documents_owner_created_at'",
                     cancellationToken);
-                Assert.Contains("(owner_issuer, owner_subject, created_at_utc)", indexDefinition, StringComparison.Ordinal);
+                Assert.Contains(
+                    "(owner_issuer, owner_subject, created_at_utc)",
+                    indexDefinition,
+                    StringComparison.Ordinal);
                 Assert.DoesNotContain("UNIQUE", indexDefinition, StringComparison.OrdinalIgnoreCase);
                 break;
 
@@ -1039,7 +1042,10 @@ internal static class DocumentIdentityMigrationContract
     private static int CountOccurrences(string value, string search)
     {
         var count = 0;
-        for (var index = 0; (index = value.IndexOf(search, index, StringComparison.Ordinal)) >= 0; index += search.Length)
+        for (var index = 0; (index = value.IndexOf(
+            search,
+            index,
+            StringComparison.Ordinal)) >= 0; index += search.Length)
         {
             count++;
         }

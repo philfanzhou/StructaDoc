@@ -38,10 +38,10 @@ internal sealed class ApiDocumentTransformer : IOpenApiDocumentTransformer
     {
         document.Info = new OpenApiInfo
         {
-            Title = context.DocumentName == StructaDocApiDescription.DocumentName
+            Title = context.DocumentName == ApiDescriptionExtensions.DocumentName
                 ? "StructaDoc API"
                 : "StructaDoc Browser API",
-            Version = StructaDocApiDescription.DocumentName,
+            Version = ApiDescriptionExtensions.DocumentName,
             Description = Describe(context.DocumentName),
         };
 
@@ -93,7 +93,7 @@ internal sealed class ApiDocumentTransformer : IOpenApiDocumentTransformer
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion ?? "unknown";
 
-        var audience = documentName == StructaDocApiDescription.DocumentName
+        var audience = documentName == ApiDescriptionExtensions.DocumentName
             ? "This consumer document contains only operations available to an API client credential."
             : "This operator document also contains browser-only administration, setup, and session operations. Their writes require the antiforgery token from `GET /api/v1/admin/antiforgery`. Send it in the `X-CSRF-TOKEN` header or, for the sign-out form, in the `__RequestVerificationToken` field. Generate API client SDKs from `/api/v1/openapi.json` instead.";
 

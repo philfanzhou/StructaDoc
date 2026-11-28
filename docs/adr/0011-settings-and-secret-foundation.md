@@ -15,7 +15,7 @@ StructaDoc's settings and secret infrastructure today:
 - one key/value row per setting in the control-plane SQLite database, written one key at a time
   from `/admin`, with an `externally-managed` refusal (`409`) for keys the deployment pins, an
   absent row meaning the shipped default, and the whole row deleted on clear;
-- `StructaDocSettingsConfiguration` layering deployment pins above stored rows above the
+- `SettingsConfiguration` layering deployment pins above stored rows above the
   container's defaults, reading everything before any options bind — the control plane must be
   readable before the business database it configures is reachable;
 - recoverable sections: a stored section that cannot be used at startup is dropped whole, the
@@ -23,7 +23,7 @@ StructaDoc's settings and secret infrastructure today:
 - `isPendingRestart`, computed per key from what this process bound at startup against what is in
   force now;
 - secrets encrypted through ASP.NET Core Data Protection with the file key ring under
-  `/data/keys` (`StructaDocKeyRing`, fixed application name);
+  `/data/keys` (`DataProtectionKeyRing`, fixed application name);
 - `SettingCatalog` as the settable allowlist, held by architecture tests
   (`SettingCatalogContractTests`: restated defaults match the options classes, closed sets match
   what the options accept, keyring-locating keys are not settable, every recoverable section is

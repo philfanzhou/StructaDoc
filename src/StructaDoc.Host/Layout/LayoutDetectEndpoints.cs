@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using Microsoft.AspNetCore.Mvc;
-using ServiceMantle.Web.Http;
 using StructaDoc.Application.Providers;
 using StructaDoc.Contracts.Layout;
 using StructaDoc.Host.Authentication;

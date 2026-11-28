@@ -18,12 +18,12 @@ namespace StructaDoc.Adapters.ControlPlane;
 /// Environment variables and the command line are read separately only to recognise which keys are
 /// pinned. Their values reach the service through the application configuration as usual.
 /// </summary>
-public sealed class StructaDocSettingsConfiguration
+public sealed class SettingsConfiguration
 {
     private readonly IConfiguration deployment;
     private readonly HashSet<string> storedKeys;
 
-    private StructaDocSettingsConfiguration(
+    private SettingsConfiguration(
         IConfiguration effective,
         IConfiguration baseConfiguration,
         IConfiguration deployment,
@@ -48,7 +48,7 @@ public sealed class StructaDocSettingsConfiguration
     /// </summary>
     public IConfiguration Base { get; }
 
-    public static StructaDocSettingsConfiguration Create(
+    public static SettingsConfiguration Create(
         IConfiguration baseConfiguration,
         ControlPlaneOptions options,
         string[] commandLineArguments,
@@ -75,7 +75,7 @@ public sealed class StructaDocSettingsConfiguration
 
         if (stored.Length == 0)
         {
-            return new StructaDocSettingsConfiguration(
+            return new SettingsConfiguration(
                 baseConfiguration,
                 baseConfiguration,
                 deployment,
@@ -87,7 +87,7 @@ public sealed class StructaDocSettingsConfiguration
             .AddInMemoryCollection(stored)
             .Build();
 
-        return new StructaDocSettingsConfiguration(
+        return new SettingsConfiguration(
             effective,
             baseConfiguration,
             deployment,

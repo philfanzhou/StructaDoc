@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Adapters.Authentication;
@@ -13,8 +12,8 @@ using StructaDoc.Contracts.Documents;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class DocumentUploadEndpointTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class DocumentUploadEndpointTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Pdf_upload_uses_detected_type_and_persists_original_bytes()

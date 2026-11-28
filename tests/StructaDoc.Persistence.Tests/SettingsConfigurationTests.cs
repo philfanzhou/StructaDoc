@@ -10,7 +10,7 @@ namespace StructaDoc.Persistence.Tests;
 /// Precedence between what a deployment pins and what an administrator chose is the whole point of
 /// the settings store, so it is tested where the rule lives rather than only through the endpoints.
 /// </summary>
-public sealed class StructaDocSettingsConfigurationTests : IDisposable
+public sealed class SettingsConfigurationTests : IDisposable
 {
     private readonly string directory = Path.Combine(
         Path.GetTempPath(),
@@ -20,7 +20,7 @@ public sealed class StructaDocSettingsConfigurationTests : IDisposable
     private readonly FakeSettingSecretProtector protector = new();
     private readonly SettingsStartupFault fault = new();
 
-    public StructaDocSettingsConfigurationTests()
+    public SettingsConfigurationTests()
     {
         Directory.CreateDirectory(directory);
     }
@@ -109,7 +109,7 @@ public sealed class StructaDocSettingsConfigurationTests : IDisposable
         // What the row holds and what the service reads are deliberately different. A secret that
         // arrived still encrypted would be sent to the identity provider as the client secret.
         Assert.Equal("the-client-secret", configuration.Effective[SettingCatalog.OidcClientSecret]);
-        Assert.False(fault.HasFault);
+        Assert.Empty(fault.Faults);
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public sealed class StructaDocSettingsConfigurationTests : IDisposable
         // Starting without the secret is the only option left, and saying so is what turns an
         // unexplained sign-in failure into something an administrator can act on.
         Assert.Null(configuration.Effective[SettingCatalog.OidcClientSecret]);
-        Assert.True(fault.HasFault);
+        Assert.NotEmpty(fault.Faults);
         var detail = fault.DetailFor(SettingCatalog.OidcSection);
         Assert.NotNull(detail);
         Assert.Contains(SettingCatalog.OidcClientSecret, detail, StringComparison.Ordinal);
@@ -198,12 +198,12 @@ public sealed class StructaDocSettingsConfigurationTests : IDisposable
         return new ConfigurationBuilder().AddInMemoryCollection(values).Build();
     }
 
-    private StructaDocSettingsConfiguration Create(
+    private SettingsConfiguration Create(
         IConfiguration shipped,
         ControlPlaneOptions options,
         string[] commandLineArguments)
     {
-        return StructaDocSettingsConfiguration.Create(
+        return SettingsConfiguration.Create(
             shipped,
             options,
             commandLineArguments,

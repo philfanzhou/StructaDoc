@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StructaDoc.Adapters.Persistence;
@@ -11,7 +10,7 @@ using StructaDoc.Testing.Persistence;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Program>
+public sealed class HostWebApplicationFactory : WebApplicationFactory<Program>
 {
     public const string AdministratorUsername = "structadoc-admin";
     public const string AdministratorPassword = "StructaDoc-Test-Password-2026!";
@@ -90,7 +89,7 @@ public sealed class StructaDocWebApplicationFactory : WebApplicationFactory<Prog
 
             foreach (var descriptor in services
                 .Where(service => service.ServiceType == typeof(IHostedService)
-                    && service.ImplementationType == typeof(ParseRunExecutionWorker))
+                    && service.ImplementationType == typeof(ParseRunExecution))
                 .ToArray())
             {
                 services.Remove(descriptor);

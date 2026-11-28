@@ -135,8 +135,12 @@ public sealed class MinerUCloudImageRecognitionProviderTests
             ["title", "table", "text", "list", "formula", "text", "image", "unknown"],
             result.Blocks.Select(block => block.Type).ToArray());
         Assert.Equal("Unit 3 Word List", result.Blocks[0].Content);
-        Assert.DoesNotContain(result.Blocks, block => block.Content?.Contains("Preproc", StringComparison.Ordinal) == true);
-        Assert.DoesNotContain(result.Blocks, block => block.Content?.Contains("Discarded", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(
+            result.Blocks,
+            block => block.Content?.Contains("Preproc", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(
+            result.Blocks,
+            block => block.Content?.Contains("Discarded", StringComparison.Ordinal) == true);
 
         // A table's nested body gives its HTML; its caption and footnote children feed those
         // slots instead of becoming peer blocks or lines.
@@ -320,10 +324,26 @@ public sealed class MinerUCloudImageRecognitionProviderTests
     }
 
     [Theory]
-    [InlineData("batch", HttpStatusCode.InternalServerError, "mineru-recognition-cloud-submit-http-500", ProviderFailureCategory.Transient)]
-    [InlineData("status", HttpStatusCode.Unauthorized, "mineru-recognition-cloud-status-http-401", ProviderFailureCategory.Configuration)]
-    [InlineData("upload", HttpStatusCode.Forbidden, "mineru-recognition-cloud-upload-http-403", ProviderFailureCategory.Permanent)]
-    [InlineData("result", HttpStatusCode.NotFound, "mineru-recognition-cloud-result-http-404", ProviderFailureCategory.Permanent)]
+    [InlineData(
+            "batch",
+            HttpStatusCode.InternalServerError,
+            "mineru-recognition-cloud-submit-http-500",
+            ProviderFailureCategory.Transient)]
+    [InlineData(
+            "status",
+            HttpStatusCode.Unauthorized,
+            "mineru-recognition-cloud-status-http-401",
+            ProviderFailureCategory.Configuration)]
+    [InlineData(
+            "upload",
+            HttpStatusCode.Forbidden,
+            "mineru-recognition-cloud-upload-http-403",
+            ProviderFailureCategory.Permanent)]
+    [InlineData(
+            "result",
+            HttpStatusCode.NotFound,
+            "mineru-recognition-cloud-result-http-404",
+            ProviderFailureCategory.Permanent)]
     public async Task Http_failures_carry_the_recognition_code_family(
         string leg,
         HttpStatusCode status,
@@ -379,7 +399,7 @@ public sealed class MinerUCloudImageRecognitionProviderTests
     {
         // Off: no implementation, so the resolution answers the explicit unsupported error.
         var off = new ServiceCollection()
-            .AddStructaDocImageRecognition(new RecognitionOptions());
+            .AddImageRecognition(new RecognitionOptions());
         Assert.DoesNotContain(off, service => service.ServiceType == typeof(IImageRecognitionProvider));
         using (var built = off.BuildServiceProvider())
         {
@@ -392,11 +412,11 @@ public sealed class MinerUCloudImageRecognitionProviderTests
         // On, beside the cloud layout backend: one recognition adapter, and the cloud exchange
         // services registered once for both modes.
         var on = new ServiceCollection()
-            .AddStructaDocParseProviders()
-            .AddStructaDocLayoutDetection(
+            .AddParseProviders()
+            .AddLayoutDetection(
                 new LayoutRuntimeOptions(),
                 new LayoutOptions { Backend = LayoutBackendNames.MinerUCloud })
-            .AddStructaDocImageRecognition(new RecognitionOptions { Enabled = true });
+            .AddImageRecognition(new RecognitionOptions { Enabled = true });
         var provider = Assert.Single(on, service => service.ServiceType == typeof(IImageRecognitionProvider));
         Assert.Equal(ServiceLifetime.Scoped, provider.Lifetime);
         var source = Assert.Single(on, service => service.ServiceType == typeof(ILayoutCloudConfigurationSource));
@@ -413,9 +433,9 @@ public sealed class MinerUCloudImageRecognitionProviderTests
     {
         // The two settings are independent: recognition uses the cloud whatever Layout:Backend is.
         var services = new ServiceCollection()
-            .AddStructaDocParseProviders()
-            .AddStructaDocLayoutDetection(new LayoutRuntimeOptions(), new LayoutOptions())
-            .AddStructaDocImageRecognition(new RecognitionOptions { Enabled = true });
+            .AddParseProviders()
+            .AddLayoutDetection(new LayoutRuntimeOptions(), new LayoutOptions())
+            .AddImageRecognition(new RecognitionOptions { Enabled = true });
 
         Assert.Single(services, service => service.ServiceType == typeof(IImageRecognitionProvider));
         Assert.Single(services, service => service.ServiceType == typeof(ILayoutCloudConfigurationSource));

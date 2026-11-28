@@ -164,7 +164,8 @@ public sealed class EfCoreDocumentAuthorizationService(StructaDocDbContext dbCon
     {
         if (!PrincipalIdentity.IsValid(issuer, subject))
         {
-            throw new ArgumentException("Grant principal is neither an OIDC issuer and subject pair nor an API client.");
+            throw new ArgumentException(
+                "Grant principal is neither an OIDC issuer and subject pair nor an API client.");
         }
     }
 }

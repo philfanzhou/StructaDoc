@@ -14,12 +14,17 @@ internal sealed class DocumentAccessGrantEntityConfiguration
         builder.HasKey(grant => grant.Id);
         builder.Property(grant => grant.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(grant => grant.DocumentId).HasColumnName("document_id");
-        builder.Property(grant => grant.PrincipalIssuer).HasColumnName("principal_issuer").HasMaxLength(CanonicalActorPersistence.MaximumIssuerByteCount);
-        builder.Property(grant => grant.PrincipalSubject).HasColumnName("principal_subject").HasMaxLength(CanonicalActorPersistence.MaximumSubjectByteCount);
+        builder.Property(grant => grant.PrincipalIssuer).HasColumnName("principal_issuer").HasMaxLength(
+            CanonicalActorPersistence.MaximumIssuerByteCount);
+        builder.Property(grant => grant.PrincipalSubject).HasColumnName("principal_subject").HasMaxLength(
+            CanonicalActorPersistence.MaximumSubjectByteCount);
         builder.Property(grant => grant.Permissions).HasColumnName("permissions");
-        builder.Property(grant => grant.CreatedByIssuer).HasColumnName("created_by_issuer").HasMaxLength(CanonicalActorPersistence.MaximumIssuerByteCount);
-        builder.Property(grant => grant.CreatedBySubject).HasColumnName("created_by_subject").HasMaxLength(CanonicalActorPersistence.MaximumSubjectByteCount);
-        builder.Property(grant => grant.CreatedByLegacy).HasColumnName("created_by_legacy").HasMaxLength(CanonicalActorPersistence.MaximumAccessGrantLegacyByteCount);
+        builder.Property(grant => grant.CreatedByIssuer).HasColumnName("created_by_issuer").HasMaxLength(
+            CanonicalActorPersistence.MaximumIssuerByteCount);
+        builder.Property(grant => grant.CreatedBySubject).HasColumnName("created_by_subject").HasMaxLength(
+            CanonicalActorPersistence.MaximumSubjectByteCount);
+        builder.Property(grant => grant.CreatedByLegacy).HasColumnName("created_by_legacy").HasMaxLength(
+            CanonicalActorPersistence.MaximumAccessGrantLegacyByteCount);
         builder.Property(grant => grant.CreatedAtUtc).HasColumnName("created_at_utc");
         builder.HasOne(grant => grant.Document)
             .WithMany(document => document.AccessGrants)

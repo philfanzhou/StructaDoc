@@ -2,12 +2,12 @@ using StructaDoc.Application.ParseRuns;
 
 namespace StructaDoc.Host.Workers;
 
-public sealed class ParseRunExecutionWorker(
+public sealed class ParseRunExecution(
     IServiceScopeFactory serviceScopeFactory,
     ParseRunWorkerOptions options,
-    WorkerConcurrencyGate gate,
+    ConcurrencyGate gate,
     TimeProvider timeProvider,
-    ILogger<ParseRunExecutionWorker> logger) : BackgroundService
+    ILogger<ParseRunExecution> logger) : BackgroundService
 {
     private readonly string workerId = CreateWorkerId();
     private int executionCounter;

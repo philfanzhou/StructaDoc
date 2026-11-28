@@ -1,8 +1,3 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Host.Settings;
@@ -69,7 +64,7 @@ public static class BusinessDatabaseMigrationCommand
             // A broken business setting must not prevent the control plane from reaching the current
             // schema, because it is part of the recovery set and the first migration target.
             controlPlaneOptions.Validate();
-            builder.Services.AddStructaDocControlPlane(controlPlaneOptions);
+            builder.Services.AddControlPlane(controlPlaneOptions);
 
             await using var controlPlaneProvider = builder.Services.BuildServiceProvider(
                 new ServiceProviderOptions
@@ -82,7 +77,7 @@ public static class BusinessDatabaseMigrationCommand
                 .CreateLogger("StructaDoc.BusinessDatabaseMigration");
 
             logger.LogInformation("Migrating the StructaDoc control-plane database.");
-            await controlPlaneProvider.ApplyStructaDocControlPlaneMigrationsAsync(cancellationToken);
+            await controlPlaneProvider.ApplyControlPlaneMigrationsAsync(cancellationToken);
 
             var configuredDatabaseOptions = builder.Configuration
                 .GetSection(DatabaseOptions.SectionName)
@@ -98,7 +93,7 @@ public static class BusinessDatabaseMigrationCommand
             };
             databaseOptions.Validate();
 
-            builder.Services.AddStructaDocPersistenceMigrationServices(databaseOptions);
+            builder.Services.AddPersistenceMigrationServices(databaseOptions);
             await using var migrationProvider = builder.Services.BuildServiceProvider(
                 new ServiceProviderOptions
                 {
@@ -113,7 +108,7 @@ public static class BusinessDatabaseMigrationCommand
             // legacy administrator import, and the assembly migrations run as one workflow under a
             // provider lease, so the command and a running instance cannot apply the database
             // twice.
-            await migrationProvider.ApplyStructaDocMigrationsAsync(
+            await migrationProvider.ApplyMigrationsAsync(
                 databaseOptions,
                 cancellationToken);
             logger.LogInformation("StructaDoc database migration completed successfully.");

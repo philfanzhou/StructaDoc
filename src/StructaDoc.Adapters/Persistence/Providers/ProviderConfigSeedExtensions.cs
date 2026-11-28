@@ -32,7 +32,7 @@ public static class ProviderConfigSeedExtensions
     /// someone made. A deployment whose only Provider was deleted is configured again on the next
     /// start, which is the same state it would be in on a fresh volume.
     /// </remarks>
-    public static async Task SeedStructaDocOfficialProviderAsync(
+    public static async Task SeedOfficialProviderAsync(
         this IServiceProvider serviceProvider,
         CancellationToken cancellationToken = default)
     {

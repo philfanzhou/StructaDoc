@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Contracts.Settings;
@@ -29,7 +28,7 @@ public static class SystemControlEndpoints
             HttpContext context,
             IAntiforgery antiforgery,
             IHostApplicationLifetime lifetime,
-            StructaDocManagementAuditRecorder auditRecorder,
+            ManagementAuditRecorder auditRecorder,
             ILoggerFactory loggerFactory)
         {
             var antiforgeryFailure = await AntiforgeryGuard.ValidateAsync(context, antiforgery);
@@ -41,16 +40,16 @@ public static class SystemControlEndpoints
             // The audit record is written before the stop is scheduled: the process is about to
             // disappear, and an audit that races the shutdown is an audit that can be lost.
             var auditEvent = ManagementAuditEvent.Create(
-                HostManagementAudit.AdministratorOperator(user),
-                StructaDocManagementAudit.Actions.RestartRequested,
+                ManagementAudit.AdministratorOperator(user),
+                ManagementAuditCatalog.Actions.RestartRequested,
                 ManagementAuditTarget.Create(
                     WellKnownManagementAuditTargetTypes.Service,
                     "structadoc"),
                 ManagementAuditOutcome.Success,
-                clientIp: HostManagementAudit.ClientAddress(context),
+                clientIp: ManagementAudit.ClientAddress(context),
                 securityDescription: "An administrator requested a service restart.",
                 timeProvider: TimeProvider.System);
-            await HostManagementAudit.RecordAsync(
+            await ManagementAudit.RecordAsync(
                 auditRecorder,
                 loggerFactory.CreateLogger<ManagementAuditRecordPoints>(),
                 auditEvent,

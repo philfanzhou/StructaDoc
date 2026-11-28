@@ -534,7 +534,8 @@ public sealed class ParseBundleCommitStoreTests
 
         Assert.Equal(
             ParseBundleValidator.ComputeFingerprint(captioned),
-            ParseBundleValidator.ComputeFingerprint(BlockBundle(new ParseBlock(blockId, 0, 1, "table", Caption: "Table 1"))));
+            ParseBundleValidator.ComputeFingerprint(
+                BlockBundle(new ParseBlock(blockId, 0, 1, "table", Caption: "Table 1"))));
         Assert.Equal(
             4,
             new[] { plain, captioned, otherCaption, footnoted }
@@ -810,7 +811,8 @@ public sealed class ParseBundleCommitStoreTests
             Assert.Empty(await dbContext.ParsePages.Where(item => item.ParseRunId == targetParseRunId).ToListAsync());
             Assert.Empty(await dbContext.ParseBlocks.Where(item => item.ParseRunId == targetParseRunId).ToListAsync());
             Assert.Empty(await dbContext.ParseAssets.Where(item => item.ParseRunId == targetParseRunId).ToListAsync());
-            Assert.Empty(await dbContext.ParseArtifacts.Where(item => item.ParseRunId == targetParseRunId).ToListAsync());
+            Assert.Empty(
+                await dbContext.ParseArtifacts.Where(item => item.ParseRunId == targetParseRunId).ToListAsync());
         }
 
         public ValueTask DisposeAsync()

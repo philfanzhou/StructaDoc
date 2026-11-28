@@ -8,7 +8,7 @@ namespace StructaDoc.Adapters.Providers;
 
 public static class ProviderExecutionServiceCollectionExtensions
 {
-    public static IServiceCollection AddStructaDocParseProviders(
+    public static IServiceCollection AddParseProviders(
         this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -46,7 +46,7 @@ public static class ProviderExecutionServiceCollectionExtensions
     /// pair only when it is registered standalone, and it is scoped because its configuration source
     /// reads the request-scoped business database context.
     /// </summary>
-    public static IServiceCollection AddStructaDocLayoutDetection(
+    public static IServiceCollection AddLayoutDetection(
         this IServiceCollection services,
         LayoutRuntimeOptions options,
         LayoutOptions layoutOptions)
@@ -111,7 +111,7 @@ public static class ProviderExecutionServiceCollectionExtensions
     /// backend's HTTP clients and its one cloud exchange bound. Nothing else can serve the mode, so
     /// no fallback exists.
     /// </summary>
-    public static IServiceCollection AddStructaDocImageRecognition(
+    public static IServiceCollection AddImageRecognition(
         this IServiceCollection services,
         RecognitionOptions options)
     {

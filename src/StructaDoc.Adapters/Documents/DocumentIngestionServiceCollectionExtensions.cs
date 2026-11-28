@@ -10,7 +10,7 @@ namespace StructaDoc.Adapters.Documents;
 
 public static class DocumentIngestionServiceCollectionExtensions
 {
-    public static IServiceCollection AddStructaDocDocumentIngestion(
+    public static IServiceCollection AddDocumentIngestion(
         this IServiceCollection services,
         DocumentIngestionOptions ingestionOptions,
         FileStorageOptions storageOptions,
@@ -41,7 +41,9 @@ public static class DocumentIngestionServiceCollectionExtensions
                 else config.RegionEndpoint = RegionEndpoint.GetBySystemName(storageOptions.Region ?? "us-east-1");
                 return storageOptions.AccessKey is null
                     ? new AmazonS3Client(config)
-                    : new AmazonS3Client(new BasicAWSCredentials(storageOptions.AccessKey, storageOptions.SecretKey), config);
+                    : new AmazonS3Client(
+                        new BasicAWSCredentials(storageOptions.AccessKey, storageOptions.SecretKey),
+                        config);
             });
             services.AddSingleton<IFileStorage, S3FileStorage>();
         }

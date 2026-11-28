@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.RateLimiting;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Storage;
 using StructaDoc.Application.Settings;

@@ -23,8 +23,8 @@ namespace StructaDoc.Host.Tests;
 // refusal, and unhandled-exception fallback responses of marked endpoints and nothing on unmarked
 // ones; the shared keys outside the narrower policy range stop the host at startup; and a
 // signed-in StructaDoc principal still shares the address-partitioned management bucket.
-public sealed class ServiceMantleRateLimitingSecurityHeadersTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ServiceMantleRateLimitingSecurityHeadersTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     private const string ExceededTypeUri = "urn:servicemantle:error:rate_limit.exceeded";
     private const string ExceededErrorCode = "rate_limit.exceeded";
@@ -77,8 +77,8 @@ public sealed class ServiceMantleRateLimitingSecurityHeadersTests(StructaDocWebA
         Assert.DoesNotContain("unknown-client", payload, StringComparison.Ordinal);
         Assert.DoesNotContain("management-client:", payload, StringComparison.Ordinal);
         Assert.DoesNotContain("management-operator:", payload, StringComparison.Ordinal);
-        Assert.DoesNotContain(StructaDocWebApplicationFactory.AdministratorUsername, payload, StringComparison.Ordinal);
-        Assert.DoesNotContain(StructaDocWebApplicationFactory.AdministratorPassword, payload, StringComparison.Ordinal);
+        Assert.DoesNotContain(HostWebApplicationFactory.AdministratorUsername, payload, StringComparison.Ordinal);
+        Assert.DoesNotContain(HostWebApplicationFactory.AdministratorPassword, payload, StringComparison.Ordinal);
 
         using var body = JsonDocument.Parse(payload);
         Assert.Equal(ExceededTypeUri, body.RootElement.GetProperty("type").GetString());
@@ -149,8 +149,8 @@ public sealed class ServiceMantleRateLimitingSecurityHeadersTests(StructaDocWebA
         using var unguarded = await client.PostAsJsonAsync(
             "/api/v1/admin/session",
             new AdministratorLoginRequest(
-                StructaDocWebApplicationFactory.AdministratorUsername,
-                StructaDocWebApplicationFactory.AdministratorPassword),
+                HostWebApplicationFactory.AdministratorUsername,
+                HostWebApplicationFactory.AdministratorPassword),
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, unguarded.StatusCode);
         AssertBaseline(unguarded);
@@ -316,7 +316,7 @@ public sealed class ServiceMantleRateLimitingSecurityHeadersTests(StructaDocWebA
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/session")
         {
             Content = JsonContent.Create(new AdministratorLoginRequest(
-                StructaDocWebApplicationFactory.AdministratorUsername,
+                HostWebApplicationFactory.AdministratorUsername,
                 "not-the-password")),
         };
         request.Headers.Add(token.HeaderName, token.RequestToken);

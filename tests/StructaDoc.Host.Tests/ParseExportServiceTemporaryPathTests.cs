@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using System.Text;
 using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Application.Authentication;
-using StructaDoc.Application.Canonical;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Host.ParseRuns;
@@ -47,10 +46,16 @@ public sealed class ParseExportServiceTemporaryPathTests
     public async Task Zip_generation_stages_in_the_configured_directory_and_returns_a_complete_result()
     {
         var stagingDirectory = NewStagingDirectory();
-        var readService = new SyntheticReadService(Markdown, [Asset("figure-a.png", FigureA), Asset("figure-b.png", FigureB)]);
+        var readService = new SyntheticReadService(
+            Markdown,
+            [Asset("figure-a.png", FigureA), Asset("figure-b.png", FigureB)]);
         var service = CreateService(readService, stagingDirectory);
 
-        var export = await service.CreateAsync(readService.ParseRunId, "zip", ResourceAccessContext.System, TestContext.Current.CancellationToken);
+        var export = await service.CreateAsync(
+            readService.ParseRunId,
+            "zip",
+            ResourceAccessContext.System,
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(export);
         // The archive exists on the configured path while the returned content holds it open.
@@ -90,12 +95,22 @@ public sealed class ParseExportServiceTemporaryPathTests
     public async Task Concurrent_exports_stage_distinct_files()
     {
         var stagingDirectory = NewStagingDirectory();
-        var readService = new SyntheticReadService(Markdown, [Asset("figure-a.png", FigureA), Asset("figure-b.png", FigureB)]);
+        var readService = new SyntheticReadService(
+            Markdown,
+            [Asset("figure-a.png", FigureA), Asset("figure-b.png", FigureB)]);
         var service = CreateService(readService, stagingDirectory);
 
         var exports = await Task.WhenAll(
-            service.CreateAsync(readService.ParseRunId, "zip", ResourceAccessContext.System, TestContext.Current.CancellationToken),
-            service.CreateAsync(readService.ParseRunId, "zip", ResourceAccessContext.System, TestContext.Current.CancellationToken));
+            service.CreateAsync(
+                readService.ParseRunId,
+                "zip",
+                ResourceAccessContext.System,
+                TestContext.Current.CancellationToken),
+            service.CreateAsync(
+                readService.ParseRunId,
+                "zip",
+                ResourceAccessContext.System,
+                TestContext.Current.CancellationToken));
 
         // Two callers both holding an open result never share one staged archive.
         var stagedFiles = Directory.GetFiles(stagingDirectory);
@@ -115,14 +130,20 @@ public sealed class ParseExportServiceTemporaryPathTests
     public async Task Storage_read_failure_during_generation_leaves_no_staged_file()
     {
         var stagingDirectory = NewStagingDirectory();
-        var readService = new SyntheticReadService(Markdown, [Asset("figure-a.png", FigureA), Asset("figure-b.png", FigureB)])
+        var readService = new SyntheticReadService(
+            Markdown,
+            [Asset("figure-a.png", FigureA), Asset("figure-b.png", FigureB)])
         {
             FailAssetOpen = true,
         };
         var service = CreateService(readService, stagingDirectory);
 
         await Assert.ThrowsAsync<ParseResultContentUnavailableException>(
-            () => service.CreateAsync(readService.ParseRunId, "zip", ResourceAccessContext.System, TestContext.Current.CancellationToken));
+            () => service.CreateAsync(
+                readService.ParseRunId,
+                "zip",
+                ResourceAccessContext.System,
+                TestContext.Current.CancellationToken));
 
         Assert.Empty(Directory.GetFiles(stagingDirectory));
     }
@@ -139,7 +160,11 @@ public sealed class ParseExportServiceTemporaryPathTests
         Directory.Delete(stagingDirectory);
 
         await Assert.ThrowsAnyAsync<IOException>(
-            () => service.CreateAsync(readService.ParseRunId, "zip", ResourceAccessContext.System, TestContext.Current.CancellationToken));
+            () => service.CreateAsync(
+                readService.ParseRunId,
+                "zip",
+                ResourceAccessContext.System,
+                TestContext.Current.CancellationToken));
 
         Assert.False(Directory.Exists(stagingDirectory));
     }
@@ -200,7 +225,10 @@ public sealed class ParseExportServiceTemporaryPathTests
 
         public Guid ParseRunId { get; } = Guid.NewGuid();
 
-        public Task<ParseResultContent?> OpenMarkdownAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+        public Task<ParseResultContent?> OpenMarkdownAsync(
+            Guid parseRunId,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default)
         {
             Assert.Equal(ParseRunId, parseRunId);
             var bytes = Encoding.UTF8.GetBytes(markdown);
@@ -212,7 +240,10 @@ public sealed class ParseExportServiceTemporaryPathTests
                 Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()));
         }
 
-        public Task<IReadOnlyList<ParseExportAssetRecord>?> ListAssetsForExportAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<ParseExportAssetRecord>?> ListAssetsForExportAsync(
+            Guid parseRunId,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default)
         {
             Assert.Equal(ParseRunId, parseRunId);
             IReadOnlyList<ParseExportAssetRecord> records =
@@ -229,7 +260,10 @@ public sealed class ParseExportServiceTemporaryPathTests
             return Task.FromResult<IReadOnlyList<ParseExportAssetRecord>?>(records);
         }
 
-        public Task<ParseResultContent?> OpenExportAssetAsync(Guid parseRunId, ParseExportAssetRecord asset, CancellationToken cancellationToken = default)
+        public Task<ParseResultContent?> OpenExportAssetAsync(
+            Guid parseRunId,
+            ParseExportAssetRecord asset,
+            CancellationToken cancellationToken = default)
         {
             if (FailAssetOpen)
             {
@@ -247,21 +281,50 @@ public sealed class ParseExportServiceTemporaryPathTests
                 content.Sha256));
         }
 
-        public Task<ParseRunRecord?> GetAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default) => Refuse<ParseRunRecord?>();
+        public Task<ParseRunRecord?> GetAsync(
+            Guid parseRunId,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default) => Refuse<ParseRunRecord?>();
 
-        public Task<IReadOnlyList<ParseRunRecord>> ListForDocumentAsync(Guid documentId, ResourceAccessContext access, CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParseRunRecord>>();
+        public Task<IReadOnlyList<ParseRunRecord>> ListForDocumentAsync(
+            Guid documentId,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParseRunRecord>>();
 
-        public Task<IReadOnlyList<ParsePageRecord>?> ListPagesAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParsePageRecord>?>();
+        public Task<IReadOnlyList<ParsePageRecord>?> ListPagesAsync(
+            Guid parseRunId,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParsePageRecord>?>();
 
-        public Task<ParseBlockPage?> ListBlocksAsync(Guid parseRunId, ResourceAccessContext access, int limit, int? afterSequence = null, int? pageNumber = null, CancellationToken cancellationToken = default) => Refuse<ParseBlockPage?>();
+        public Task<ParseBlockPage?> ListBlocksAsync(
+            Guid parseRunId,
+            ResourceAccessContext access,
+            int limit,
+            int? afterSequence = null,
+            int? pageNumber = null,
+            CancellationToken cancellationToken = default) => Refuse<ParseBlockPage?>();
 
-        public Task<IReadOnlyList<ParseAssetRecord>?> ListAssetsAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParseAssetRecord>?>();
+        public Task<IReadOnlyList<ParseAssetRecord>?> ListAssetsAsync(
+            Guid parseRunId,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParseAssetRecord>?>();
 
-        public Task<IReadOnlyList<ParseArtifactRecord>?> ListArtifactsAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParseArtifactRecord>?>();
+        public Task<IReadOnlyList<ParseArtifactRecord>?> ListArtifactsAsync(
+            Guid parseRunId,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParseArtifactRecord>?>();
 
-        public Task<ParseResultContent?> OpenAssetAsync(Guid parseRunId, Guid assetId, ResourceAccessContext access, CancellationToken cancellationToken = default) => Refuse<ParseResultContent?>();
+        public Task<ParseResultContent?> OpenAssetAsync(
+            Guid parseRunId,
+            Guid assetId,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default) => Refuse<ParseResultContent?>();
 
-        public Task<ParseResultContent?> OpenArtifactAsync(Guid parseRunId, Guid artifactId, ResourceAccessContext access, CancellationToken cancellationToken = default) => Refuse<ParseResultContent?>();
+        public Task<ParseResultContent?> OpenArtifactAsync(
+            Guid parseRunId,
+            Guid artifactId,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default) => Refuse<ParseResultContent?>();
 
         private static Task<T> Refuse<T>() => throw new NotSupportedException(
             "This synthetic read service serves ZIP exports only.");
@@ -269,17 +332,36 @@ public sealed class ParseExportServiceTemporaryPathTests
 
     private sealed class UnusedDocumentReadService : IDocumentReadService
     {
-        public Task<DocumentPage> ListAsync(int limit, DocumentCursor? cursor = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<DocumentPage> ListAsync(
+            int limit,
+            DocumentCursor? cursor = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<DocumentRecord?> GetAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<DocumentRecord?> GetAsync(
+            Guid id,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<DocumentContent?> OpenContentAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<DocumentContent?> OpenContentAsync(
+            Guid id,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<DocumentPage> ListAccessibleAsync(int limit, ResourceAccessContext access, DocumentCursor? cursor = null, string? fileName = null, string? parseStatus = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<DocumentPage> ListAccessibleAsync(
+            int limit,
+            ResourceAccessContext access,
+            DocumentCursor? cursor = null,
+            string? fileName = null,
+            string? parseStatus = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<DocumentRecord?> GetAccessibleAsync(Guid id, ResourceAccessContext access, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<DocumentRecord?> GetAccessibleAsync(
+            Guid id,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<DocumentContent?> OpenAccessibleContentAsync(Guid id, ResourceAccessContext access, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<DocumentContent?> OpenAccessibleContentAsync(
+            Guid id,
+            ResourceAccessContext access,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     /// <summary>

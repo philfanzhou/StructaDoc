@@ -7,7 +7,7 @@ namespace StructaDoc.Adapters.Authentication;
 
 public static class AuthenticationServiceCollectionExtensions
 {
-    public static IServiceCollection AddStructaDocAuthenticationPersistence(
+    public static IServiceCollection AddAuthenticationPersistence(
         this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);

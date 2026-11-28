@@ -1,6 +1,3 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
@@ -18,7 +15,7 @@ namespace StructaDoc.Host.Logging;
 /// from then on — which is what makes the log level adjustable at runtime rather than only at the
 /// next start.
 /// </summary>
-public sealed class StructaDocConsoleLogSwitches
+public sealed class ConsoleLogSwitches
 {
     public const string AspNetCoreCategory = "Microsoft.AspNetCore";
     public const string EntityFrameworkCoreDatabaseCommandCategory =
@@ -228,7 +225,7 @@ internal sealed class SanitizingLogEventEnricher(StructuredLogSanitizer sanitize
     }
 }
 
-public static class StructaDocConsoleLoggingServiceCollectionExtensions
+public static class ConsoleLoggingServiceCollectionExtensions
 {
     private const string ConsoleOutputTemplate =
         "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}";
@@ -245,9 +242,9 @@ public static class StructaDocConsoleLoggingServiceCollectionExtensions
     /// provider — it can suppress events further, but cannot reveal an event the pipeline's own
     /// switches hold back.
     /// </summary>
-    public static IServiceCollection AddStructaDocConsoleLogging(
+    public static IServiceCollection AddConsoleLogging(
         this IServiceCollection services,
-        StructaDocConsoleLogSwitches switches)
+        ConsoleLogSwitches switches)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(switches);
@@ -255,10 +252,10 @@ public static class StructaDocConsoleLoggingServiceCollectionExtensions
         var logger = new LoggerConfiguration()
             .MinimumLevel.ControlledBy(switches.Root)
             .MinimumLevel.Override(
-                StructaDocConsoleLogSwitches.AspNetCoreCategory,
+                ConsoleLogSwitches.AspNetCoreCategory,
                 switches.AspNetCore)
             .MinimumLevel.Override(
-                StructaDocConsoleLogSwitches.EntityFrameworkCoreDatabaseCommandCategory,
+                ConsoleLogSwitches.EntityFrameworkCoreDatabaseCommandCategory,
                 switches.EntityFrameworkCore)
             .Enrich.FromLogContext()
             .Enrich.With(new SanitizingLogEventEnricher(

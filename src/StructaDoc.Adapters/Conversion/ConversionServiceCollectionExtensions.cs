@@ -5,7 +5,7 @@ namespace StructaDoc.Adapters.Conversion;
 
 public static class ConversionServiceCollectionExtensions
 {
-    public static IServiceCollection AddStructaDocDocumentConversion(
+    public static IServiceCollection AddDocumentConversion(
         this IServiceCollection services,
         LibreOfficeConversionOptions options)
     {

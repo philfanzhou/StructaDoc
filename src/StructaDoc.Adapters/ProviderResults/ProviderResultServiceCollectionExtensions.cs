@@ -6,7 +6,7 @@ namespace StructaDoc.Adapters.ProviderResults;
 
 public static class ProviderResultServiceCollectionExtensions
 {
-    public static IServiceCollection AddStructaDocProviderResults(
+    public static IServiceCollection AddProviderResults(
         this IServiceCollection services,
         ProviderResultIntakeOptions intakeOptions,
         ProviderResultNormalizationOptions? normalizationOptions = null)

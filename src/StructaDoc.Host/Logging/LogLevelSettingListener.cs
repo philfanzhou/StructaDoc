@@ -10,9 +10,9 @@ namespace StructaDoc.Host.Logging;
 /// use returns <see langword="false"/>, so the write is answered with the restart it still needs
 /// rather than a silent no-op.
 /// </summary>
-public sealed class LoggingLevelSettingListener(
-    StructaDocConsoleLogSwitches switches,
-    ILogger<LoggingLevelSettingListener> logger) : ISettingChangeListener
+public sealed class LogLevelSettingListener(
+    ConsoleLogSwitches switches,
+    ILogger<LogLevelSettingListener> logger) : ISettingChangeListener
 {
     public Task<bool> TryApplyAsync(
         string key,

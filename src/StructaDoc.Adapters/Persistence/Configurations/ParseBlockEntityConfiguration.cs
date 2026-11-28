@@ -18,7 +18,10 @@ internal sealed class ParseBlockEntityConfiguration : IEntityTypeConfiguration<P
         builder.Property(block => block.Type).HasColumnName("type").HasMaxLength(64).IsUnicode(false);
         builder.Property(block => block.Subtype).HasColumnName("subtype").HasMaxLength(100).IsUnicode(false);
         builder.Property(block => block.Content).HasColumnName("content");
-        builder.Property(block => block.ContentFormat).HasColumnName("content_format").HasMaxLength(32).IsUnicode(false);
+        builder.Property(block => block.ContentFormat)
+            .HasColumnName("content_format")
+            .HasMaxLength(32)
+            .IsUnicode(false);
         builder.Property(block => block.BoundingBoxX0).HasColumnName("bbox_x0");
         builder.Property(block => block.BoundingBoxY0).HasColumnName("bbox_y0");
         builder.Property(block => block.BoundingBoxX1).HasColumnName("bbox_x1");

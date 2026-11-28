@@ -1,5 +1,4 @@
 using ServiceMantle.Audit;
-using ServiceMantle.Persistence.Relational.Stores;
 
 namespace StructaDoc.Adapters.ControlPlane;
 
@@ -10,7 +9,7 @@ namespace StructaDoc.Adapters.ControlPlane;
 /// an explicit non-sensitive allowlist; credentials, passwords, connection strings, and setup codes
 /// never enter an audit field.
 /// </summary>
-public static class StructaDocManagementAudit
+public static class ManagementAuditCatalog
 {
     /// <summary>Actions for the record points StructaDoc defines itself.</summary>
     public static class Actions
@@ -117,7 +116,7 @@ public static class StructaDocManagementAudit
 /// control-plane unit of work, while <see cref="RecordAsync"/> commits the row on its own for
 /// record points whose own changes live in another database or have already committed.
 /// </summary>
-public sealed class StructaDocManagementAuditRecorder(
+public sealed class ManagementAuditRecorder(
     IManagementAuditWriter auditWriter,
     ControlPlaneDbContext controlPlane)
 {

@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Settings;
@@ -16,7 +15,7 @@ namespace StructaDoc.Host.Authentication;
 public static class OidcConfigurationBinder
 {
     public static OidcAuthenticationOptions Bind(
-        StructaDocSettingsConfiguration settings,
+        SettingsConfiguration settings,
         SettingsStartupFault fault)
     {
         return RecoverableConfigurationBinder.Bind(

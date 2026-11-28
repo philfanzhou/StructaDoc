@@ -69,7 +69,8 @@ public sealed class OidcAuthenticationOptions
         {
             if (string.IsNullOrWhiteSpace(value) || value.Length > 255)
             {
-                throw new InvalidOperationException("OIDC claim and role mappings must be non-empty and at most 255 characters.");
+                throw new InvalidOperationException(
+                    "OIDC claim and role mappings must be non-empty and at most 255 characters.");
             }
         }
     }

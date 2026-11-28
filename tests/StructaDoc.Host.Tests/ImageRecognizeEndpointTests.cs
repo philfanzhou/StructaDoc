@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Adapters.Authentication;
@@ -64,7 +63,9 @@ public sealed class ImageRecognizeEndpointTests
         Assert.Equal(0.1, rows.GetProperty("bbox").GetProperty("x0").GetDouble());
         Assert.Equal(0.3, rows.GetProperty("bbox").GetProperty("y1").GetDouble());
         var lines = rows.GetProperty("lines").EnumerateArray().ToArray();
-        Assert.Equal(["apple n. 苹果", "borrow v. 借"], lines.Select(line => line.GetProperty("text").GetString()).ToArray());
+        Assert.Equal(
+            ["apple n. 苹果", "borrow v. 借"],
+            lines.Select(line => line.GetProperty("text").GetString()).ToArray());
         Assert.Equal(0.2, lines[1].GetProperty("bbox").GetProperty("y0").GetDouble());
 
         var table = blocks[1];
@@ -137,7 +138,7 @@ public sealed class ImageRecognizeEndpointTests
     {
         // The shipped state: Recognition:Enabled is false, so no implementation is registered and
         // nothing — not the cloud Provider, not layout detection, not document parsing — is tried.
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
         var apiKey = await CreateApiClientAsync(factory, AuthenticationScopes.ImageRecognize);
         var countsBefore = await TakeCountsAsync(factory);
@@ -162,7 +163,7 @@ public sealed class ImageRecognizeEndpointTests
         // The real registration and the real configuration source against the seeded deployment:
         // the official Provider is enabled and default but has no credential, so the cloud adapter
         // refuses before sending anything, naming what is missing.
-        using var inner = new StructaDocWebApplicationFactory();
+        using var inner = new HostWebApplicationFactory();
         using var factory = inner.WithWebHostBuilder(builder =>
             builder.UseSetting("Recognition:Enabled", "true"));
         using var client = factory.CreateClient();
@@ -184,14 +185,46 @@ public sealed class ImageRecognizeEndpointTests
     }
 
     [Theory]
-    [InlineData("mineru-recognition-timeout", ProviderFailureCategory.Transient, HttpStatusCode.GatewayTimeout, "recognition-timeout")]
-    [InlineData("mineru-recognition-cloud-status-network-error", ProviderFailureCategory.Transient, HttpStatusCode.BadGateway, "recognition-backend-unavailable")]
-    [InlineData("mineru-recognition-cloud-layout-response-invalid", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "recognition-output-invalid")]
-    [InlineData("mineru-recognition-cloud-task-failed", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "recognition-output-invalid")]
-    [InlineData("mineru-recognition-cloud-submit-rejected", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "recognition-output-invalid")]
-    [InlineData("mineru-recognition-cloud-status-http-401", ProviderFailureCategory.Configuration, HttpStatusCode.ServiceUnavailable, "recognition-backend-unavailable")]
-    [InlineData("mineru-recognition-cloud-submit-http-400", ProviderFailureCategory.Input, HttpStatusCode.BadGateway, "recognition-backend-rejected")]
-    [InlineData("mineru-recognition-cloud-result-destination-denied", ProviderFailureCategory.Security, HttpStatusCode.ServiceUnavailable, "recognition-backend-unavailable")]
+    [InlineData(
+            "mineru-recognition-timeout",
+            ProviderFailureCategory.Transient,
+            HttpStatusCode.GatewayTimeout,
+            "recognition-timeout")]
+    [InlineData(
+            "mineru-recognition-cloud-status-network-error",
+            ProviderFailureCategory.Transient,
+            HttpStatusCode.BadGateway,
+            "recognition-backend-unavailable")]
+    [InlineData(
+            "mineru-recognition-cloud-layout-response-invalid",
+            ProviderFailureCategory.Permanent,
+            HttpStatusCode.BadGateway,
+            "recognition-output-invalid")]
+    [InlineData(
+            "mineru-recognition-cloud-task-failed",
+            ProviderFailureCategory.Permanent,
+            HttpStatusCode.BadGateway,
+            "recognition-output-invalid")]
+    [InlineData(
+            "mineru-recognition-cloud-submit-rejected",
+            ProviderFailureCategory.Permanent,
+            HttpStatusCode.BadGateway,
+            "recognition-output-invalid")]
+    [InlineData(
+            "mineru-recognition-cloud-status-http-401",
+            ProviderFailureCategory.Configuration,
+            HttpStatusCode.ServiceUnavailable,
+            "recognition-backend-unavailable")]
+    [InlineData(
+            "mineru-recognition-cloud-submit-http-400",
+            ProviderFailureCategory.Input,
+            HttpStatusCode.BadGateway,
+            "recognition-backend-rejected")]
+    [InlineData(
+            "mineru-recognition-cloud-result-destination-denied",
+            ProviderFailureCategory.Security,
+            HttpStatusCode.ServiceUnavailable,
+            "recognition-backend-unavailable")]
     public async Task Every_provider_failure_maps_to_its_stable_http_outcome(
         string errorCode,
         ProviderFailureCategory category,
@@ -391,7 +424,7 @@ public sealed class ImageRecognizeEndpointTests
     /// </summary>
     internal sealed class RecognitionFactory : IDisposable
     {
-        private readonly StructaDocWebApplicationFactory factory = new();
+        private readonly HostWebApplicationFactory factory = new();
 
         public RecognitionFactory()
         {

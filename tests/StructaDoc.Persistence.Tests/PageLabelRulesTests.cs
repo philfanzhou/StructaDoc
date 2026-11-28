@@ -49,22 +49,31 @@ public sealed class PageLabelRulesTests
     public void Pdf_labels_that_cannot_be_displayed_are_null()
     {
         // Pages before the first range have no label.
-        Assert.Null(PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(2, PdfPageLabelStyle.Decimal, null, 1)], 1));
+        Assert.Null(
+            PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(2, PdfPageLabelStyle.Decimal, null, 1)], 1));
         // Roman numerals stop at 3999.
-        Assert.Null(PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.UpperRoman, null, 4000)], 0));
+        Assert.Null(
+            PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.UpperRoman, null, 4000)], 0));
         // A range with no style and no prefix formats to nothing.
         Assert.Null(PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.None, null, 1)], 0));
         Assert.Null(PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.None, "   ", 1)], 0));
-        Assert.Null(PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.Decimal, new string('x', 256), 1)], 0));
-        Assert.Null(PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.Decimal, "a\u0007", 1)], 0));
-        Assert.Null(PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.Decimal, "\ud800", 1)], 0));
+        Assert.Null(
+            PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.Decimal, new string('x', 256), 1)], 0));
+        Assert.Null(
+            PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.Decimal, "a\u0007", 1)], 0));
+        Assert.Null(
+            PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.Decimal, "\ud800", 1)], 0));
         // Letters repeat once per 26, so a huge start value would be a huge label; it is refused
         // before it is built.
-        Assert.Null(PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.UpperLetters, null, int.MaxValue)], 0));
-        Assert.Null(PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.Decimal, null, long.MaxValue)], 1));
+        Assert.Null(
+            PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.UpperLetters, null, int.MaxValue)], 0));
+        Assert.Null(
+            PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.Decimal, null, long.MaxValue)], 1));
         Assert.Equal(
             new string('x', 255) + "1",
-            PageLabelRules.FormatPdfPageLabel([new PdfPageLabelRange(0, PdfPageLabelStyle.Decimal, new string('x', 255), 1)], 0));
+            PageLabelRules.FormatPdfPageLabel(
+                [new PdfPageLabelRange(0, PdfPageLabelStyle.Decimal, new string('x', 255), 1)],
+                0));
     }
 
     [Fact]
@@ -202,9 +211,15 @@ public sealed class ParsePageLabelValidationTests
 
         Assert.True(ParseBundleValidator.Validate(unlabeled).IsValid);
         Assert.True(ParseBundleValidator.Validate(labeled).IsValid);
-        Assert.True(ParseBundleValidator.Validate(Bundle(new ParsePage(1, Label: new string('x', 256), LabelSource: PageLabelSources.PageNumberBlocks))).IsValid);
-        Assert.NotEqual(ParseBundleValidator.ComputeFingerprint(unlabeled), ParseBundleValidator.ComputeFingerprint(labeled));
-        Assert.NotEqual(ParseBundleValidator.ComputeFingerprint(labeled), ParseBundleValidator.ComputeFingerprint(otherSource));
+        Assert.True(
+            ParseBundleValidator.Validate(
+                Bundle(new ParsePage(1, Label: new string('x', 256), LabelSource: PageLabelSources.PageNumberBlocks))).IsValid);
+        Assert.NotEqual(
+            ParseBundleValidator.ComputeFingerprint(unlabeled),
+            ParseBundleValidator.ComputeFingerprint(labeled));
+        Assert.NotEqual(
+            ParseBundleValidator.ComputeFingerprint(labeled),
+            ParseBundleValidator.ComputeFingerprint(otherSource));
     }
 
     [Theory]

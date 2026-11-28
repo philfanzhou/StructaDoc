@@ -10,9 +10,9 @@ namespace StructaDoc.Host.Workers;
 /// with the restart it still needs rather than a silent no-op — the failure mode the removed
 /// Worker execution switch was deleted for.
 /// </summary>
-public sealed class WorkerConcurrencySettingListener(
-    WorkerConcurrencyGate gate,
-    ILogger<WorkerConcurrencySettingListener> logger) : ISettingChangeListener
+public sealed class ConcurrencySettingListener(
+    ConcurrencyGate gate,
+    ILogger<ConcurrencySettingListener> logger) : ISettingChangeListener
 {
     public Task<bool> TryApplyAsync(
         string key,

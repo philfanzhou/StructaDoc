@@ -1,7 +1,5 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Adapters.Authentication;
@@ -118,7 +116,7 @@ public sealed class LayoutDetectLoggingTests
 
     private sealed class LoggingLayoutFactory : IDisposable
     {
-        private readonly StructaDocWebApplicationFactory factory = new();
+        private readonly HostWebApplicationFactory factory = new();
 
         public StubLayoutLogProvider Stub { get; } = new();
 

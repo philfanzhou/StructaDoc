@@ -46,7 +46,10 @@ public sealed class ParseExportService : IParseExportService
         Directory.CreateDirectory(temporaryPath);
     }
 
-    public async Task<string?> GetHtmlEntityTagAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<string?> GetHtmlEntityTagAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         var artifacts = await results.ListArtifactsAsync(parseRunId, access, cancellationToken);
         var markdown = artifacts?.FirstOrDefault(item => item.Type == ArtifactTypes.Markdown);
@@ -58,7 +61,9 @@ public sealed class ParseExportService : IParseExportService
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         AppendHashComponent(hash, HtmlRendererVersion.ToString(System.Globalization.CultureInfo.InvariantCulture));
         AppendHashComponent(hash, MaximumInlinedAssetBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        AppendHashComponent(hash, MaximumInlinedAssetItemBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendHashComponent(
+            hash,
+            MaximumInlinedAssetItemBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
         AppendHashComponent(hash, markdown.Sha256);
         foreach (var asset in SelectInlineableAssets(OrderAssets(assets)))
         {
@@ -68,7 +73,11 @@ public sealed class ParseExportService : IParseExportService
         return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
     }
 
-    public async Task<ParseResultContent?> CreateAsync(Guid parseRunId, string format, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<ParseResultContent?> CreateAsync(
+        Guid parseRunId,
+        string format,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         switch (format.ToLowerInvariant())
         {
@@ -84,7 +93,10 @@ public sealed class ParseExportService : IParseExportService
     /// Returns the PDF representation of a Parse Run: the converted <c>normalized-pdf</c> Artifact
     /// when an Office source required conversion, otherwise the original when it is already a PDF.
     /// </summary>
-    private async Task<ParseResultContent?> CreatePdfAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken)
+    private async Task<ParseResultContent?> CreatePdfAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken)
     {
         var artifacts = await results.ListArtifactsAsync(parseRunId, access, cancellationToken);
         if (artifacts is null) return null;
@@ -108,11 +120,15 @@ public sealed class ParseExportService : IParseExportService
             original.Document.Sha256);
     }
 
-    private async Task<ParseResultContent?> CreateHtmlAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken)
+    private async Task<ParseResultContent?> CreateHtmlAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken)
     {
         var markdown = await ReadMarkdownAsync(parseRunId, access, cancellationToken);
         if (markdown is null) return null;
-        var exportAssets = OrderExportAssets(await results.ListAssetsForExportAsync(parseRunId, access, cancellationToken) ?? []);
+        var exportAssets = OrderExportAssets(
+            await results.ListAssetsForExportAsync(parseRunId, access, cancellationToken) ?? []);
         var assets = exportAssets.Select(asset => asset.Metadata).ToArray();
         var inlined = await InlineAssetsAsync(parseRunId, exportAssets, cancellationToken);
         var source = ExportAssetLinkRewriter.Rewrite(
@@ -127,7 +143,10 @@ public sealed class ParseExportService : IParseExportService
         return FromBytes(Encoding.UTF8.GetBytes(html), $"{parseRunId:D}.html", "text/html; charset=utf-8");
     }
 
-    private async Task<ParseResultContent?> CreateZipAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken)
+    private async Task<ParseResultContent?> CreateZipAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken)
     {
         var markdown = await ReadMarkdownAsync(parseRunId, access, cancellationToken);
         if (markdown is null) return null;
@@ -144,7 +163,13 @@ public sealed class ParseExportService : IParseExportService
         var path = Path.Combine(temporaryPath, $"structadoc-export-{Guid.NewGuid():N}.zip");
         try
         {
-            await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 64 * 1024, FileOptions.Asynchronous))
+            await using (var output = new FileStream(
+                path,
+                FileMode.CreateNew,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                64 * 1024,
+                FileOptions.Asynchronous))
             using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: false))
             {
                 await using (var documentStream = new MemoryStream(Encoding.UTF8.GetBytes(document), writable: false))
@@ -154,7 +179,8 @@ public sealed class ParseExportService : IParseExportService
                     if (!entryNames.TryGetValue(asset.Id, out var name)) continue;
                     var content = await results.OpenExportAssetAsync(parseRunId, asset, cancellationToken);
                     if (content is null) continue;
-                    await using (content.Content) await AddEntryAsync(archive, $"assets/{name}", content.Content, cancellationToken);
+                    await using (content.Content)
+                        await AddEntryAsync(archive, $"assets/{name}", content.Content, cancellationToken);
                 }
             }
 
@@ -162,12 +188,23 @@ public sealed class ParseExportService : IParseExportService
             // returned export cleans up after itself even when the caller never reads the body.
             // Until then the handle is the service's only claim on the file, and ownership of it
             // transfers with the returned content — never before the complete result exists.
-            var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
+            var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                64 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
             try
             {
                 var hash = await SHA256.HashDataAsync(stream, cancellationToken);
                 stream.Position = 0;
-                return new ParseResultContent(stream, $"{parseRunId:D}.zip", "application/zip", stream.Length, Convert.ToHexString(hash).ToLowerInvariant());
+                return new ParseResultContent(
+                    stream,
+                    $"{parseRunId:D}.zip",
+                    "application/zip",
+                    stream.Length,
+                    Convert.ToHexString(hash).ToLowerInvariant());
             }
             catch
             {
@@ -178,12 +215,19 @@ public sealed class ParseExportService : IParseExportService
         catch { if (File.Exists(path)) File.Delete(path); throw; }
     }
 
-    private async Task<string?> ReadMarkdownAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken)
+    private async Task<string?> ReadMarkdownAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken)
     {
         var source = await results.OpenMarkdownAsync(parseRunId, access, cancellationToken);
         if (source is null) return null;
         await using var content = source.Content;
-        using var reader = new StreamReader(content, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        using var reader = new StreamReader(
+            content,
+            Encoding.UTF8,
+            detectEncodingFromByteOrderMarks: true,
+            leaveOpen: true);
         return await reader.ReadToEndAsync(cancellationToken);
     }
 
@@ -205,7 +249,9 @@ public sealed class ParseExportService : IParseExportService
             await assetContent.CopyToAsync(buffer, cancellationToken);
             if (buffer.Length > remainingBytes) continue;
             remainingBytes -= buffer.Length;
-            inlined[asset.Id] = ExportAssetLinkRewriter.ToDataUri(asset.MediaType, buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
+            inlined[asset.Id] = ExportAssetLinkRewriter.ToDataUri(
+                asset.MediaType,
+                buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
         }
 
         return inlined;
@@ -214,7 +260,8 @@ public sealed class ParseExportService : IParseExportService
     private static IReadOnlyList<ParseAssetRecord> OrderAssets(IReadOnlyList<ParseAssetRecord> assets) =>
         [.. assets.OrderBy(asset => asset.Name, StringComparer.Ordinal).ThenBy(asset => asset.Id)];
 
-    private static IReadOnlyList<ParseExportAssetRecord> OrderExportAssets(IReadOnlyList<ParseExportAssetRecord> assets) =>
+    private static IReadOnlyList<ParseExportAssetRecord> OrderExportAssets(
+        IReadOnlyList<ParseExportAssetRecord> assets) =>
         [.. assets.OrderBy(asset => asset.Name, StringComparer.Ordinal).ThenBy(asset => asset.Id)];
 
     private static IEnumerable<ParseAssetRecord> SelectInlineableAssets(IReadOnlyList<ParseAssetRecord> assets)
@@ -257,7 +304,11 @@ public sealed class ParseExportService : IParseExportService
         return names;
     }
 
-    private static async Task AddEntryAsync(ZipArchive archive, string name, Stream source, CancellationToken cancellationToken)
+    private static async Task AddEntryAsync(
+        ZipArchive archive,
+        string name,
+        Stream source,
+        CancellationToken cancellationToken)
     {
         var entry = archive.CreateEntry(name, CompressionLevel.Fastest);
         await using var target = entry.Open();
@@ -270,5 +321,10 @@ public sealed class ParseExportService : IParseExportService
         return string.IsNullOrWhiteSpace(safe) ? fallback.ToString("N") : safe;
     }
 
-    private static ParseResultContent FromBytes(byte[] bytes, string name, string mediaType) => new(new MemoryStream(bytes, writable: false), name, mediaType, bytes.Length, Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
+    private static ParseResultContent FromBytes(byte[] bytes, string name, string mediaType) => new(
+        new MemoryStream(bytes, writable: false),
+        name,
+        mediaType,
+        bytes.Length,
+        Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
 }

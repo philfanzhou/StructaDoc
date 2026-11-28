@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using ServiceMantle;
 using ServiceMantle.Migration;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.Persistence;
@@ -29,7 +28,7 @@ internal static class MigrationOrchestrationContract
             ApplyMigrationsOnStartup = true,
         };
 
-        using var deployment = new OrchestrationDeployment(provider, databaseOptions);
+        using var deployment = new OrchestrationDeployment(databaseOptions);
         await deployment.MigrateControlPlaneAsync(cancellationToken);
 
         await AssertConcurrentSessionsApplyExactlyOnceAsync(
@@ -234,7 +233,7 @@ internal static class MigrationOrchestrationContract
 
         private readonly ServiceProvider serviceProvider;
 
-        public OrchestrationDeployment(DatabaseProvider provider, DatabaseOptions databaseOptions)
+        public OrchestrationDeployment(DatabaseOptions databaseOptions)
         {
             Directory.CreateDirectory(directory);
             var controlPlaneOptions = new ControlPlaneOptions
@@ -242,8 +241,8 @@ internal static class MigrationOrchestrationContract
                 DatabasePath = Path.Combine(directory, "control.db"),
             };
             var services = new ServiceCollection();
-            services.AddStructaDocControlPlane(controlPlaneOptions);
-            services.AddStructaDocPersistenceMigrationServices(databaseOptions);
+            services.AddControlPlane(controlPlaneOptions);
+            services.AddPersistenceMigrationServices(databaseOptions);
             serviceProvider = services.BuildServiceProvider();
         }
 
@@ -251,13 +250,13 @@ internal static class MigrationOrchestrationContract
             serviceProvider.GetRequiredService<DatabaseMigrationLockProviderRegistry>();
 
         public async Task MigrateControlPlaneAsync(CancellationToken cancellationToken) =>
-            await serviceProvider.ApplyStructaDocControlPlaneMigrationsAsync(cancellationToken);
+            await serviceProvider.ApplyControlPlaneMigrationsAsync(cancellationToken);
 
         public Task<StartupDatabaseGateResult> OrchestrateAsync(
             DatabaseOptions databaseOptions,
             TimeSpan lockAcquireTimeout,
             CancellationToken cancellationToken) =>
-            serviceProvider.OrchestrateStructaDocMigrationsAsync(
+            serviceProvider.OrchestrateMigrationsAsync(
                 databaseOptions,
                 ServiceMantleMigrationOrchestration.ResolveDeploymentMode(databaseOptions.Provider),
                 lockAcquireTimeout,

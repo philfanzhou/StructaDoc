@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Adapters.ControlPlane;
@@ -8,8 +7,8 @@ using StructaDoc.Contracts.Authentication;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class AdministratorSessionEndpointTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Login_requires_antiforgery_token()
@@ -19,8 +18,8 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
         using var response = await client.PostAsJsonAsync(
             "/api/v1/admin/session",
             new AdministratorLoginRequest(
-                StructaDocWebApplicationFactory.AdministratorUsername,
-                StructaDocWebApplicationFactory.AdministratorPassword),
+                HostWebApplicationFactory.AdministratorUsername,
+                HostWebApplicationFactory.AdministratorPassword),
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -34,7 +33,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/session")
         {
             Content = JsonContent.Create(new AdministratorLoginRequest(
-                StructaDocWebApplicationFactory.AdministratorUsername,
+                HostWebApplicationFactory.AdministratorUsername,
                 "not-the-password")),
         };
         request.Headers.Add(token.HeaderName, token.RequestToken);
@@ -57,7 +56,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
             using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/session")
             {
                 Content = JsonContent.Create(new AdministratorLoginRequest(
-                    StructaDocWebApplicationFactory.AdministratorUsername,
+                    HostWebApplicationFactory.AdministratorUsername,
                     "not-the-password")),
             };
             request.Headers.Add(token.HeaderName, token.RequestToken);
@@ -85,7 +84,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
 
         Assert.Equal(HttpStatusCode.OK, sessionResponse.StatusCode);
         Assert.NotNull(session);
-        Assert.Equal(StructaDocWebApplicationFactory.AdministratorUsername, session.Username);
+        Assert.Equal(HostWebApplicationFactory.AdministratorUsername, session.Username);
 
         using var logoutResponse = await client.DeleteAsync(
             "/api/v1/admin/session",
@@ -121,7 +120,7 @@ public sealed class AdministratorSessionEndpointTests(StructaDocWebApplicationFa
     [Fact]
     public async Task Security_stamp_change_revokes_existing_cookie()
     {
-        using var isolatedFactory = new StructaDocWebApplicationFactory();
+        using var isolatedFactory = new HostWebApplicationFactory();
         using var client = isolatedFactory.CreateClient();
         await client.LoginAsAdministratorAsync();
         Guid originalStamp;

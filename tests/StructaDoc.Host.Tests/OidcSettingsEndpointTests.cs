@@ -64,7 +64,7 @@ public sealed class OidcSettingsEndpointTests
         using (var client = await SettingsTestDeployment.SignedInClientAsync(restarted))
         {
             var settings = restarted.Services
-                .GetRequiredService<Adapters.ControlPlane.StructaDocSettingsConfiguration>();
+                .GetRequiredService<Adapters.ControlPlane.SettingsConfiguration>();
             Assert.Equal(Secret, settings.Effective[SettingCatalog.OidcClientSecret]);
 
             var state = await GetAsync(client, SettingCatalog.OidcClientSecret);

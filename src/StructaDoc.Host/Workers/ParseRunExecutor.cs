@@ -107,8 +107,14 @@ public sealed class ParseRunExecutor(
                         return;
                     }
                     throw segmentedCommit.Status == ParseBundleCommitStatus.StorageMismatch
-                        ? Failure(segmentedCommit.ErrorCode ?? "parse-result-storage-mismatch", segmentedCommit.ErrorMessage ?? "The segmented result storage could not be verified.", retryable: true)
-                        : Failure(segmentedCommit.ErrorCode ?? "parse-result-commit-failed", segmentedCommit.ErrorMessage ?? "The segmented result could not be committed.", retryable: false);
+                        ? Failure(
+                            segmentedCommit.ErrorCode ?? "parse-result-storage-mismatch",
+                            segmentedCommit.ErrorMessage ?? "The segmented result storage could not be verified.",
+                            retryable: true)
+                        : Failure(
+                            segmentedCommit.ErrorCode ?? "parse-result-commit-failed",
+                            segmentedCommit.ErrorMessage ?? "The segmented result could not be committed.",
+                            retryable: false);
                 }
 
                 try
@@ -334,23 +340,48 @@ public sealed class ParseRunExecutor(
         }
         catch (ExecutionFailureException exception)
         {
-            await RecordFailureAsync(session, exception.ErrorCode, exception.Message, exception.Retryable, stoppingToken);
+            await RecordFailureAsync(
+                session,
+                exception.ErrorCode,
+                exception.Message,
+                exception.Retryable,
+                stoppingToken);
         }
         catch (ProviderException exception)
         {
-            await RecordFailureAsync(session, exception.ErrorCode, exception.Message, exception.Retryable, stoppingToken);
+            await RecordFailureAsync(
+                session,
+                exception.ErrorCode,
+                exception.Message,
+                exception.Retryable,
+                stoppingToken);
         }
         catch (ProviderResultIntakeException exception)
         {
-            await RecordFailureAsync(session, exception.ErrorCode, exception.Message, exception.Retryable, stoppingToken);
+            await RecordFailureAsync(
+                session,
+                exception.ErrorCode,
+                exception.Message,
+                exception.Retryable,
+                stoppingToken);
         }
         catch (ProviderResultNormalizationException exception)
         {
-            await RecordFailureAsync(session, exception.ErrorCode, exception.Message, exception.Retryable, stoppingToken);
+            await RecordFailureAsync(
+                session,
+                exception.ErrorCode,
+                exception.Message,
+                exception.Retryable,
+                stoppingToken);
         }
         catch (DocumentConversionException exception)
         {
-            await RecordFailureAsync(session, exception.ErrorCode, exception.Message, exception.Retryable, stoppingToken);
+            await RecordFailureAsync(
+                session,
+                exception.ErrorCode,
+                exception.Message,
+                exception.Retryable,
+                stoppingToken);
         }
         catch (JsonException)
         {

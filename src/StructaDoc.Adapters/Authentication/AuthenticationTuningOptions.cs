@@ -3,7 +3,7 @@ namespace StructaDoc.Adapters.Authentication;
 /// <summary>
 /// The Authentication keys that only tune local administration sign-in: how long an administrator
 /// session lasts and how tightly the two sign-in endpoints are rate limited. Nothing here locates
-/// the key ring or unlocks stored secrets, so unlike <see cref="StructaDocAuthenticationOptions"/>
+/// the key ring or unlocks stored secrets, so unlike <see cref="AuthenticationBootstrapOptions"/>
 /// these keys are bound from the settings-aware configuration — the one an administrator's stored
 /// values have already joined — which is what makes them settable from the browser. They take
 /// effect at the next start, because the cookie and both rate-limit policies are built once at

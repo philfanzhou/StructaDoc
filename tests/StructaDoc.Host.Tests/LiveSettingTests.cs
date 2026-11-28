@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.Settings;
 

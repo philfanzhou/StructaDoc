@@ -33,10 +33,10 @@ internal static class MissingServerDatabaseContract
     {
         var executor = new ForbiddenExecutor();
         var registrations = new ServiceCollection();
-        registrations.AddStructaDocPersistenceMigrationServices(options);
+        registrations.AddPersistenceMigrationServices(options);
         registrations.AddScoped<IDatabaseMigrationExecutor>(_ => executor);
         await using var services = registrations.BuildServiceProvider();
-        var result = await services.OrchestrateStructaDocMigrationsAsync(
+        var result = await services.OrchestrateMigrationsAsync(
             options, ServiceMantleMigrationOrchestration.ResolveDeploymentMode(options.Provider),
             cancellationToken: cancellationToken);
         Assert.False(result.Succeeded);

@@ -15,8 +15,8 @@ using StructaDoc.Host.Workers;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class ParseRunLeaseHeartbeatTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ParseRunLeaseHeartbeatTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Heartbeat_and_stage_updates_share_the_latest_lease_token()

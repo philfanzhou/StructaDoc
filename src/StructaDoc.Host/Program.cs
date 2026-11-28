@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
 using ServiceMantle;
 using ServiceMantle.Health;
-using ServiceMantle.Web.Http;
 using ServiceMantle.Web.Logging;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
@@ -52,7 +51,7 @@ builder.Configuration.AddContainerDefaults(args);
 // because the reverse-proxy trust registers on it below, once the options it needs are read.
 // The same registration maps the health endpoints: /health/live is always 200, and /health/ready with
 // its /health alias answer 200 only for the Completed + Succeeded + Reachable snapshot the
-// StructaDocHealthSnapshotSource composes from the control plane and the business database.
+// HealthSnapshotSource composes from the control plane and the business database.
 //
 // The same registration opts into the core OpenTelemetry instrumentation: ASP.NET Core and
 // HttpClient tracing plus .NET runtime metrics, with no exporter registered. Trace and metric data
@@ -75,8 +74,8 @@ var serviceMantle = builder.Services.AddServiceMantle(
 // through the same pipeline. The three switches start at the shipped appsettings levels and are
 // re-seeded from the settings-aware configuration further down, before the host starts. Grafana
 // Loki stays off; there is no remote log transport in this wiring.
-var consoleLogSwitches = new StructaDocConsoleLogSwitches();
-builder.Services.AddStructaDocConsoleLogging(consoleLogSwitches);
+var consoleLogSwitches = new ConsoleLogSwitches();
+builder.Services.AddConsoleLogging(consoleLogSwitches);
 
 var controlPlaneOptions = builder.Configuration
     .GetSection(ControlPlaneOptions.SectionName)
@@ -90,8 +89,8 @@ controlPlaneOptions.Validate();
 // architecture test holds both halves of the split in place: the keys read here stay out of the
 // settings catalog, and the tuning keys are in it.
 var authenticationOptions = builder.Configuration
-    .GetSection(StructaDocAuthenticationOptions.SectionName)
-    .Get<StructaDocAuthenticationOptions>() ?? new StructaDocAuthenticationOptions();
+    .GetSection(AuthenticationBootstrapOptions.SectionName)
+    .Get<AuthenticationBootstrapOptions>() ?? new AuthenticationBootstrapOptions();
 authenticationOptions.Validate();
 
 // Read from the raw configuration for the same reason, though a different one applies too: which
@@ -105,7 +104,7 @@ reverseProxyOptions.Validate();
 // The trust registration is validated with the host, not at composition: ServiceMantle parses the
 // named peers, the published hosts, and the forward limit into one snapshot when the host starts,
 // so an unusable value fails startup rather than becoming a proxy that silently does nothing.
-serviceMantle.AddStructaDocForwardedHeaders(reverseProxyOptions);
+serviceMantle.AddReverseProxy(reverseProxyOptions);
 
 // The ZIP export stages the archive it returns on the path below before handing it to the
 // response. That is a deployment fact, not tuning: the browser cannot see the filesystem it would
@@ -126,7 +125,7 @@ parseExportOptions.Validate();
 IDataProtectionProvider keyRing;
 if (authenticationOptions.DataProtectionKeyPersistence == DataProtectionKeyPersistence.Database)
 {
-    if (StructaDocSettingsConfiguration.HasStoredSection(
+    if (SettingsConfiguration.HasStoredSection(
             controlPlaneOptions,
             SettingCatalog.DatabaseSection,
             args))
@@ -144,11 +143,11 @@ if (authenticationOptions.DataProtectionKeyPersistence == DataProtectionKeyPersi
         .GetSection(DatabaseOptions.SectionName)
         .Get<DatabaseOptions>() ?? new DatabaseOptions();
     pinnedDatabaseOptions.Validate();
-    keyRing = StructaDocKeyRing.CreateDatabase(authenticationOptions, pinnedDatabaseOptions);
+    keyRing = DataProtectionKeyRing.CreateDatabase(authenticationOptions, pinnedDatabaseOptions);
 }
 else
 {
-    keyRing = StructaDocKeyRing.Create(authenticationOptions);
+    keyRing = DataProtectionKeyRing.Create(authenticationOptions);
 }
 
 var settingSecretProtector = new DataProtectionSettingSecretProtector(keyRing);
@@ -157,7 +156,7 @@ var settingsStartupFault = new SettingsStartupFault();
 // Settings an administrator chose in the browser join configuration before anything is read from
 // it. Everything below binds against this rather than the raw builder configuration, or a stored
 // setting would be visible to the administration page and invisible to the service using it.
-var settingsConfiguration = StructaDocSettingsConfiguration.Create(
+var settingsConfiguration = SettingsConfiguration.Create(
     builder.Configuration,
     controlPlaneOptions,
     args,
@@ -280,35 +279,35 @@ var authenticationTuningOptions = AuthenticationTuningConfigurationBinder.Bind(
     settingsConfiguration,
     settingsStartupFault);
 
-builder.Services.AddStructaDocControlPlane(controlPlaneOptions);
-builder.Services.AddStructaDocPersistence(databaseOptions);
+builder.Services.AddControlPlane(controlPlaneOptions);
+builder.Services.AddPersistence(databaseOptions);
 // Readiness is served by the ServiceMantle health endpoints, which read one snapshot per request
 // from the source below. The registration is scoped because the probes run on the request's own
 // control-plane and business-database contexts.
-builder.Services.AddScoped<IServiceHealthSnapshotSource, StructaDocHealthSnapshotSource>();
-builder.Services.AddStructaDocDocumentIngestion(ingestionOptions, storageOptions, uploadLimits);
-builder.Services.AddStructaDocDocumentConversion(conversionOptions);
-builder.Services.AddStructaDocParseProviders();
-builder.Services.AddStructaDocLayoutDetection(layoutRuntimeOptions, layoutOptions);
+builder.Services.AddScoped<IServiceHealthSnapshotSource, HealthSnapshotSource>();
+builder.Services.AddDocumentIngestion(ingestionOptions, storageOptions, uploadLimits);
+builder.Services.AddDocumentConversion(conversionOptions);
+builder.Services.AddParseProviders();
+builder.Services.AddLayoutDetection(layoutRuntimeOptions, layoutOptions);
 // The layout endpoint's own overload bound. It is fixed rather than settings-managed because it
 // protects this Host's request-scoped memory budget, and it is registered here rather than inside
 // the adapter extension because the adapter extension owns the runtime contract, not the public
 // endpoint's admission behavior.
 builder.Services.AddSingleton<LayoutDetectInFlightGate>();
-builder.Services.AddStructaDocImageRecognition(recognitionOptions);
+builder.Services.AddImageRecognition(recognitionOptions);
 // The recognition endpoint's own overload bound, for the layout gate's reason and kept separate
 // from it so recognition traffic never changes how the layout route answers.
 builder.Services.AddSingleton<ImageRecognizeInFlightGate>();
-builder.Services.AddStructaDocProviderResults(
+builder.Services.AddProviderResults(
     providerResultOptions,
     providerResultNormalizationOptions);
-builder.Services.AddStructaDocHostAuthentication(
+builder.Services.AddHostAuthentication(
     authenticationOptions,
     authenticationTuningOptions,
     oidcOptions,
     keyRing,
     serviceMantle);
-builder.Services.AddStructaDocApiDescription();
+builder.Services.AddApiDescription();
 builder.Services.AddSingleton(oidcOptions);
 builder.Services.AddSingleton(authenticationTuningOptions);
 builder.Services.AddSingleton(workerOptions);
@@ -323,18 +322,18 @@ builder.Services.AddScoped<ISettingsService, SettingsService>();
 // The two settings that apply to the running service rather than at the next start. Each listener
 // owns one key, applies it to the runtime state that key governs, and reports the value currently
 // running, which is what the settings read uses to say honestly whether a restart is pending.
-builder.Services.AddSingleton<ISettingChangeListener, WorkerConcurrencySettingListener>();
+builder.Services.AddSingleton<ISettingChangeListener, ConcurrencySettingListener>();
 builder.Services.AddSingleton<ISettingChangeListener, DocumentUploadLimitsSettingListener>();
-builder.Services.AddSingleton<ISettingChangeListener, LoggingLevelSettingListener>();
-builder.Services.AddSingleton(new WorkerConcurrencyGate(workerOptions.MaxConcurrency));
+builder.Services.AddSingleton<ISettingChangeListener, LogLevelSettingListener>();
+builder.Services.AddSingleton(new ConcurrencyGate(workerOptions.MaxConcurrency));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ParseRunLeaseHeartbeat>();
 builder.Services.AddScoped<ParseRunExecutor>();
 builder.Services.AddScoped<LargePdfParseOrchestrator>();
 builder.Services.AddScoped<StructaDoc.Application.ParseRuns.IParseExportService, ParseExportService>();
-builder.Services.AddHostedService<ParseRunMaintenanceWorker>();
-builder.Services.AddHostedService<ParseRunExecutionWorker>();
-builder.Services.AddHostedService<ResourceCleanupWorker>();
+builder.Services.AddHostedService<ParseRunMaintenance>();
+builder.Services.AddHostedService<ParseRunExecution>();
+builder.Services.AddHostedService<ResourceCleanup>();
 // The multipart length limit no longer carries the upload rejection: the limit it used to restate
 // moves at runtime now, while this one is fixed at startup. It therefore sits at the catalog's own
 // ceiling for the key — the largest value a browser write can put in force — plus the multipart
@@ -360,7 +359,7 @@ foreach (var (section, detail) in settingsStartupFault.Faults)
 
 // The control plane is migrated first and unconditionally: administration must be reachable even
 // when the configured business database is not, and it is what an administrator uses to fix that.
-await app.Services.ApplyStructaDocControlPlaneMigrationsAsync(app.Lifetime.ApplicationStopping);
+await app.Services.ApplyControlPlaneMigrationsAsync(app.Lifetime.ApplicationStopping);
 // A business database an administrator pointed at from the browser can be absent, refuse the
 // credentials, or be a server this build cannot migrate, and none of that is visible until the
 // service starts. Stopping here would take away the administration area, which is the only place it
@@ -374,7 +373,7 @@ try
 {
     if (databaseOptions.ApplyMigrationsOnStartup)
     {
-        await app.Services.ApplyStructaDocMigrationsAsync(
+        await app.Services.ApplyMigrationsAsync(
             databaseOptions,
             app.Lifetime.ApplicationStopping);
     }
@@ -391,7 +390,7 @@ catch (Exception error) when (
         error,
         "The configured business database could not be prepared. The administration area remains available so the configuration can be corrected.");
 }
-await app.Services.BootstrapStructaDocAdministratorAsync(
+await app.Services.BootstrapAdministratorAsync(
     authenticationOptions,
     app.Lifetime.ApplicationStopping);
 
@@ -402,7 +401,7 @@ await app.Services.BootstrapStructaDocAdministratorAsync(
 // startup continues: the administration area is where both would be corrected.
 try
 {
-    await app.Services.SeedStructaDocOfficialProviderAsync(app.Lifetime.ApplicationStopping);
+    await app.Services.SeedOfficialProviderAsync(app.Lifetime.ApplicationStopping);
 }
 catch (Exception error) when (error is not OperationCanceledException)
 {
@@ -415,7 +414,7 @@ catch (Exception error) when (error is not OperationCanceledException)
 // correct once the proxy in front has been believed: cookies decide `Secure` from the scheme, the
 // sign-in redirect address composed for an identity provider is built from the scheme and host, and
 // the rate limiter below partitions on the caller's address.
-app.UseStructaDocReverseProxy(reverseProxyOptions, app.Logger);
+app.UseReverseProxy(reverseProxyOptions, app.Logger);
 
 // Every response answers with the request's Correlation ID in `x-correlation-id`, including 4xx/5xx
 // from anything below, so a report from a consumer can be matched to the exact request in the logs.
@@ -454,7 +453,7 @@ app.UseStaticFiles();
 // Before authentication because the page carries no credential of its own, and before the endpoint
 // that answers unmatched routes with the application shell, which would otherwise return HTML for
 // every path under it.
-app.UseStructaDocApiDescriptionPage();
+app.UseApiDescriptionPage();
 app.UseAuthentication();
 // After authentication and before authorization, because the `servicemantle.management` policy
 // partitions an authenticated caller by its management identity and falls back to the caller's
@@ -485,7 +484,7 @@ app.Use(async (context, next) =>
 
 var serviceLogContext = app.Services.GetRequiredService<ServiceLogContext>();
 
-app.MapStructaDocApiDescription();
+app.MapApiDescription();
 
 app.MapGet(
         "/api/v1/system/info",

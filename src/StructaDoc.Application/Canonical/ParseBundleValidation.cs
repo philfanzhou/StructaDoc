@@ -115,7 +115,9 @@ public static class ParseBundleValidator
             if (page.Label is not null
                 && (!PageLabelSources.IsValidLabel(page.Label) || !PageLabelSources.IsKnown(page.LabelSource)))
             {
-                return Invalid("invalid-page-label", "A Page label must be printable text of at most 256 characters from a known source.");
+                return Invalid(
+                    "invalid-page-label",
+                    "A Page label must be printable text of at most 256 characters from a known source.");
             }
 
             var sourceLocator = ValidateOptionalJsonObject(
@@ -214,7 +216,9 @@ public static class ParseBundleValidator
 
             if (block.Sequence != index)
             {
-                return Invalid("invalid-block-sequence", "Block sequence must be continuous, ordered, and start at zero.");
+                return Invalid(
+                    "invalid-block-sequence",
+                    "Block sequence must be continuous, ordered, and start at zero.");
             }
 
             if (block.PageNumber.HasValue && !pageNumbers.Contains(block.PageNumber.Value))
@@ -231,7 +235,9 @@ public static class ParseBundleValidator
 
             if (!IsOptionalAnnotation(block.Caption) || !IsOptionalAnnotation(block.Footnote))
             {
-                return Invalid("invalid-block-annotation", "A Block caption or footnote must be null or non-blank text.");
+                return Invalid(
+                    "invalid-block-annotation",
+                    "A Block caption or footnote must be null or non-blank text.");
             }
 
             if (block.Content?.Length > MaxBlockContentCharacters
@@ -246,7 +252,9 @@ public static class ParseBundleValidator
                 + (block.Footnote?.Length ?? 0);
             if (totalBlockContentCharacters > MaxTotalBlockContentCharacters)
             {
-                return Invalid("bundle-content-too-large", "The Parse Bundle content exceeds the aggregate size limit.");
+                return Invalid(
+                    "bundle-content-too-large",
+                    "The Parse Bundle content exceeds the aggregate size limit.");
             }
 
             if (!ValidateBoundingBox(block.BoundingBox))
@@ -288,7 +296,9 @@ public static class ParseBundleValidator
             aggregateJsonBytes += GetByteCount(block.ProviderDataJson);
             if (aggregateJsonBytes > MaxAggregateJsonBytes)
             {
-                return Invalid("bundle-json-too-large", "The Parse Bundle JSON extensions exceed the aggregate size limit.");
+                return Invalid(
+                    "bundle-json-too-large",
+                    "The Parse Bundle JSON extensions exceed the aggregate size limit.");
             }
         }
 
@@ -437,7 +447,9 @@ public static class ParseBundleValidator
         {
             case JsonValueKind.Object:
                 writer.WriteStartObject();
-                foreach (var property in element.EnumerateObject().OrderBy(property => property.Name, StringComparer.Ordinal))
+                foreach (var property in element.EnumerateObject().OrderBy(
+                    property => property.Name,
+                    StringComparer.Ordinal))
                 {
                     writer.WritePropertyName(property.Name);
                     WriteCanonicalJson(writer, property.Value);

@@ -24,8 +24,8 @@ using StructaDoc.Host.Workers;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed partial class ParseRunExecutorTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Executor_runs_provider_result_pipeline_to_canonical_success()

@@ -28,8 +28,11 @@ public sealed class FileStorageOptions
         {
             throw new InvalidOperationException("Storage:RootPath must be configured.");
         }
-        if (string.Equals(Provider, "S3", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(Bucket)) throw new InvalidOperationException("Storage:Bucket must be configured for S3.");
-        if ((AccessKey is null) != (SecretKey is null)) throw new InvalidOperationException("Storage:AccessKey and Storage:SecretKey must be configured together.");
-        if (Prefix.Contains("..", StringComparison.Ordinal) || Prefix.Contains('\\')) throw new InvalidOperationException("Storage:Prefix must be a safe POSIX key prefix.");
+        if (string.Equals(Provider, "S3", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(Bucket))
+            throw new InvalidOperationException("Storage:Bucket must be configured for S3.");
+        if ((AccessKey is null) != (SecretKey is null))
+            throw new InvalidOperationException("Storage:AccessKey and Storage:SecretKey must be configured together.");
+        if (Prefix.Contains("..", StringComparison.Ordinal) || Prefix.Contains('\\'))
+            throw new InvalidOperationException("Storage:Prefix must be a safe POSIX key prefix.");
     }
 }

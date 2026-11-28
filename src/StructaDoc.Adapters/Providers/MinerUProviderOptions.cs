@@ -126,7 +126,8 @@ internal sealed record MinerUProviderOptions(
     {
         if (PresentProperties.Overlaps(["formula", "table", "language", "effort", "imageAnalysis"]))
         {
-            throw InvalidOptions("MinerU Local v4 does not support formula, table, language, effort, or imageAnalysis options.");
+            throw InvalidOptions(
+                "MinerU Local v4 does not support formula, table, language, effort, or imageAnalysis options.");
         }
 
         if (!StartPage.HasValue && !EndPage.HasValue)
@@ -144,7 +145,8 @@ internal sealed record MinerUProviderOptions(
             throw InvalidOptions("MinerU Local v4 page indexes exceed the supported range.");
         }
 
-        return FormattableString.Invariant($"{(StartPage ?? 0) + 1}-{(EndPage.HasValue ? (EndPage.Value + 1).ToString(System.Globalization.CultureInfo.InvariantCulture) : "r1")}");
+        return FormattableString.Invariant(
+            $"{(StartPage ?? 0) + 1}-{(EndPage.HasValue ? (EndPage.Value + 1).ToString(System.Globalization.CultureInfo.InvariantCulture) : "r1")}");
     }
 
     private static bool? ReadOptionalBoolean(JsonElement root, string name)

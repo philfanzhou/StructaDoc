@@ -19,14 +19,14 @@ namespace StructaDoc.Adapters.Persistence;
 
 public static class PersistenceServiceCollectionExtensions
 {
-    public static IServiceCollection AddStructaDocPersistence(
+    public static IServiceCollection AddPersistence(
         this IServiceCollection services,
         DatabaseOptions databaseOptions)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(databaseOptions);
 
-        services.AddStructaDocPersistenceMigrationServices(databaseOptions);
+        services.AddPersistenceMigrationServices(databaseOptions);
         services.AddScoped<IParseRunLeaseStore, EfCoreParseRunLeaseStore>();
         services.AddScoped<IParseRunStateStore, EfCoreParseRunStateStore>();
         services.AddScoped<IParseRunConversionStore, EfCoreParseRunConversionStore>();
@@ -48,7 +48,7 @@ public static class PersistenceServiceCollectionExtensions
     /// one-shot migration command deliberately does not construct runtime stores, health checks, or
     /// any Worker dependency graph.
     /// </summary>
-    public static IServiceCollection AddStructaDocPersistenceMigrationServices(
+    public static IServiceCollection AddPersistenceMigrationServices(
         this IServiceCollection services,
         DatabaseOptions databaseOptions)
     {
@@ -87,7 +87,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddServiceMantlePostgreSqlDeploymentCapability();
         services.AddServiceMantleMySqlDeploymentCapability();
         services.AddServiceMantleMariaDbDeploymentCapability();
-        services.AddScoped<IDatabaseMigrationExecutor, StructaDocMigrationExecutor>();
+        services.AddScoped<IDatabaseMigrationExecutor, MigrationExecutor>();
         // Direct invocation preserves the Host's stored-settings recovery boundary. The
         // shared entry registers no hosted runner and performs no target preparation.
         services.AddServiceMantleStartupDatabaseGateServices();

@@ -215,7 +215,8 @@ public sealed class EfCoreProviderConfigAdministrationService(
     private async Task ClearDefaultAsync(Guid? exceptId, DateTime nowUtc, CancellationToken cancellationToken)
     {
         await dbContext.ProviderConfigs
-            .Where(config => config.DefaultMarker == DefaultMarker && (!exceptId.HasValue || config.Id != exceptId.Value))
+            .Where(
+                config => config.DefaultMarker == DefaultMarker && (!exceptId.HasValue || config.Id != exceptId.Value))
             .ExecuteUpdateAsync(
                 updates => updates
                     .SetProperty(config => config.DefaultMarker, (string?)null)
