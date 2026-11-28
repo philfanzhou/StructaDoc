@@ -29,18 +29,21 @@ serving versioned API output.
   titles keep the English conventional commit format (`feat:` / `fix:` / `docs:` etc.),
   because after the squash merge the PR title becomes the title of the corresponding
   commit on `main`.
-- **Review is conducted in English throughout**: PR inline comments, review summaries,
-  replies, and reports to the user about problems found in review. Quoted code,
-  identifiers, compiler diagnostic codes, and command lines stay as-is.
+- **Review on GitHub is conducted in English**: PR inline comments, review summaries, and
+  replies in review threads. Quoted code, identifiers, compiler diagnostic codes, and
+  command lines stay as-is.
+- **Replies to the user follow the user's language.** Answer in the language the user
+  writes in, including when reporting what a review found. Quoted code, identifiers,
+  compiler diagnostic codes, and command lines stay as-is.
 - **Product and technical documentation uses English**: `README.md`, `docs/`, code
   comments, logs, exception messages, and text addressed to API consumers are public or
   engineering deliverables and stay in English. End-user interface text follows the
   product localization strategy.
-- Issue/PR bodies, review comments, and work reports use everyday English: prefer
-  stating the concrete object, behavior, and result, and avoid internal process jargon
-  and stiff, mechanical phrasing. When a necessary technical term first appears, add one
-  sentence explaining its role as the reader needs it; protocol fields and precise
-  technical names may stay as-is.
+- Issue/PR bodies and review comments use everyday English: prefer stating the concrete
+  object, behavior, and result, and avoid internal process jargon and stiff, mechanical
+  phrasing. When a necessary technical term first appears, add one sentence explaining
+  its role as the reader needs it; protocol fields and precise technical names may stay
+  as-is. Reports to the user use the same plain style, in the user's language.
 - Code identifiers and commit messages stay in English.
 
 ## Branching and merge policy
@@ -204,4 +207,4 @@ usually need no new design document.
 
 ## English working environment
 
-Write in English: project-maintained documentation (README and docs), Issue and Change Request titles and bodies, Comments, Discussions, Review Threads, and future commit messages, unless a maintainer explicitly requests another language. Preserve historical Issues, Change Requests, and comments. Do not translate code, commands, paths, identifiers, logs, technical data, or quoted external text. Preserve other project conventions.
+Write in English: project-maintained documentation (README and docs), Issue and Change Request titles and bodies, Comments, Discussions, Review Threads, and future commit messages, unless a maintainer explicitly requests another language. Conversation with the user is not part of this rule: reply in the language the user writes in. Preserve historical Issues, Change Requests, and comments. Do not translate code, commands, paths, identifiers, logs, technical data, or quoted external text. Preserve other project conventions.
