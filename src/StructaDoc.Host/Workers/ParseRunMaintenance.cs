@@ -41,8 +41,8 @@ public sealed class ParseRunMaintenance(
         {
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-            var leaseStore = scope.ServiceProvider.GetRequiredService<IParseRunLeaseStore>();
-            var stateStore = scope.ServiceProvider.GetRequiredService<IParseRunStateStore>();
+            var leaseStore = scope.ServiceProvider.GetRequiredService<IRunLeaseStore>();
+            var stateStore = scope.ServiceProvider.GetRequiredService<IRunStateStore>();
 
             var recoveredClaims = await leaseStore.RequeueExpiredUnstartedClaimsAsync(
                 nowUtc,

@@ -153,7 +153,7 @@ internal static class MigrationOrchestrationContract
         CancellationToken cancellationToken)
     {
         var builder = new DbContextOptionsBuilder<StructaDocDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
+        Adapters.Persistence.ServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
         await using var context = new StructaDocDbContext(builder.Options);
         return defined
             ? context.Database.GetMigrations().ToArray()
@@ -166,7 +166,7 @@ internal static class MigrationOrchestrationContract
         CancellationToken cancellationToken)
     {
         var builder = new DbContextOptionsBuilder<StructaDocDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
+        Adapters.Persistence.ServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
         await using var context = new StructaDocDbContext(builder.Options);
         // The identifiers are provider-quoting decisions made in this file, and the migration id
         // is a test constant, so the statement is assembled rather than parameterized.
@@ -188,7 +188,7 @@ internal static class MigrationOrchestrationContract
         CancellationToken cancellationToken)
     {
         var builder = new DbContextOptionsBuilder<StructaDocDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
+        Adapters.Persistence.ServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
         await using var context = new StructaDocDbContext(builder.Options);
         var sql = "DELETE FROM "
             + HistoryTableName(databaseOptions.Provider)

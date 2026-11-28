@@ -4,7 +4,7 @@ This note defines the secure and idempotent boundary for Provider ZIP results. S
 
 ## Intake Sequence
 
-`IProviderResultIntake.StoreArchiveAsync` currently accepts ZIP results only:
+`IResultIntake.StoreArchiveAsync` currently accepts ZIP results only:
 
 1. accept `application/zip`, `application/x-zip-compressed`, or `application/octet-stream` with an actual ZIP signature;
 2. stream the Provider response to the fixed internal key `parse-runs/{parseRunId}/provider/result.zip`, enforcing compressed bytes and computing SHA-256;
@@ -27,7 +27,7 @@ Validation rejects:
 - a mismatch between central-directory size declarations and bytes actually streamed;
 - empty, corrupt, non-ZIP, ZIP64, multi-volume, or runtime-unreadable archives.
 
-Errors use stable sanitized `ProviderResultIntakeException.ErrorCode` and failure category. Messages do not include malicious entry names or upstream bodies. Security/structure failures remove the just-stored fixed object. Cancellation and transient storage I/O preserve an atomically stored object for later revalidation.
+Errors use stable sanitized `ResultIntakeException.ErrorCode` and failure category. Messages do not include malicious entry names or upstream bodies. Security/structure failures remove the just-stored fixed object. Cancellation and transient storage I/O preserve an atomically stored object for later revalidation.
 
 ## Configuration
 

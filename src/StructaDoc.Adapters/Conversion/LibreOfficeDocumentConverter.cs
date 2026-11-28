@@ -20,7 +20,7 @@ public sealed class LibreOfficeDocumentConverter : IDocumentConverter, IDisposab
             ["application/vnd.openxmlformats-officedocument.presentationml.presentation"] = ".pptx",
         };
 
-    private readonly LibreOfficeConversionOptions options;
+    private readonly LibreOfficeOptions options;
     private readonly ILibreOfficeProcessRunner processRunner;
     private readonly SemaphoreSlim concurrencyGate;
     private readonly SemaphoreSlim versionGate = new(1, 1);
@@ -29,7 +29,7 @@ public sealed class LibreOfficeDocumentConverter : IDocumentConverter, IDisposab
     private int disposed;
 
     public LibreOfficeDocumentConverter(
-        LibreOfficeConversionOptions options,
+        LibreOfficeOptions options,
         ILibreOfficeProcessRunner processRunner)
     {
         ArgumentNullException.ThrowIfNull(options);

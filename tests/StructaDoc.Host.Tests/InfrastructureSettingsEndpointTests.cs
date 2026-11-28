@@ -362,7 +362,7 @@ public sealed class InfrastructureSettingsEndpointTests
                     },
                     [],
                     new FakeSettingSecretProtector(),
-                    new SettingsStartupFault()));
+                    new StartupFault()));
             }));
     }
 

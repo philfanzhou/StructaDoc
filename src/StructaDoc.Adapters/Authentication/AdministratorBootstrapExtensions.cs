@@ -17,7 +17,7 @@ public static class AdministratorBootstrapExtensions
     /// </summary>
     public static async Task BootstrapAdministratorAsync(
         this IServiceProvider serviceProvider,
-        AuthenticationBootstrapOptions options,
+        BootstrapOptions options,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);

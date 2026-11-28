@@ -87,7 +87,7 @@ public sealed class LibreOfficeIntegrationTests
                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
             using var converter = new LibreOfficeDocumentConverter(
-                new LibreOfficeConversionOptions
+                new LibreOfficeOptions
                 {
                     ExecutablePath = executablePath,
                     TemporaryPath = temporaryRoot,

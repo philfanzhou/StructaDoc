@@ -33,7 +33,7 @@ public sealed class SettingCatalogContractTests
     [Fact]
     public void Identity_provider_defaults_match_the_options_they_describe()
     {
-        var options = new OidcAuthenticationOptions();
+        var options = new OidcOptions();
 
         Assert.Equal(
             options.Enabled ? "true" : "false",
@@ -165,7 +165,7 @@ public sealed class SettingCatalogContractTests
         var settable = SettingCatalog.All
             .Select(definition => definition.Key)
             .Where(key => key.StartsWith(
-                AuthenticationBootstrapOptions.SectionName + ":",
+                BootstrapOptions.SectionName + ":",
                 StringComparison.Ordinal))
             .ToArray();
 
@@ -182,7 +182,7 @@ public sealed class SettingCatalogContractTests
     [Fact]
     public void Authentication_tuning_defaults_match_the_options_they_describe()
     {
-        var options = new AuthenticationTuningOptions();
+        var options = new TuningOptions();
 
         // The parameterless TimeSpan format is the invariant constant format, which is what the
         // catalog stores, so equal here means equal as written rather than equal after parsing.
@@ -271,7 +271,7 @@ public sealed class SettingCatalogContractTests
     [Fact]
     public void Provider_result_intake_defaults_match_the_options_they_describe()
     {
-        var options = new ProviderResultIntakeOptions();
+        var options = new ResultIntakeOptions();
 
         Assert.Equal(
             options.MaxArchiveBytes.ToString(),
@@ -299,7 +299,7 @@ public sealed class SettingCatalogContractTests
     [Fact]
     public void Provider_result_normalization_defaults_match_the_options_they_describe()
     {
-        var options = new ProviderResultNormalizationOptions();
+        var options = new ResultNormalizationOptions();
 
         Assert.Equal(
             options.MaxMarkdownBytes.ToString(),
@@ -315,7 +315,7 @@ public sealed class SettingCatalogContractTests
     [Fact]
     public void Document_conversion_defaults_match_the_options_they_describe()
     {
-        var options = new LibreOfficeConversionOptions();
+        var options = new LibreOfficeOptions();
 
         Assert.Equal(
             options.Enabled ? "true" : "false",
@@ -478,12 +478,12 @@ public sealed class SettingCatalogContractTests
         // limit, so its floor probe lowers the entry limit with it rather than leaving the default
         // beside it.
         var expanded = Definition(SettingCatalog.ProviderResultsMaxExpandedBytes);
-        new ProviderResultIntakeOptions
+        new ResultIntakeOptions
         {
             MaxExpandedBytes = expanded.Minimum,
             MaxEntryBytes = expanded.Minimum,
         }.Validate();
-        Assert.ThrowsAny<Exception>(() => new ProviderResultIntakeOptions
+        Assert.ThrowsAny<Exception>(() => new ResultIntakeOptions
         {
             MaxExpandedBytes = expanded.Minimum - 1,
             MaxEntryBytes = expanded.Minimum,
@@ -504,9 +504,9 @@ public sealed class SettingCatalogContractTests
         Assert.Equal(SettingKind.Number, ratio.Kind);
         Assert.Equal(1, ratio.Minimum);
         Assert.Equal(0, ratio.Maximum);
-        new ProviderResultIntakeOptions { MaxCompressionRatio = ratio.Minimum }.Validate();
+        new ResultIntakeOptions { MaxCompressionRatio = ratio.Minimum }.Validate();
         Assert.ThrowsAny<Exception>(
-            () => new ProviderResultIntakeOptions { MaxCompressionRatio = ratio.Minimum - 0.5 }.Validate());
+            () => new ResultIntakeOptions { MaxCompressionRatio = ratio.Minimum - 0.5 }.Validate());
     }
 
     [Fact]
@@ -550,13 +550,13 @@ public sealed class SettingCatalogContractTests
         // The temporary-disk allowance is floored not only by positivity but by having to cover
         // the input and output limits, so its floor probe lowers those with it.
         var temporary = Definition(SettingCatalog.LibreOfficeMaxTemporaryBytes);
-        new LibreOfficeConversionOptions
+        new LibreOfficeOptions
         {
             MaxInputBytes = temporary.Minimum,
             MaxOutputBytes = temporary.Minimum,
             MaxTemporaryBytes = temporary.Minimum,
         }.Validate();
-        Assert.ThrowsAny<Exception>(() => new LibreOfficeConversionOptions
+        Assert.ThrowsAny<Exception>(() => new LibreOfficeOptions
         {
             MaxInputBytes = temporary.Minimum,
             MaxOutputBytes = temporary.Minimum,
@@ -616,10 +616,10 @@ public sealed class SettingCatalogContractTests
     /// class ships, because a range probe that quietly changed two fields would prove nothing
     /// about either.
     /// </summary>
-    private static ProviderResultIntakeOptions IntakeWhere(string key, long value)
+    private static ResultIntakeOptions IntakeWhere(string key, long value)
     {
-        var defaults = new ProviderResultIntakeOptions();
-        return new ProviderResultIntakeOptions
+        var defaults = new ResultIntakeOptions();
+        return new ResultIntakeOptions
         {
             MaxArchiveBytes = Pick(key, SettingCatalog.ProviderResultsMaxArchiveBytes, value, defaults.MaxArchiveBytes),
             MaxEntryCount = (int)Pick(key, SettingCatalog.ProviderResultsMaxEntryCount, value, defaults.MaxEntryCount),
@@ -642,10 +642,10 @@ public sealed class SettingCatalogContractTests
         };
     }
 
-    private static ProviderResultNormalizationOptions NormalizationWhere(string key, long value)
+    private static ResultNormalizationOptions NormalizationWhere(string key, long value)
     {
-        var defaults = new ProviderResultNormalizationOptions();
-        return new ProviderResultNormalizationOptions
+        var defaults = new ResultNormalizationOptions();
+        return new ResultNormalizationOptions
         {
             MaxMarkdownBytes = Pick(
                 key,
@@ -665,10 +665,10 @@ public sealed class SettingCatalogContractTests
         };
     }
 
-    private static LibreOfficeConversionOptions ConversionWhere(string key, long milliseconds)
+    private static LibreOfficeOptions ConversionWhere(string key, long milliseconds)
     {
-        var defaults = new LibreOfficeConversionOptions();
-        return new LibreOfficeConversionOptions
+        var defaults = new LibreOfficeOptions();
+        return new LibreOfficeOptions
         {
             MaxConcurrency = (int)Pick(
                 key,
@@ -710,10 +710,10 @@ public sealed class SettingCatalogContractTests
         };
     }
 
-    private static AuthenticationTuningOptions TuningWhere(string key, long milliseconds)
+    private static TuningOptions TuningWhere(string key, long milliseconds)
     {
-        var defaults = new AuthenticationTuningOptions();
-        return new AuthenticationTuningOptions
+        var defaults = new TuningOptions();
+        return new TuningOptions
         {
             AdministratorSessionLifetime = TimeSpan.FromMilliseconds(Pick(
                 key,

@@ -128,7 +128,7 @@ completion log line carries status, timing, and block and line counts only.
 
 ## Execution Snapshot
 
-`IParseRunExecutionContextStore` accepts only a current `ParseRunLease` and verifies:
+`IRunExecutionContextStore` accepts only a current `RunLease` and verifies:
 
 - the Parse Run remains `claimed` or `running`;
 - claimant, concurrency version, and unexpired lease match;
@@ -139,7 +139,7 @@ It returns document metadata, internal object reference, sanitized options, stag
 
 ## State, Checkpoints, and Heartbeats
 
-`IParseRunStateStore` permits only the live lease to update a stage. Atomic submissions persist the external ID and enter `waiting-provider` in one compare-and-set operation. Cloud first stores an encrypted continuation while remaining `submitting`, then clears it and advances after upload confirmation. External IDs are write-once.
+`IRunStateStore` permits only the live lease to update a stage. Atomic submissions persist the external ID and enter `waiting-provider` in one compare-and-set operation. Cloud first stores an encrypted continuation while remaining `submitting`, then clears it and advances after upload confirmation. External IDs are write-once.
 
 An expired `running` job with an external ID becomes an adoption candidate. One new Worker preserves stage and attempt and resumes the existing task or checkpoint.
 
@@ -173,7 +173,7 @@ An administrator configures an enabled default Provider; a user then uploads a d
 
 ## Result Intake and Normalization
 
-`IProviderResultIntake` stores Provider ZIP results at a fixed logical key and validates compressed size, entries, expanded size, ratio, paths, duplicates, and special files. `IProviderResultNormalizer` deterministically maps recognized MinerU Markdown, content lists, layouts, model output, and images into canonical resources. Stable logical keys and UUIDs make crash replay produce the same bundle fingerprint.
+`IResultIntake` stores Provider ZIP results at a fixed logical key and validates compressed size, entries, expanded size, ratio, paths, duplicates, and special files. `IResultNormalizer` deterministically maps recognized MinerU Markdown, content lists, layouts, model output, and images into canonical resources. Stable logical keys and UUIDs make crash replay produce the same bundle fingerprint.
 
 See [Provider Result Intake](./provider-result-intake.md), [Provider Result Normalization](./provider-result-normalization.md), and [MinerU HTTP Provider Adapters](./mineru-http-providers.md).
 

@@ -11,7 +11,7 @@ namespace StructaDoc.Host.Authentication;
 
 public static class AdministratorAccountEndpoints
 {
-    public static IEndpointRouteBuilder MapAdministratorAccountEndpoints(
+    public static IEndpointRouteBuilder MapAdministratorAccount(
         this IEndpointRouteBuilder endpoints,
         TimeSpan sessionLifetime)
     {

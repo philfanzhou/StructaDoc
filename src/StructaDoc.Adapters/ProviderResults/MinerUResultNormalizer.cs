@@ -13,8 +13,8 @@ namespace StructaDoc.Adapters.ProviderResults;
 
 public sealed partial class MinerUResultNormalizer(
     IFileStorage fileStorage,
-    ProviderResultNormalizationOptions options,
-    ILogger<MinerUResultNormalizer> logger) : IProviderResultNormalizer
+    ResultNormalizationOptions options,
+    ILogger<MinerUResultNormalizer> logger) : IResultNormalizer
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
@@ -55,7 +55,7 @@ public sealed partial class MinerUResultNormalizer(
         providerType is ProviderTypes.MinerUCloud or ProviderTypes.MinerULocal;
 
     public async Task<ParseBundle> NormalizeAsync(
-        ProviderResultNormalizationRequest request,
+        ResultNormalizationRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -64,7 +64,7 @@ public sealed partial class MinerUResultNormalizer(
 
         try
         {
-            await using var session = await ProviderArchiveReadSession.OpenAsync(
+            await using var session = await ArchiveReadSession.OpenAsync(
                 fileStorage,
                 request.Archive,
                 options.TemporaryPath,
@@ -302,11 +302,11 @@ public sealed partial class MinerUResultNormalizer(
         {
             throw;
         }
-        catch (ProviderResultNormalizationException)
+        catch (ResultNormalizationException)
         {
             throw;
         }
-        catch (StorageObjectConflictException exception)
+        catch (ObjectConflictException exception)
         {
             throw Failure(
                 "provider-result-derived-storage-conflict",
@@ -340,7 +340,7 @@ public sealed partial class MinerUResultNormalizer(
         }
     }
 
-    private static void ValidateRequest(ProviderResultNormalizationRequest request)
+    private static void ValidateRequest(ResultNormalizationRequest request)
     {
         if (request.ParseRunId == Guid.Empty)
         {
@@ -372,7 +372,7 @@ public sealed partial class MinerUResultNormalizer(
         }
     }
 
-    private static ZipArchiveEntry FindRequiredMarkdown(ProviderArchiveReadSession session)
+    private static ZipArchiveEntry FindRequiredMarkdown(ArchiveReadSession session)
     {
         if (session.Entries.TryGetValue("full.md", out var exact) && !IsDirectory(exact))
         {
@@ -398,7 +398,7 @@ public sealed partial class MinerUResultNormalizer(
     }
 
     private static ZipArchiveEntry? FindOptionalJson(
-        ProviderArchiveReadSession session,
+        ArchiveReadSession session,
         string exactPath,
         params string[] suffixes)
     {
@@ -492,7 +492,7 @@ public sealed partial class MinerUResultNormalizer(
     // Planning runs before the first derived write, so the count and size limits and the image
     // signature detection that decide each asset key all execute while nothing is stored yet.
     private async Task<AssetPlan> PlanAssetsAsync(
-        ProviderArchiveReadSession session,
+        ArchiveReadSession session,
         Guid parseRunId,
         CancellationToken cancellationToken)
     {
@@ -861,7 +861,7 @@ public sealed partial class MinerUResultNormalizer(
     // MinerU writes a page on every item, so a content list where most items have none is a layout
     // this normalizer does not recognize. The log carries counts only: no content, paths, or values.
     private void WarnWhenMostItemsLackPages(
-        ProviderResultNormalizationRequest request,
+        ResultNormalizationRequest request,
         JsonElement contentList)
     {
         var itemCount = contentList.GetArrayLength();
@@ -983,7 +983,7 @@ public sealed partial class MinerUResultNormalizer(
         $"parse-runs/{parseRunId:N}/artifacts/{storedName}";
 
     private static ParseArtifact CreateArchiveArtifact(
-        ProviderResultNormalizationRequest request) =>
+        ResultNormalizationRequest request) =>
         new(
             CreateDeterministicId(
                 request.ParseRunId,
@@ -1129,7 +1129,7 @@ public sealed partial class MinerUResultNormalizer(
             : name;
     }
 
-    private static string CreateProviderMetadata(ProviderResultNormalizationRequest request)
+    private static string CreateProviderMetadata(ResultNormalizationRequest request)
     {
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -1200,7 +1200,7 @@ public sealed partial class MinerUResultNormalizer(
     private static bool IsDirectory(ZipArchiveEntry entry) =>
         entry.FullName.EndsWith("/", StringComparison.Ordinal);
 
-    private static ProviderResultNormalizationException Failure(
+    private static ResultNormalizationException Failure(
         string code,
         string message,
         ProviderFailureCategory category = ProviderFailureCategory.Permanent,

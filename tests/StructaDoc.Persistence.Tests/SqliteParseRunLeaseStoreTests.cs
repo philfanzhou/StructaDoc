@@ -54,7 +54,7 @@ public sealed class SqliteParseRunLeaseStoreTests
         Assert.NotNull(originalLease);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunLeaseStore(dbContext);
+        var store = new EfCoreRunLeaseStore(dbContext);
         var renewedLease = await store.TryRenewLeaseAsync(
             originalLease,
             nowUtc.AddSeconds(10),
@@ -85,7 +85,7 @@ public sealed class SqliteParseRunLeaseStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var store = new EfCoreParseRunLeaseStore(dbContext);
+            var store = new EfCoreRunLeaseStore(dbContext);
             var recoveredCount = await store.RequeueExpiredUnstartedClaimsAsync(
                 nowUtc.AddSeconds(2),
                 maxCount: 10,
@@ -120,7 +120,7 @@ public sealed class SqliteParseRunLeaseStoreTests
                     nowUtc.AddSeconds(-1)),
             cancellationToken: TestContext.Current.CancellationToken);
 
-            var store = new EfCoreParseRunLeaseStore(dbContext);
+            var store = new EfCoreRunLeaseStore(dbContext);
             var recoveredCount = await store.RequeueExpiredUnstartedClaimsAsync(
                 nowUtc,
                 maxCount: 10,
@@ -147,7 +147,7 @@ public sealed class SqliteParseRunLeaseStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            var stateStore = new EfCoreRunStateStore(dbContext);
             var runningLease = await stateStore.TryStartAsync(
                 claimedLease,
                 ParseRunStages.Submitting,
@@ -172,7 +172,7 @@ public sealed class SqliteParseRunLeaseStoreTests
             Enumerable.Range(1, 8).Select(async workerNumber =>
             {
                 await using var dbContext = new StructaDocDbContext(database.Options);
-                var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+                var leaseStore = new EfCoreRunLeaseStore(dbContext);
                 return await leaseStore.TryRecoverNextRunningAsync(
                     $"recovery-worker-{workerNumber}",
                     nowUtc,
@@ -215,7 +215,7 @@ public sealed class SqliteParseRunLeaseStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            var stateStore = new EfCoreRunStateStore(dbContext);
             Assert.NotNull(await stateStore.TryStartAsync(
                 claimedLease,
                 stage,
@@ -225,7 +225,7 @@ public sealed class SqliteParseRunLeaseStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+            var leaseStore = new EfCoreRunLeaseStore(dbContext);
             var recovery = await leaseStore.RecoverExpiredUnsubmittedRunsAsync(
                 nowUtc.AddSeconds(2),
                 maxCount: 10,
@@ -252,7 +252,7 @@ public sealed class SqliteParseRunLeaseStoreTests
     {
         await using var database = await SqliteLeaseTestDatabase.CreateAsync(parseRunCount: 1);
         var nowUtc = DateTime.UtcNow;
-        var claimedLease = Assert.IsType<ParseRunLease>(await ClaimOneAsync(
+        var claimedLease = Assert.IsType<RunLease>(await ClaimOneAsync(
             database.Options,
             "segment-worker",
             nowUtc,
@@ -260,8 +260,8 @@ public sealed class SqliteParseRunLeaseStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var stateStore = new EfCoreParseRunStateStore(dbContext);
-            var segmentingLease = Assert.IsType<ParseRunLease>(await stateStore.TryStartAsync(
+            var stateStore = new EfCoreRunStateStore(dbContext);
+            var segmentingLease = Assert.IsType<RunLease>(await stateStore.TryStartAsync(
                 claimedLease,
                 ParseRunStages.Segmenting,
                 nowUtc.AddSeconds(1),
@@ -295,7 +295,7 @@ public sealed class SqliteParseRunLeaseStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var recovery = await new EfCoreParseRunLeaseStore(dbContext)
+            var recovery = await new EfCoreRunLeaseStore(dbContext)
                 .RecoverExpiredUnsubmittedRunsAsync(
                     nowUtc.AddSeconds(4),
                     maxCount: 10,
@@ -317,14 +317,14 @@ public sealed class SqliteParseRunLeaseStoreTests
         Assert.Equal("segment-task-1", persistedSegment.ExternalTaskId);
     }
 
-    private static async Task<StructaDoc.Application.ParseRuns.ParseRunLease?> ClaimOneAsync(
+    private static async Task<StructaDoc.Application.ParseRuns.RunLease?> ClaimOneAsync(
         DbContextOptions<StructaDocDbContext> options,
         string workerId,
         DateTime nowUtc,
         TimeSpan? leaseDuration = null)
     {
         await using var dbContext = new StructaDocDbContext(options);
-        var store = new EfCoreParseRunLeaseStore(dbContext);
+        var store = new EfCoreRunLeaseStore(dbContext);
         return await store.TryClaimNextAsync(
             workerId,
             nowUtc,

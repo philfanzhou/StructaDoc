@@ -51,7 +51,7 @@ public sealed class DatabaseConnectionProbe
         {
             candidate.Validate();
             builder = new DbContextOptionsBuilder<StructaDocDbContext>();
-            PersistenceServiceCollectionExtensions.ConfigureDatabase(builder, candidate);
+            ServiceCollectionExtensions.ConfigureDatabase(builder, candidate);
         }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or FormatException)
         {

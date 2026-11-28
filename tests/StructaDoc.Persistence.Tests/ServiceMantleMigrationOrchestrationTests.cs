@@ -54,7 +54,7 @@ public sealed class ServiceMantleMigrationOrchestrationTests
             Assert.Equal(1, results.Count(result => result.ExecutorWasCalled));
 
             var builder = new DbContextOptionsBuilder<StructaDocDbContext>();
-            PersistenceServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
+            Adapters.Persistence.ServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
             await using var context = new StructaDocDbContext(builder.Options);
             Assert.Empty(await context.Database.GetPendingMigrationsAsync(
                 TestContext.Current.CancellationToken));

@@ -10,7 +10,7 @@ namespace StructaDoc.Host.Authentication;
 
 public static class ApiClientAdministrationEndpoints
 {
-    public static IEndpointRouteBuilder MapApiClientAdministrationEndpoints(
+    public static IEndpointRouteBuilder MapApiClientAdministration(
         this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/admin/api-clients")

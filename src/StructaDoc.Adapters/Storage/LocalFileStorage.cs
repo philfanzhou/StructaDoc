@@ -94,7 +94,7 @@ public sealed class LocalFileStorage
                     return storedFile;
                 }
 
-                throw new StorageObjectConflictException(storageRef);
+                throw new ObjectConflictException(storageRef);
             }
         }
         finally

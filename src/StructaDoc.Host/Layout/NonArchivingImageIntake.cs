@@ -80,8 +80,8 @@ internal static class NonArchivingImageIntake
             return new ImageIntake(null, null, image.Rejection);
         }
 
-        var inspection = LayoutImageInspection.Parse(image.Bytes.Span);
-        if (inspection.Verdict == LayoutImageVerdict.Unsupported)
+        var inspection = ImageInspection.Parse(image.Bytes.Span);
+        if (inspection.Verdict == ImageVerdict.Unsupported)
         {
             return Rejected(
                 StatusCodes.Status415UnsupportedMediaType,
@@ -89,13 +89,13 @@ internal static class NonArchivingImageIntake
                 "The submitted image must be a JPEG or a PNG.");
         }
 
-        if (inspection.Verdict == LayoutImageVerdict.PixelBoundExceeded)
+        if (inspection.Verdict == ImageVerdict.PixelBoundExceeded)
         {
             return Rejected(
                 StatusCodes.Status413PayloadTooLarge,
                 InputTooLarge,
-                $"The image exceeds the pixel bounds of {LayoutImageInspection.MaximumDimensionPixels} "
-                    + $"per dimension and {LayoutImageInspection.MaximumTotalPixels} in total.");
+                $"The image exceeds the pixel bounds of {ImageInspection.MaximumDimensionPixels} "
+                    + $"per dimension and {ImageInspection.MaximumTotalPixels} in total.");
         }
 
         // The signature has decided the format. A declared content type that contradicts it — or

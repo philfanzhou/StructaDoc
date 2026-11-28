@@ -10,7 +10,7 @@ namespace StructaDoc.Host.Settings;
 
 public static class SystemControlEndpoints
 {
-    public static IEndpointRouteBuilder MapSystemControlEndpoints(
+    public static IEndpointRouteBuilder MapSystemControl(
         this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/admin/system")

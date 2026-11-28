@@ -95,7 +95,7 @@ public sealed class InnoDbMigrationPreflight : IBusinessDatabaseMigrationPreflig
         }
 
         var contextOptions = new DbContextOptionsBuilder<StructaDocDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(contextOptions, databaseOptions);
+        ServiceCollectionExtensions.ConfigureDatabase(contextOptions, databaseOptions);
 
         await using var context = new StructaDocDbContext(contextOptions.Options);
         var allMigrations = context.Database

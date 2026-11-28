@@ -56,7 +56,7 @@ public sealed class OidcInteractiveSessionTests
             .Build();
 
         var options = configuration.GetSection("Oidc")
-            .Get<StructaDoc.Adapters.Authentication.OidcAuthenticationOptions>()!;
+            .Get<StructaDoc.Adapters.Authentication.OidcOptions>()!;
 
         Assert.Equal(["openid", "profile"], options.EffectiveScopes);
         options.Validate();

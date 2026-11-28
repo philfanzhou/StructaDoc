@@ -156,7 +156,7 @@ public sealed class UserWorkspaceFeatureTests(HostWebApplicationFactory factory)
                 OptionsJson = "{}",
                 SourceMediaType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 SubmittedMediaType = "application/pdf",
-                ConversionJson = new ParseRunConversion(
+                ConversionJson = new RunConversion(
                     "libreoffice",
                     "24.8",
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

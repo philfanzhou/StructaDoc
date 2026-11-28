@@ -18,7 +18,7 @@ public sealed class SettingsConfigurationTests : IDisposable
         Guid.NewGuid().ToString("N"));
 
     private readonly FakeSettingSecretProtector protector = new();
-    private readonly SettingsStartupFault fault = new();
+    private readonly StartupFault fault = new();
 
     public SettingsConfigurationTests()
     {

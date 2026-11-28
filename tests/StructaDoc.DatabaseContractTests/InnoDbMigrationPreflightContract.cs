@@ -143,7 +143,7 @@ internal static class InnoDbMigrationPreflightContract
         string? targetMigration = null)
     {
         var builder = new DbContextOptionsBuilder<StructaDocDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(builder, options);
+        ServiceCollectionExtensions.ConfigureDatabase(builder, options);
         await using var context = new StructaDocDbContext(builder.Options);
         if (targetMigration is null)
         {

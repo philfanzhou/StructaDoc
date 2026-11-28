@@ -76,7 +76,7 @@ public sealed class EfCoreParseBundleCommitStore(
     }
 
     public async Task<ParseBundleCommitResult> TryCommitAsync(
-        ParseRunLease currentLease,
+        RunLease currentLease,
         VerifiedParseBundle verifiedBundle,
         CancellationToken cancellationToken = default)
     {
@@ -384,7 +384,7 @@ public sealed class EfCoreParseBundleCommitStore(
 
         try
         {
-            var expected = ParseRunConversion.FromJson(conversionJson).ToArtifact();
+            var expected = RunConversion.FromJson(conversionJson).ToArtifact();
             return artifacts.Any(artifact => artifact == expected);
         }
         catch (Exception exception) when (exception is System.Text.Json.JsonException or ArgumentException)

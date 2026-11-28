@@ -30,7 +30,7 @@ public static class LayoutDetectEndpoints
     /// </summary>
     private const string LayoutTimeoutErrorCode = "mineru-layout-timeout";
 
-    public static IEndpointRouteBuilder MapLayoutDetectEndpoints(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapLayoutDetect(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
@@ -57,7 +57,7 @@ public static class LayoutDetectEndpoints
         HttpRequest request,
         ILayoutDetectionProviderResolver resolver,
         LayoutBackendSelection backendSelection,
-        LayoutDetectInFlightGate inFlightGate,
+        DetectInFlightGate inFlightGate,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -103,7 +103,7 @@ public static class LayoutDetectEndpoints
         HttpRequest request,
         ILayoutDetectionProviderResolver resolver,
         LayoutBackendSelection backendSelection,
-        LayoutDetectInFlightGate inFlightGate,
+        DetectInFlightGate inFlightGate,
         CancellationToken cancellationToken)
     {
         // Everything about the request shape is decided before the body is read or a slot is
@@ -118,7 +118,7 @@ public static class LayoutDetectEndpoints
         if (!inFlightGate.TryEnter())
         {
             request.HttpContext.Response.Headers.RetryAfter =
-                LayoutDetectInFlightGate.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+                DetectInFlightGate.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
             return LayoutOutcome.FromProblem(
                 StatusCodes.Status429TooManyRequests,
                 "layout-overloaded",

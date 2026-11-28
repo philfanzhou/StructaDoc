@@ -34,7 +34,7 @@ internal static class DataProtectionKeyRingContract
         };
 
         var optionsBuilder = new DbContextOptionsBuilder<StructaDocDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(optionsBuilder, databaseOptions);
+        Adapters.Persistence.ServiceCollectionExtensions.ConfigureDatabase(optionsBuilder, databaseOptions);
         await using (var context = new StructaDocDbContext(optionsBuilder.Options))
         {
             // The table is part of the ordinary migration history: no separate entry point and no
@@ -89,7 +89,7 @@ internal static class DataProtectionKeyRingContract
         }
     }
 
-    private static AuthenticationBootstrapOptions AuthenticationWithRootKey(string rootKey) => new()
+    private static BootstrapOptions AuthenticationWithRootKey(string rootKey) => new()
     {
         DataProtectionKeyPersistence = DataProtectionKeyPersistence.Database,
         DataProtectionRootKey = rootKey,
@@ -106,7 +106,7 @@ internal static class DataProtectionKeyRingContract
     {
         var services = new ServiceCollection();
         services.AddDbContextFactory<StructaDocDbContext>(
-            dbContext => PersistenceServiceCollectionExtensions.ConfigureDatabase(dbContext, databaseOptions));
+            dbContext => Adapters.Persistence.ServiceCollectionExtensions.ConfigureDatabase(dbContext, databaseOptions));
         services.AddDataProtection()
             .PersistKeysToServiceMantleEfCore<StructaDocDbContext>(
                 ServiceId.Parse("structadoc"),

@@ -73,7 +73,7 @@ public sealed class S3FileStorage(IAmazonS3 client, FileStorageOptions options) 
             when (exception.StatusCode is HttpStatusCode.PreconditionFailed or HttpStatusCode.Conflict)
             {
                 if (!await MatchesExistingAsync(key, size, sha, cancellationToken))
-                    throw new StorageObjectConflictException(storageRef);
+                    throw new ObjectConflictException(storageRef);
             }
             return new StoredFile(storageRef, size, sha);
         }

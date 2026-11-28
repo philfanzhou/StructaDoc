@@ -139,7 +139,7 @@ public sealed class ManagementAuditContractTests
             deployment.Options,
             [],
             new FakeSettingSecretProtector(),
-            new SettingsStartupFault());
+            new StartupFault());
         var settings = new SettingsService(
             deployment.DbContext,
             configuration,
@@ -174,7 +174,7 @@ public sealed class ManagementAuditContractTests
         // The interceptor fails the write's save, after both the setting row and the audit row were
         // staged on the same context. Neither may survive.
         var options = new DbContextOptionsBuilder<ControlPlaneDbContext>();
-        ControlPlaneServiceCollectionExtensions.ConfigureControlPlane(options, deployment.Options);
+        ServiceCollectionExtensions.ConfigureControlPlane(options, deployment.Options);
         options.AddInterceptors(new FailingSaveInterceptor());
         await using var dbContext = new ControlPlaneDbContext(options.Options);
         var configuration = SettingsConfiguration.Create(
@@ -182,7 +182,7 @@ public sealed class ManagementAuditContractTests
             deployment.Options,
             [],
             new FakeSettingSecretProtector(),
-            new SettingsStartupFault());
+            new StartupFault());
         var settings = new SettingsService(
             dbContext,
             configuration,
@@ -276,7 +276,7 @@ public sealed class ManagementAuditContractTests
         public ControlPlaneDbContext CreateVerifierContext()
         {
             var builder = new DbContextOptionsBuilder<ControlPlaneDbContext>();
-            ControlPlaneServiceCollectionExtensions.ConfigureControlPlane(builder, Options);
+            ServiceCollectionExtensions.ConfigureControlPlane(builder, Options);
             return new ControlPlaneDbContext(builder.Options);
         }
 

@@ -52,7 +52,7 @@ public sealed partial class ParseRunExecutorTests
                     await using var content = new ProviderResultContent(
                         new MemoryStream(StubMinerUServer.CreateResultArchive(v4: true)),
                         "application/zip");
-                    await services.GetRequiredService<IProviderResultIntake>().StoreArchiveAsync(
+                    await services.GetRequiredService<IResultIntake>().StoreArchiveAsync(
                         id,
                         content,
                         cancellationToken: TestContext.Current.CancellationToken);

@@ -173,7 +173,7 @@ public sealed class SettingsEndpointTests
                     },
                     ["--Worker:MaxConcurrency=7"],
                     new FakeSettingSecretProtector(),
-                    new SettingsStartupFault()))));
+                    new StartupFault()))));
         using var client = await SignedInClientAsync(factory);
 
         // Only the refusal is asserted here. The pin reaches this Host through the replaced
@@ -464,7 +464,7 @@ public sealed class SettingsEndpointTests
                     },
                     ["--Worker:LeaseDuration=00:09:00"],
                     new FakeSettingSecretProtector(),
-                    new SettingsStartupFault()))));
+                    new StartupFault()))));
         using var client = await SignedInClientAsync(factory);
 
         Assert.True((await GetAsync(client, SettingCatalog.WorkerLeaseDuration)).IsManagedExternally);
@@ -588,7 +588,7 @@ public sealed class SettingsEndpointTests
                     },
                     ["--Authentication:AdministratorSessionLifetime=00:45:00"],
                     new FakeSettingSecretProtector(),
-                    new SettingsStartupFault()))));
+                    new StartupFault()))));
         using var client = await SignedInClientAsync(factory);
 
         Assert.True(
@@ -661,10 +661,10 @@ public sealed class SettingsEndpointTests
             .Get(StructaDoc.Host.Authentication.AuthenticationSchemes.AdministratorCookie);
     }
 
-    private static AuthenticationTuningOptions BoundAuthenticationTuning(WebApplicationFactory<Program> factory)
+    private static TuningOptions BoundAuthenticationTuning(WebApplicationFactory<Program> factory)
     {
         using var scope = factory.Services.CreateScope();
-        return scope.ServiceProvider.GetRequiredService<AuthenticationTuningOptions>();
+        return scope.ServiceProvider.GetRequiredService<TuningOptions>();
     }
 
     private static void SeedStoredSetting(string controlPlanePath, string key, string value)

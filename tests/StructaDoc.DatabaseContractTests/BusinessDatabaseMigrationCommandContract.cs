@@ -28,12 +28,12 @@ internal static class BusinessDatabaseMigrationCommandContract
 
             Assert.Equal(
                 0,
-                await BusinessDatabaseMigrationCommand.ExecuteAsync(
+                await BusinessDatabaseCommand.ExecuteAsync(
                     arguments,
                     cancellationToken));
             Assert.Equal(
                 0,
-                await BusinessDatabaseMigrationCommand.ExecuteAsync(
+                await BusinessDatabaseCommand.ExecuteAsync(
                     arguments,
                     cancellationToken));
 
@@ -45,7 +45,7 @@ internal static class BusinessDatabaseMigrationCommandContract
                 ApplyMigrationsOnStartup = false,
             };
             var builder = new DbContextOptionsBuilder<StructaDocDbContext>();
-            PersistenceServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
+            ServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
             await using var context = new StructaDocDbContext(builder.Options);
             Assert.Empty(await context.Database.GetPendingMigrationsAsync(cancellationToken));
         }
@@ -69,7 +69,7 @@ internal static class BusinessDatabaseMigrationCommandContract
 
         try
         {
-            return await BusinessDatabaseMigrationCommand.ExecuteAsync(
+            return await BusinessDatabaseCommand.ExecuteAsync(
                 CreateArguments(
                     provider,
                     connectionString,

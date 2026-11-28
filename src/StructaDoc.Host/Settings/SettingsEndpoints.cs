@@ -9,7 +9,7 @@ namespace StructaDoc.Host.Settings;
 
 public static class SettingsEndpoints
 {
-    public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapSettings(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/admin/settings")
             .RequireAuthorization(AuthorizationPolicies.Administrator)
@@ -42,7 +42,7 @@ public static class SettingsEndpoints
     /// fault for any dropped section is visible: a stored value that is not in effect must be
     /// discoverable, or the page reports it as though it were running.
     /// </summary>
-    private static IResult ListStartupFaults(SettingsStartupFault fault)
+    private static IResult ListStartupFaults(StartupFault fault)
     {
         return Results.Ok(fault.Faults.Select(
             pair => new SettingStartupFaultResponse(pair.Key, pair.Value)).ToArray());

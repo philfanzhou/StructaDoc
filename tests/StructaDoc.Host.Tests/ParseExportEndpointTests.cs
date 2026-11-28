@@ -168,14 +168,14 @@ public sealed class ParseExportEndpointTests(HostWebApplicationFactory factory)
         await storage.DeleteIfExistsAsync(
             storedAsset.StorageRef,
             TestContext.Current.CancellationToken);
-        var results = serviceScope.ServiceProvider.GetRequiredService<IParseResultReadService>();
+        var results = serviceScope.ServiceProvider.GetRequiredService<IResultReadService>();
         var exportAssets = await results.ListAssetsForExportAsync(
             seeded.ParseRunId,
             ResourceAccessContext.System,
             TestContext.Current.CancellationToken);
         var exportAsset = Assert.Single(exportAssets!);
 
-        await Assert.ThrowsAsync<ParseResultContentUnavailableException>(() =>
+        await Assert.ThrowsAsync<ResultContentUnavailableException>(() =>
             results.OpenExportAssetAsync(
                 seeded.ParseRunId,
                 exportAsset,
@@ -276,8 +276,8 @@ public sealed class ParseExportEndpointTests(HostWebApplicationFactory factory)
         using var specializedFactory = factory.WithWebHostBuilder(builder =>
             builder.ConfigureServices(services =>
             {
-                services.RemoveAll<IParseExportService>();
-                services.AddSingleton<IParseExportService>(exports);
+                services.RemoveAll<IExportService>();
+                services.AddSingleton<IExportService>(exports);
             }));
         using var client = specializedFactory.CreateClient();
         await client.LoginAsAdministratorAsync();
@@ -535,7 +535,7 @@ public sealed class ParseExportEndpointTests(HostWebApplicationFactory factory)
     [InlineData("![](images/diagram.png?v=2)", "![](assets/diagram.png)")]
     public void Rewriter_maps_provider_relative_image_links(string source, string expected)
     {
-        var asset = new ParseAssetRecord(
+        var asset = new AssetRecord(
             Guid.NewGuid(),
             "diagram.png",
             "image/png",
@@ -555,11 +555,11 @@ public sealed class ParseExportEndpointTests(HostWebApplicationFactory factory)
     [Fact]
     public void Rewriter_leaves_absolute_unmatched_and_ambiguous_links_alone()
     {
-        var first = new ParseAssetRecord(
+        var first = new AssetRecord(
             Guid.NewGuid(), "shared.png", "image/png", 1, new string('a', 64), null, null);
-        var second = new ParseAssetRecord(
+        var second = new AssetRecord(
             Guid.NewGuid(), "shared.png", "image/png", 1, new string('b', 64), null, null);
-        var unique = new ParseAssetRecord(
+        var unique = new AssetRecord(
             Guid.NewGuid(), "unique.png", "image/png", 1, new string('c', 64), null, null);
         var assets = ExportAssetLinkRewriter.BuildAssetsByFileName([first, second, unique]);
 
@@ -577,9 +577,9 @@ public sealed class ParseExportEndpointTests(HostWebApplicationFactory factory)
     [Fact]
     public void Segment_rewriter_keeps_same_named_images_bound_to_their_own_segment()
     {
-        var first = new ParseAssetRecord(
+        var first = new AssetRecord(
             Guid.NewGuid(), "figure.png", "image/png", 1, new string('a', 64), null, null);
-        var second = new ParseAssetRecord(
+        var second = new AssetRecord(
             Guid.NewGuid(), "figure.png", "image/png", 1, new string('b', 64), null, null);
 
         var firstMarkdown = ExportAssetLinkRewriter.RewriteSegmentImages(
@@ -711,7 +711,7 @@ public sealed class ParseExportEndpointTests(HostWebApplicationFactory factory)
         string format)
     {
         await using var serviceScope = factory.Services.CreateAsyncScope();
-        var exports = serviceScope.ServiceProvider.GetRequiredService<IParseExportService>();
+        var exports = serviceScope.ServiceProvider.GetRequiredService<IExportService>();
         using var commandScope = factory.DatabaseCommandCounter.BeginScope();
         var export = await exports.CreateAsync(
             parseRunId,
@@ -747,7 +747,7 @@ public sealed class ParseExportEndpointTests(HostWebApplicationFactory factory)
         Guid AssetId,
         byte[] MarkdownBytes);
 
-    private sealed class CountingParseExportService : IParseExportService
+    private sealed class CountingParseExportService : IExportService
     {
         private const string Fingerprint = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -759,7 +759,7 @@ public sealed class ParseExportEndpointTests(HostWebApplicationFactory factory)
             CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>(Fingerprint);
 
-        public Task<ParseResultContent?> CreateAsync(
+        public Task<ResultContent?> CreateAsync(
             Guid parseRunId,
             string format,
             ResourceAccessContext access,
@@ -767,7 +767,7 @@ public sealed class ParseExportEndpointTests(HostWebApplicationFactory factory)
         {
             CreateCallCount++;
             var bytes = "<!doctype html><p>preview</p>"u8.ToArray();
-            return Task.FromResult<ParseResultContent?>(new ParseResultContent(
+            return Task.FromResult<ResultContent?>(new ResultContent(
                 new MemoryStream(bytes, writable: false),
                 $"{parseRunId:D}.html",
                 "text/html; charset=utf-8",

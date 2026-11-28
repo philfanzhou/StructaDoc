@@ -5,7 +5,7 @@ namespace StructaDoc.Adapters.Providers;
 /// <summary>
 /// The bound form of the <c>LayoutRuntime</c> settings section: where the optional layout
 /// inference runtime listens, the credential a protected runtime requires, and the per-request
-/// timeout and concurrency bound. Following <c>LibreOfficeConversionOptions</c>, the section binds
+/// timeout and concurrency bound. Following <c>LibreOfficeOptions</c>, the section binds
 /// recoverably at startup, so a stored value that fails <see cref="Validate"/> is dropped and the
 /// service starts on the shipped defaults.
 ///

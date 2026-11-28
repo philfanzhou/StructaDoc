@@ -49,7 +49,7 @@ public sealed class DatabaseProviderConfigurationTests
         };
         var optionsBuilder = new DbContextOptionsBuilder<StructaDocDbContext>();
 
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(optionsBuilder, databaseOptions);
+        ServiceCollectionExtensions.ConfigureDatabase(optionsBuilder, databaseOptions);
 
         using var dbContext = new StructaDocDbContext(optionsBuilder.Options);
         Assert.Equal(expectedProviderName, dbContext.Database.ProviderName);

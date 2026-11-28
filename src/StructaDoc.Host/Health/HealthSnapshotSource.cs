@@ -32,7 +32,7 @@ namespace StructaDoc.Host.Health;
 public sealed class HealthSnapshotSource(
     ControlPlaneDbContext controlPlane,
     StructaDocDbContext businessDatabase,
-    SettingsStartupFault settingsStartupFault) : IServiceHealthSnapshotSource
+    StartupFault settingsStartupFault) : IServiceHealthSnapshotSource
 {
     public const string ControlPlaneUnreachableErrorCode = "structadoc.control_plane.unreachable";
     public const string DatabaseStartupFaultErrorCode = "structadoc.database.startup_fault";

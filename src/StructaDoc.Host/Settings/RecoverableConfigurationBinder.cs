@@ -18,7 +18,7 @@ public static class RecoverableConfigurationBinder
 {
     public static TOptions Bind<TOptions>(
         SettingsConfiguration settings,
-        SettingsStartupFault fault,
+        StartupFault fault,
         string section,
         string description,
         Func<IConfiguration, TOptions> read,

@@ -389,7 +389,7 @@ public sealed class ParseBundleCommitStoreTests
         var lease = await database.CreateRunningLeaseAsync(nowUtc);
         var bundle = await database.CreateBundleAsync(lease.ParseRunId);
         var artifactId = Guid.NewGuid();
-        var conversion = new ParseRunConversion(
+        var conversion = new RunConversion(
             "libreoffice",
             "LibreOffice test-version",
             "application/pdf",
@@ -672,7 +672,7 @@ public sealed class ParseBundleCommitStoreTests
             return database;
         }
 
-        public async Task<ParseRunLease> CreateRunningLeaseAsync(DateTime nowUtc)
+        public async Task<RunLease> CreateRunningLeaseAsync(DateTime nowUtc)
         {
             targetParseRunId = Guid.NewGuid();
 
@@ -708,11 +708,11 @@ public sealed class ParseBundleCommitStoreTests
                 await dbContext.SaveChangesAsync();
             }
 
-            ParseRunLease claimedLease;
+            RunLease claimedLease;
             await using (var dbContext = new StructaDocDbContext(Options))
             {
-                var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
-                claimedLease = Assert.IsType<ParseRunLease>(await leaseStore.TryClaimNextAsync(
+                var leaseStore = new EfCoreRunLeaseStore(dbContext);
+                claimedLease = Assert.IsType<RunLease>(await leaseStore.TryClaimNextAsync(
                     "bundle-test-worker",
                     nowUtc,
                     TimeSpan.FromMinutes(5)));
@@ -720,8 +720,8 @@ public sealed class ParseBundleCommitStoreTests
 
             await using (var dbContext = new StructaDocDbContext(Options))
             {
-                var stateStore = new EfCoreParseRunStateStore(dbContext);
-                return Assert.IsType<ParseRunLease>(await stateStore.TryStartAsync(
+                var stateStore = new EfCoreRunStateStore(dbContext);
+                return Assert.IsType<RunLease>(await stateStore.TryStartAsync(
                     claimedLease,
                     ParseRunStages.Persisting,
                     nowUtc.AddSeconds(1)));

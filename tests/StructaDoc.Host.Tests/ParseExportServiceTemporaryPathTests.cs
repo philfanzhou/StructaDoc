@@ -34,7 +34,7 @@ public sealed class ParseExportServiceTemporaryPathTests
     [Fact]
     public void Local_default_is_the_writable_data_tree_and_validates()
     {
-        var options = new ParseExportOptions();
+        var options = new ExportOptions();
 
         // The local default matches the sibling temporary paths: under ./data, which a
         // self-hosted checkout owns, rather than the system temporary directory.
@@ -138,7 +138,7 @@ public sealed class ParseExportServiceTemporaryPathTests
         };
         var service = CreateService(readService, stagingDirectory);
 
-        await Assert.ThrowsAsync<ParseResultContentUnavailableException>(
+        await Assert.ThrowsAsync<ResultContentUnavailableException>(
             () => service.CreateAsync(
                 readService.ParseRunId,
                 "zip",
@@ -198,8 +198,8 @@ public sealed class ParseExportServiceTemporaryPathTests
         "structadoc-export-staging-tests",
         Guid.NewGuid().ToString("N"));
 
-    private static ParseExportService CreateService(IParseResultReadService results, string stagingDirectory) =>
-        new(results, new UnusedDocumentReadService(), new ParseExportOptions { TemporaryPath = stagingDirectory });
+    private static ExportService CreateService(IResultReadService results, string stagingDirectory) =>
+        new(results, new UnusedDocumentReadService(), new ExportOptions { TemporaryPath = stagingDirectory });
 
     /// <summary>A fixed Asset with its metadata, plus control over the stream that serves it.</summary>
     private sealed record SyntheticAsset(string Name, byte[] Bytes, Func<Stream>? OpenContent = null)
@@ -219,20 +219,20 @@ public sealed class ParseExportServiceTemporaryPathTests
     /// else the interface offers is outside this fixture's contract and refuses use.
     /// </summary>
     private sealed class SyntheticReadService(string markdown, IReadOnlyList<SyntheticAsset> assets)
-        : IParseResultReadService
+        : IResultReadService
     {
         public bool FailAssetOpen { get; init; }
 
         public Guid ParseRunId { get; } = Guid.NewGuid();
 
-        public Task<ParseResultContent?> OpenMarkdownAsync(
+        public Task<ResultContent?> OpenMarkdownAsync(
             Guid parseRunId,
             ResourceAccessContext access,
             CancellationToken cancellationToken = default)
         {
             Assert.Equal(ParseRunId, parseRunId);
             var bytes = Encoding.UTF8.GetBytes(markdown);
-            return Task.FromResult<ParseResultContent?>(new ParseResultContent(
+            return Task.FromResult<ResultContent?>(new ResultContent(
                 new MemoryStream(bytes, writable: false),
                 "document.md",
                 "text/markdown",
@@ -240,14 +240,14 @@ public sealed class ParseExportServiceTemporaryPathTests
                 Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()));
         }
 
-        public Task<IReadOnlyList<ParseExportAssetRecord>?> ListAssetsForExportAsync(
+        public Task<IReadOnlyList<ExportAssetRecord>?> ListAssetsForExportAsync(
             Guid parseRunId,
             ResourceAccessContext access,
             CancellationToken cancellationToken = default)
         {
             Assert.Equal(ParseRunId, parseRunId);
-            IReadOnlyList<ParseExportAssetRecord> records =
-                [.. assets.Select(asset => new ParseExportAssetRecord(
+            IReadOnlyList<ExportAssetRecord> records =
+                [.. assets.Select(asset => new ExportAssetRecord(
                     ParseRunId,
                     Guid.NewGuid(),
                     asset.Name,
@@ -257,23 +257,23 @@ public sealed class ParseExportServiceTemporaryPathTests
                     null,
                     null,
                     $"parse-runs/{parseRunId:N}/assets/{asset.Name}"))];
-            return Task.FromResult<IReadOnlyList<ParseExportAssetRecord>?>(records);
+            return Task.FromResult<IReadOnlyList<ExportAssetRecord>?>(records);
         }
 
-        public Task<ParseResultContent?> OpenExportAssetAsync(
+        public Task<ResultContent?> OpenExportAssetAsync(
             Guid parseRunId,
-            ParseExportAssetRecord asset,
+            ExportAssetRecord asset,
             CancellationToken cancellationToken = default)
         {
             if (FailAssetOpen)
             {
-                throw new ParseResultContentUnavailableException(
+                throw new ResultContentUnavailableException(
                     parseRunId,
                     new FileNotFoundException());
             }
 
             var content = assets.Single(candidate => candidate.Name == asset.Name);
-            return Task.FromResult<ParseResultContent?>(new ParseResultContent(
+            return Task.FromResult<ResultContent?>(new ResultContent(
                 content.Open(),
                 content.Name,
                 "image/png",
@@ -281,50 +281,50 @@ public sealed class ParseExportServiceTemporaryPathTests
                 content.Sha256));
         }
 
-        public Task<ParseRunRecord?> GetAsync(
+        public Task<RunRecord?> GetAsync(
             Guid parseRunId,
             ResourceAccessContext access,
-            CancellationToken cancellationToken = default) => Refuse<ParseRunRecord?>();
+            CancellationToken cancellationToken = default) => Refuse<RunRecord?>();
 
-        public Task<IReadOnlyList<ParseRunRecord>> ListForDocumentAsync(
+        public Task<IReadOnlyList<RunRecord>> ListForDocumentAsync(
             Guid documentId,
             ResourceAccessContext access,
-            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParseRunRecord>>();
+            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<RunRecord>>();
 
-        public Task<IReadOnlyList<ParsePageRecord>?> ListPagesAsync(
+        public Task<IReadOnlyList<PageRecord>?> ListPagesAsync(
             Guid parseRunId,
             ResourceAccessContext access,
-            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParsePageRecord>?>();
+            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<PageRecord>?>();
 
-        public Task<ParseBlockPage?> ListBlocksAsync(
+        public Task<BlockPage?> ListBlocksAsync(
             Guid parseRunId,
             ResourceAccessContext access,
             int limit,
             int? afterSequence = null,
             int? pageNumber = null,
-            CancellationToken cancellationToken = default) => Refuse<ParseBlockPage?>();
+            CancellationToken cancellationToken = default) => Refuse<BlockPage?>();
 
-        public Task<IReadOnlyList<ParseAssetRecord>?> ListAssetsAsync(
+        public Task<IReadOnlyList<AssetRecord>?> ListAssetsAsync(
             Guid parseRunId,
             ResourceAccessContext access,
-            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParseAssetRecord>?>();
+            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<AssetRecord>?>();
 
-        public Task<IReadOnlyList<ParseArtifactRecord>?> ListArtifactsAsync(
+        public Task<IReadOnlyList<ArtifactRecord>?> ListArtifactsAsync(
             Guid parseRunId,
             ResourceAccessContext access,
-            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ParseArtifactRecord>?>();
+            CancellationToken cancellationToken = default) => Refuse<IReadOnlyList<ArtifactRecord>?>();
 
-        public Task<ParseResultContent?> OpenAssetAsync(
+        public Task<ResultContent?> OpenAssetAsync(
             Guid parseRunId,
             Guid assetId,
             ResourceAccessContext access,
-            CancellationToken cancellationToken = default) => Refuse<ParseResultContent?>();
+            CancellationToken cancellationToken = default) => Refuse<ResultContent?>();
 
-        public Task<ParseResultContent?> OpenArtifactAsync(
+        public Task<ResultContent?> OpenArtifactAsync(
             Guid parseRunId,
             Guid artifactId,
             ResourceAccessContext access,
-            CancellationToken cancellationToken = default) => Refuse<ParseResultContent?>();
+            CancellationToken cancellationToken = default) => Refuse<ResultContent?>();
 
         private static Task<T> Refuse<T>() => throw new NotSupportedException(
             "This synthetic read service serves ZIP exports only.");

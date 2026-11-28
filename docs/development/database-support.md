@@ -166,7 +166,7 @@ being weighed.
 
 ## Durable Job Stores
 
-`IParseRunLeaseStore` is the Application-layer job boundary. Its portable EF Core implementation:
+`IRunLeaseStore` is the Application-layer job boundary. Its portable EF Core implementation:
 
 - orders due `queued` candidates by next attempt, creation time, and ID;
 - uses status, due time, and concurrency version as compare-and-set conditions;
@@ -175,11 +175,11 @@ being weighed.
 - returns expired unstarted claims to `queued`;
 - lets one new Worker adopt an expired `running` job that has an external task ID without resubmission or attempt inflation.
 
-`IParseRunStateStore` restricts transitions to the current lease. It persists stages, one-time external IDs, Cloud encrypted submission continuations, retry waits, and terminal failures with conditional updates.
+`IRunStateStore` restricts transitions to the current lease. It persists stages, one-time external IDs, Cloud encrypted submission continuations, retry waits, and terminal failures with conditional updates.
 
-`IParseRunExecutionContextStore` returns a snapshot only for a matching live lease. It reads the immutable Provider configuration version captured at Parse Run creation, not the administrator's current version. Credentials and continuations are decrypted only inside this boundary and never enter public DTOs.
+`IRunExecutionContextStore` returns a snapshot only for a matching live lease. It reads the immutable Provider configuration version captured at Parse Run creation, not the administrator's current version. Credentials and continuations are decrypted only inside this boundary and never enter public DTOs.
 
-`IParseRunConversionStore` writes an immutable conversion snapshot only during the `converting` stage. `ParseRunLeaseHeartbeat` serializes renewal with state and result writes so each operation receives the newest concurrency token.
+`IRunConversionStore` writes an immutable conversion snapshot only during the `converting` stage. `ParseRunLeaseHeartbeat` serializes renewal with state and result writes so each operation receives the newest concurrency token.
 
 `IParseBundleCommitStore` verifies object size and SHA-256 before a single transaction writes Pages, Blocks, Assets, Artifacts, bundle fingerprint, and `succeeded`. Same-fingerprint replay is idempotent; a stale lease, cancellation race, partial rows, or different fingerprint cannot overwrite state.
 

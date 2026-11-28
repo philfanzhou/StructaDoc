@@ -324,7 +324,7 @@ public sealed class ResourceDeletionServiceTests
                     ConversionJson = conversionSnapshot switch
                     {
                         ConversionSnapshot.None => null,
-                        ConversionSnapshot.Valid => new ParseRunConversion(
+                        ConversionSnapshot.Valid => new RunConversion(
                             "libreoffice",
                             "24.8",
                             "application/pdf",

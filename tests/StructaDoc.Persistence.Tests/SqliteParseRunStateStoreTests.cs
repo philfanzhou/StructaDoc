@@ -20,7 +20,7 @@ public sealed class SqliteParseRunStateStoreTests
         var claimedLease = await database.ClaimAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunStateStore(dbContext);
+        var store = new EfCoreRunStateStore(dbContext);
         var runningLease = await store.TryStartAsync(
             claimedLease,
             ParseRunStages.Validating,
@@ -52,7 +52,7 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await database.ClaimAndStartAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunStateStore(dbContext);
+        var store = new EfCoreRunStateStore(dbContext);
         var submittingLease = await store.TryUpdateStageAsync(
             runningLease,
             ParseRunStages.Submitting,
@@ -102,8 +102,8 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await database.ClaimAndStartAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunStateStore(dbContext);
-        var segmentingLease = Assert.IsType<ParseRunLease>(
+        var store = new EfCoreRunStateStore(dbContext);
+        var segmentingLease = Assert.IsType<RunLease>(
             await store.TryUpdateStageAsync(
                 runningLease,
                 ParseRunStages.Segmenting,
@@ -142,8 +142,8 @@ public sealed class SqliteParseRunStateStoreTests
         var claimedLease = await database.ClaimAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunStateStore(dbContext);
-        var runningLease = Assert.IsType<ParseRunLease>(await store.TryStartAsync(
+        var store = new EfCoreRunStateStore(dbContext);
+        var runningLease = Assert.IsType<RunLease>(await store.TryStartAsync(
             claimedLease,
             priorStage,
             nowUtc.AddSeconds(1),
@@ -176,7 +176,7 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await database.ClaimAndStartAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunStateStore(dbContext);
+        var store = new EfCoreRunStateStore(dbContext);
 
         Assert.Null(await store.TryUpdateStageAsync(
             runningLease,
@@ -198,8 +198,8 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await database.ClaimAndStartAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunStateStore(dbContext);
-        var segmentingLease = Assert.IsType<ParseRunLease>(
+        var store = new EfCoreRunStateStore(dbContext);
+        var segmentingLease = Assert.IsType<RunLease>(
             await store.TryUpdateStageAsync(
                 runningLease,
                 ParseRunStages.Segmenting,
@@ -231,7 +231,7 @@ public sealed class SqliteParseRunStateStoreTests
                     TestContext.Current.CancellationToken);
                 break;
             case "cancelled":
-                await new EfCoreParseRunService(dbContext).RequestCancellationAsync(
+                await new EfCoreRunService(dbContext).RequestCancellationAsync(
                     segmentingLease.ParseRunId,
                     nowUtc.AddSeconds(3),
                     TestContext.Current.CancellationToken);
@@ -269,14 +269,14 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await database.ClaimAndStartAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var stateStore = new EfCoreParseRunStateStore(dbContext);
-        var convertingLease = Assert.IsType<ParseRunLease>(
+        var stateStore = new EfCoreRunStateStore(dbContext);
+        var convertingLease = Assert.IsType<RunLease>(
             await stateStore.TryUpdateStageAsync(
                 runningLease,
                 ParseRunStages.Converting,
                 nowUtc.AddSeconds(2),
                 TestContext.Current.CancellationToken));
-        var conversion = new ParseRunConversion(
+        var conversion = new RunConversion(
             "libreoffice",
             "LibreOffice 25.2.4.2",
             sourceMediaType,
@@ -287,7 +287,7 @@ public sealed class SqliteParseRunStateStoreTests
             new string('b', 64),
             $"parse-runs/{convertingLease.ParseRunId:N}/conversions/output.pdf",
             "pdf");
-        var store = new EfCoreParseRunConversionStore(dbContext);
+        var store = new EfCoreRunConversionStore(dbContext);
 
         var staleSave = await store.TrySaveAsync(
             runningLease,
@@ -306,7 +306,7 @@ public sealed class SqliteParseRunStateStoreTests
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ParseRunStages.PreparingSource, persistedRun.Stage);
         Assert.Equal("application/pdf", persistedRun.SubmittedMediaType);
-        Assert.Equal(conversion, ParseRunConversion.FromJson(persistedRun.ConversionJson!));
+        Assert.Equal(conversion, RunConversion.FromJson(persistedRun.ConversionJson!));
     }
 
     [Fact]
@@ -317,7 +317,7 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await database.ClaimAndStartAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunStateStore(dbContext);
+        var store = new EfCoreRunStateStore(dbContext);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             store.TryRecordProviderSubmissionAsync(
@@ -354,17 +354,17 @@ public sealed class SqliteParseRunStateStoreTests
             "https://upload.example/signed?secret=value");
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var stateStore = new EfCoreParseRunStateStore(dbContext);
-        var submittingLease = Assert.IsType<ParseRunLease>(
+        var stateStore = new EfCoreRunStateStore(dbContext);
+        var submittingLease = Assert.IsType<RunLease>(
             await stateStore.TryUpdateStageAsync(
                 runningLease,
                 ParseRunStages.Submitting,
                 nowUtc.AddSeconds(2),
                 TestContext.Current.CancellationToken));
-        var checkpointStore = new EfCoreParseRunSubmissionCheckpointStore(
+        var checkpointStore = new EfCoreRunSubmissionCheckpointStore(
             dbContext,
             new TestSecretProtector());
-        var checkpointedLease = Assert.IsType<ParseRunLease>(
+        var checkpointedLease = Assert.IsType<RunLease>(
             await checkpointStore.TrySaveAsync(
                 submittingLease,
                 checkpoint,
@@ -397,7 +397,7 @@ public sealed class SqliteParseRunStateStoreTests
         var retryAtUtc = nowUtc.AddMinutes(2);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunStateStore(dbContext);
+        var store = new EfCoreRunStateStore(dbContext);
         var transition = await store.TryRecordFailureAsync(
             runningLease,
             "provider-temporary-error",
@@ -439,14 +439,14 @@ public sealed class SqliteParseRunStateStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var store = new EfCoreParseRunStateStore(dbContext);
-            var submittingLease = Assert.IsType<ParseRunLease>(
+            var store = new EfCoreRunStateStore(dbContext);
+            var submittingLease = Assert.IsType<RunLease>(
                 await store.TryUpdateStageAsync(
                     runningLease,
                     ParseRunStages.Submitting,
                     nowUtc.AddSeconds(2),
                     TestContext.Current.CancellationToken));
-            var submittedLease = Assert.IsType<ParseRunLease>(
+            var submittedLease = Assert.IsType<RunLease>(
                 await store.TryRecordProviderSubmissionAsync(
                     submittingLease,
                     "provider-task-1",
@@ -466,11 +466,11 @@ public sealed class SqliteParseRunStateStoreTests
                 cancellationToken: TestContext.Current.CancellationToken));
         }
 
-        ParseRunLease claimedRetry;
+        RunLease claimedRetry;
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
-            claimedRetry = Assert.IsType<ParseRunLease>(
+            var leaseStore = new EfCoreRunLeaseStore(dbContext);
+            claimedRetry = Assert.IsType<RunLease>(
                 await leaseStore.TryClaimNextAsync(
                     "retry-worker",
                     nowUtc.AddMinutes(1),
@@ -480,7 +480,7 @@ public sealed class SqliteParseRunStateStoreTests
 
         await using (var dbContext = new StructaDocDbContext(database.Options))
         {
-            var store = new EfCoreParseRunStateStore(dbContext);
+            var store = new EfCoreRunStateStore(dbContext);
             Assert.NotNull(await store.TryStartAsync(
                 claimedRetry,
                 ParseRunStages.Validating,
@@ -508,7 +508,7 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await database.ClaimAndStartAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunStateStore(dbContext);
+        var store = new EfCoreRunStateStore(dbContext);
         var transition = await store.TryRecordFailureAsync(
             runningLease,
             "invalid-input",
@@ -538,21 +538,21 @@ public sealed class SqliteParseRunStateStoreTests
         await using var dbContext = new StructaDocDbContext(database.Options);
         var parseRunId = await dbContext.ParseRuns.AsNoTracking().Select(run => run.Id).SingleAsync(
             cancellationToken: TestContext.Current.CancellationToken);
-        var service = new EfCoreParseRunService(dbContext);
-        var store = new EfCoreParseRunStateStore(dbContext);
+        var service = new EfCoreRunService(dbContext);
+        var store = new EfCoreRunStateStore(dbContext);
 
         var requested = await service.RequestCancellationAsync(
             parseRunId,
             nowUtc,
             TestContext.Current.CancellationToken);
-        Assert.Equal(ParseRunCancellationStatus.Requested, requested.Status);
+        Assert.Equal(RunCancellationStatus.Requested, requested.Status);
         Assert.Equal(ParseRunStatuses.CancelRequested, requested.ParseRun!.Status);
 
         var replay = await service.RequestCancellationAsync(
             parseRunId,
             nowUtc.AddSeconds(1),
             TestContext.Current.CancellationToken);
-        Assert.Equal(ParseRunCancellationStatus.AlreadyRequested, replay.Status);
+        Assert.Equal(RunCancellationStatus.AlreadyRequested, replay.Status);
 
         var cancelledCount = await store.FinalizeAbandonedCancellationsAsync(
             nowUtc.AddSeconds(2),
@@ -577,15 +577,15 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await database.ClaimAndStartAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var service = new EfCoreParseRunService(dbContext);
-        var store = new EfCoreParseRunStateStore(dbContext);
-        var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+        var service = new EfCoreRunService(dbContext);
+        var store = new EfCoreRunStateStore(dbContext);
+        var leaseStore = new EfCoreRunLeaseStore(dbContext);
 
         var requested = await service.RequestCancellationAsync(
             runningLease.ParseRunId,
             nowUtc.AddSeconds(2),
             TestContext.Current.CancellationToken);
-        Assert.Equal(ParseRunCancellationStatus.Requested, requested.Status);
+        Assert.Equal(RunCancellationStatus.Requested, requested.Status);
 
         // The lease deliberately survives the request so the owning Worker can observe it, but
         // renewal must fail so execution stops instead of continuing against a cancelled run.
@@ -629,11 +629,11 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await database.ClaimAndStartAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        await new EfCoreParseRunService(dbContext).RequestCancellationAsync(
+        await new EfCoreRunService(dbContext).RequestCancellationAsync(
             runningLease.ParseRunId,
             nowUtc.AddSeconds(2),
             TestContext.Current.CancellationToken);
-        var store = new EfCoreParseRunStateStore(dbContext);
+        var store = new EfCoreRunStateStore(dbContext);
 
         Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(
             nowUtc.AddSeconds(3),
@@ -657,7 +657,7 @@ public sealed class SqliteParseRunStateStoreTests
         var runningLease = await database.ClaimAndStartAsync(nowUtc);
 
         await using var dbContext = new StructaDocDbContext(database.Options);
-        var store = new EfCoreParseRunStateStore(dbContext);
+        var store = new EfCoreRunStateStore(dbContext);
         var failure = await store.TryRecordFailureAsync(
             runningLease,
             "provider-task-failed",
@@ -666,14 +666,14 @@ public sealed class SqliteParseRunStateStoreTests
             nowUtc.AddSeconds(30),
             nowUtc.AddSeconds(2),
             cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(ParseRunStatuses.Failed, Assert.IsType<ParseRunFailureTransition>(failure).Status);
+        Assert.Equal(ParseRunStatuses.Failed, Assert.IsType<RunFailureTransition>(failure).Status);
 
-        var result = await new EfCoreParseRunService(dbContext).RequestCancellationAsync(
+        var result = await new EfCoreRunService(dbContext).RequestCancellationAsync(
             runningLease.ParseRunId,
             nowUtc.AddSeconds(3),
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(ParseRunCancellationStatus.AlreadyFinal, result.Status);
+        Assert.Equal(RunCancellationStatus.AlreadyFinal, result.Status);
         Assert.Equal(ParseRunStatuses.Failed, result.ParseRun!.Status);
         Assert.Equal(0, await store.FinalizeAbandonedCancellationsAsync(
             nowUtc.AddSeconds(4),
@@ -765,27 +765,27 @@ public sealed class SqliteParseRunStateStoreTests
             return database;
         }
 
-        public async Task<ParseRunLease> ClaimAsync(DateTime nowUtc)
+        public async Task<RunLease> ClaimAsync(DateTime nowUtc)
         {
             await using var dbContext = new StructaDocDbContext(Options);
-            var store = new EfCoreParseRunLeaseStore(dbContext);
+            var store = new EfCoreRunLeaseStore(dbContext);
             var lease = await store.TryClaimNextAsync(
                 "state-test-worker",
                 nowUtc,
                 TimeSpan.FromMinutes(5));
-            return Assert.IsType<ParseRunLease>(lease);
+            return Assert.IsType<RunLease>(lease);
         }
 
-        public async Task<ParseRunLease> ClaimAndStartAsync(DateTime nowUtc)
+        public async Task<RunLease> ClaimAndStartAsync(DateTime nowUtc)
         {
             var claimedLease = await ClaimAsync(nowUtc);
             await using var dbContext = new StructaDocDbContext(Options);
-            var store = new EfCoreParseRunStateStore(dbContext);
+            var store = new EfCoreRunStateStore(dbContext);
             var runningLease = await store.TryStartAsync(
                 claimedLease,
                 ParseRunStages.Validating,
                 nowUtc.AddSeconds(1));
-            return Assert.IsType<ParseRunLease>(runningLease);
+            return Assert.IsType<RunLease>(runningLease);
         }
 
         public ValueTask DisposeAsync()

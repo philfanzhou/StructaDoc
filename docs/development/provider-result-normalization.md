@@ -4,7 +4,7 @@ This note describes the implemented Provider ZIP-to-Canonical Parse Bundle bound
 
 ## Normalization Contract
 
-`IProviderResultNormalizer.Supports(providerType)` declares adapter coverage. A normalizer receives Parse Run ID, Provider type, validated `StoredProviderArchive`, and sanitized model/backend snapshots.
+`IResultNormalizer.Supports(providerType)` declares adapter coverage. A normalizer receives Parse Run ID, Provider type, validated `StoredArchive`, and sanitized model/backend snapshots.
 
 `MinerUResultNormalizer` supports `mineru-cloud` and `mineru-local` for observed layouts only. It does not expose MinerU fields as a public contract.
 

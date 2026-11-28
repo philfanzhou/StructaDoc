@@ -73,7 +73,7 @@ public sealed class ProviderResultIntakeTests
                 cancellationToken: TestContext.Current.CancellationToken);
         }
 
-        var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
             environment.Intake.TryLoadArchiveAsync(
                 parseRunId,
                 TestContext.Current.CancellationToken));
@@ -94,7 +94,7 @@ public sealed class ProviderResultIntakeTests
         using var environment = new IntakeTestEnvironment();
         var archiveBytes = CreateArchive((entryPath, "unsafe"u8.ToArray(), null));
 
-        var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
             environment.StoreAsync(Guid.NewGuid(), archiveBytes));
 
         Assert.Equal(expectedCode, exception.ErrorCode);
@@ -111,7 +111,7 @@ public sealed class ProviderResultIntakeTests
             ("Images/Page.png", new byte[] { 1 }, null),
             ("images/page.png", new byte[] { 2 }, null));
 
-        var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
             environment.StoreAsync(Guid.NewGuid(), archiveBytes));
 
         Assert.Equal("provider-result-archive-duplicate-path", exception.ErrorCode);
@@ -126,7 +126,7 @@ public sealed class ProviderResultIntakeTests
         var linkAttributes = unchecked((int)0xA1FF0000);
         var archiveBytes = CreateArchive(("link", "target"u8.ToArray(), linkAttributes));
 
-        var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
             environment.StoreAsync(Guid.NewGuid(), archiveBytes));
 
         Assert.Equal("provider-result-archive-special-entry", exception.ErrorCode);
@@ -147,7 +147,7 @@ public sealed class ProviderResultIntakeTests
             options.MaxCompressionRatio = 1000;
         }))
         {
-            var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+            var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
                 environment.StoreAsync(Guid.NewGuid(), archiveBytes));
             Assert.Equal("provider-result-archive-expanded-limit", exception.ErrorCode);
         }
@@ -157,7 +157,7 @@ public sealed class ProviderResultIntakeTests
             options.MaxCompressionRatio = 2;
         }))
         {
-            var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+            var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
                 environment.StoreAsync(Guid.NewGuid(), archiveBytes));
             Assert.Equal("provider-result-archive-compression-ratio", exception.ErrorCode);
         }
@@ -171,18 +171,18 @@ public sealed class ProviderResultIntakeTests
             var archiveBytes = CreateArchive(
                 ("one.txt", new byte[] { 1 }, null),
                 ("two.txt", new byte[] { 2 }, null));
-            var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+            var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
                 environment.StoreAsync(Guid.NewGuid(), archiveBytes));
             Assert.Equal("provider-result-archive-entry-limit", exception.ErrorCode);
         }
 
         using (var environment = new IntakeTestEnvironment())
         {
-            var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+            var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
                 environment.StoreAsync(Guid.NewGuid(), "not-a-zip"u8.ToArray()));
             Assert.Equal("provider-result-not-zip", exception.ErrorCode);
 
-            exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+            exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
                 environment.StoreAsync(
                     Guid.NewGuid(),
                     new byte[] { (byte)'P', (byte)'K', 3, 4, 1, 2, 3 }));
@@ -196,7 +196,7 @@ public sealed class ProviderResultIntakeTests
         using var environment = new IntakeTestEnvironment(options => options.MaxArchiveBytes = 32);
         var archiveBytes = CreateArchive(("result.txt", new byte[128], null));
 
-        var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
             environment.StoreAsync(Guid.NewGuid(), archiveBytes));
 
         Assert.Equal("provider-result-too-large", exception.ErrorCode);
@@ -211,7 +211,7 @@ public sealed class ProviderResultIntakeTests
             options => options.MaxCentralDirectoryBytes = 46))
         {
             var archiveBytes = CreateArchive(("result.txt", new byte[] { 1 }, null));
-            var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+            var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
                 environment.StoreAsync(Guid.NewGuid(), archiveBytes));
             Assert.Equal("provider-result-archive-directory-size-limit", exception.ErrorCode);
         }
@@ -222,7 +222,7 @@ public sealed class ProviderResultIntakeTests
         }))
         {
             var archiveBytes = CreateArchive(($"{new string('a', 65)}.txt", new byte[] { 1 }, null));
-            var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+            var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
                 environment.StoreAsync(Guid.NewGuid(), archiveBytes));
             Assert.Equal("provider-result-archive-unsafe-path", exception.ErrorCode);
         }
@@ -233,7 +233,7 @@ public sealed class ProviderResultIntakeTests
     {
         using var environment = new IntakeTestEnvironment();
         var archiveBytes = CreateArchive(("result.txt", "content"u8.ToArray(), null));
-        var intake = new StoredProviderResultIntake(
+        var intake = new StoredResultIntake(
             new NonSeekableReadStorage(environment.Storage),
             environment.Options);
         await using var result = new ProviderResultContent(
@@ -259,7 +259,7 @@ public sealed class ProviderResultIntakeTests
         var differentBytes = CreateArchive(("result.txt", "second"u8.ToArray(), null));
         var first = await environment.StoreAsync(parseRunId, originalBytes);
 
-        var exception = await Assert.ThrowsAsync<ProviderResultIntakeException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultIntakeException>(() =>
             environment.StoreAsync(parseRunId, differentBytes));
 
         Assert.Equal("provider-result-storage-conflict", exception.ErrorCode);
@@ -307,7 +307,7 @@ public sealed class ProviderResultIntakeTests
 
             var mutable = new MutableOptions();
             configure?.Invoke(mutable);
-            Options = new ProviderResultIntakeOptions
+            Options = new ResultIntakeOptions
             {
                 MaxArchiveBytes = mutable.MaxArchiveBytes,
                 MaxEntryCount = mutable.MaxEntryCount,
@@ -318,7 +318,7 @@ public sealed class ProviderResultIntakeTests
                 MaxCentralDirectoryBytes = mutable.MaxCentralDirectoryBytes,
                 TemporaryPath = TemporaryPath,
             };
-            Intake = new StoredProviderResultIntake(Storage, Options);
+            Intake = new StoredResultIntake(Storage, Options);
         }
 
         public string StoragePath { get; }
@@ -327,11 +327,11 @@ public sealed class ProviderResultIntakeTests
 
         public LocalFileStorage Storage { get; }
 
-        public ProviderResultIntakeOptions Options { get; }
+        public ResultIntakeOptions Options { get; }
 
-        public StoredProviderResultIntake Intake { get; }
+        public StoredResultIntake Intake { get; }
 
-        public async Task<StoredProviderArchive> StoreAsync(
+        public async Task<StoredArchive> StoreAsync(
             Guid parseRunId,
             byte[] content,
             string mediaType = "application/zip")
