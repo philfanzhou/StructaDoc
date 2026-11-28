@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Configuration;
-
 namespace StructaDoc.Host.Settings;
 
 /// <summary>
@@ -19,7 +17,7 @@ public static class ContainerDefaults
     /// it did.
     ///
     /// Precedence is decided by key rather than by where the file lands in the source list, for the
-    /// same reason <see cref="StructaDoc.Adapters.ControlPlane.StructaDocSettingsConfiguration"/>
+    /// same reason <see cref="StructaDoc.Adapters.ControlPlane.SettingsConfiguration"/>
     /// decides it that way: host builders do not agree on that order. The web host reads environment
     /// variables both before and after <c>appsettings.json</c> and then chains its host configuration
     /// on at the end, so no single position is above the repository's defaults and below the

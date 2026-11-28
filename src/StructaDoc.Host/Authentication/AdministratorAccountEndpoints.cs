@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Authentication;
@@ -52,7 +51,7 @@ public static class AdministratorAccountEndpoints
             HttpContext context,
             IAntiforgery antiforgery,
             IAdministratorAccountService accounts,
-            StructaDocManagementAuditRecorder auditRecorder,
+            ManagementAuditRecorder auditRecorder,
             ILogger<ManagementAuditRecordPoints> logger,
             TimeProvider timeProvider,
             CancellationToken cancellationToken)
@@ -75,13 +74,13 @@ public static class AdministratorAccountEndpoints
                     auditRecorder,
                     logger,
                     user,
-                    StructaDocManagementAudit.Actions.AdministratorPasswordChanged,
+                    ManagementAuditCatalog.Actions.AdministratorPasswordChanged,
                     CurrentAdministratorId(user).ToString("D"),
                     user.FindFirstValue(StructaDocClaimTypes.Username)!,
                     ManagementAuditOutcome.Failure,
                     "The current password did not match.",
                     timeProvider,
-                    HostManagementAudit.ClientAddress(context),
+                    ManagementAudit.ClientAddress(context),
                     cancellationToken);
                 return Results.Problem(
                     statusCode: StatusCodes.Status400BadRequest,
@@ -95,13 +94,13 @@ public static class AdministratorAccountEndpoints
                     auditRecorder,
                     logger,
                     user,
-                    StructaDocManagementAudit.Actions.AdministratorPasswordChanged,
+                    ManagementAuditCatalog.Actions.AdministratorPasswordChanged,
                     CurrentAdministratorId(user).ToString("D"),
                     user.FindFirstValue(StructaDocClaimTypes.Username)!,
                     ManagementAuditOutcome.Failure,
                     $"The password change was rejected with status '{result.Status}'.",
                     timeProvider,
-                    HostManagementAudit.ClientAddress(context),
+                    ManagementAudit.ClientAddress(context),
                     cancellationToken);
                 return Problem(result.Status);
             }
@@ -110,13 +109,13 @@ public static class AdministratorAccountEndpoints
                 auditRecorder,
                 logger,
                 user,
-                StructaDocManagementAudit.Actions.AdministratorPasswordChanged,
+                ManagementAuditCatalog.Actions.AdministratorPasswordChanged,
                 result.Administrator!.Id.ToString("D"),
                 result.Administrator.Username,
                 ManagementAuditOutcome.Success,
                 "An administrator changed their own password.",
                 timeProvider,
-                HostManagementAudit.ClientAddress(context),
+                ManagementAudit.ClientAddress(context),
                 cancellationToken);
 
             // The change rotated the security stamp, which invalidates every cookie holding the old
@@ -142,7 +141,7 @@ public static class AdministratorAccountEndpoints
     /// an account id to a person.
     /// </summary>
     private static async Task RecordAccountAuditAsync(
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger logger,
         ClaimsPrincipal user,
         ManagementAuditAction action,
@@ -155,10 +154,10 @@ public static class AdministratorAccountEndpoints
         CancellationToken cancellationToken)
     {
         var auditEvent = ManagementAuditEvent.Create(
-            HostManagementAudit.AdministratorOperator(user),
+            ManagementAudit.AdministratorOperator(user),
             action,
             ManagementAuditTarget.Create(
-                StructaDocManagementAudit.TargetTypes.AdministratorAccount,
+                ManagementAuditCatalog.TargetTypes.AdministratorAccount,
                 affectedAdministratorId),
             outcome,
             clientIp: clientIp,
@@ -169,7 +168,7 @@ public static class AdministratorAccountEndpoints
             },
             timeProvider: timeProvider);
 
-        await HostManagementAudit.RecordAsync(
+        await ManagementAudit.RecordAsync(
             auditRecorder,
             logger,
             auditEvent,
@@ -202,7 +201,7 @@ public static class AdministratorAccountEndpoints
         HttpContext context,
         IAntiforgery antiforgery,
         IAdministratorAccountService accounts,
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
@@ -226,13 +225,13 @@ public static class AdministratorAccountEndpoints
                 auditRecorder,
                 logger,
                 user,
-                StructaDocManagementAudit.Actions.AdministratorAccountCreated,
+                ManagementAuditCatalog.Actions.AdministratorAccountCreated,
                 CurrentAdministratorId(user).ToString("D"),
                 request.Username,
                 ManagementAuditOutcome.Failure,
                 $"The account creation was rejected with status '{result.Status}'.",
                 timeProvider,
-                HostManagementAudit.ClientAddress(context),
+                ManagementAudit.ClientAddress(context),
                 cancellationToken);
             return Problem(result.Status);
         }
@@ -242,13 +241,13 @@ public static class AdministratorAccountEndpoints
             auditRecorder,
             logger,
             user,
-            StructaDocManagementAudit.Actions.AdministratorAccountCreated,
+            ManagementAuditCatalog.Actions.AdministratorAccountCreated,
             account.Id.ToString("D"),
             account.Username,
             ManagementAuditOutcome.Success,
             "An administrator account was created.",
             timeProvider,
-            HostManagementAudit.ClientAddress(context),
+            ManagementAudit.ClientAddress(context),
             cancellationToken);
 
         return Results.Created(
@@ -270,7 +269,7 @@ public static class AdministratorAccountEndpoints
         HttpContext context,
         IAntiforgery antiforgery,
         IAdministratorAccountService accounts,
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
@@ -296,7 +295,7 @@ public static class AdministratorAccountEndpoints
             auditRecorder,
             logger,
             user,
-            StructaDocManagementAudit.Actions.AdministratorPasswordReset,
+            ManagementAuditCatalog.Actions.AdministratorPasswordReset,
             id.ToString("D"),
             id.ToString("D"),
             status == AdministratorAccountStatus.Succeeded
@@ -306,7 +305,7 @@ public static class AdministratorAccountEndpoints
                 ? "Another administrator's password was reset."
                 : $"The password reset was rejected with status '{status}'.",
             timeProvider,
-            HostManagementAudit.ClientAddress(context),
+            ManagementAudit.ClientAddress(context),
             cancellationToken);
         return status == AdministratorAccountStatus.Succeeded
             ? Results.NoContent()
@@ -320,7 +319,7 @@ public static class AdministratorAccountEndpoints
         HttpContext context,
         IAntiforgery antiforgery,
         IAdministratorAccountService accounts,
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
@@ -342,8 +341,8 @@ public static class AdministratorAccountEndpoints
             logger,
             user,
             request.IsActive
-                ? StructaDocManagementAudit.Actions.AdministratorEnabled
-                : StructaDocManagementAudit.Actions.AdministratorDisabled,
+                ? ManagementAuditCatalog.Actions.AdministratorEnabled
+                : ManagementAuditCatalog.Actions.AdministratorDisabled,
             id.ToString("D"),
             id.ToString("D"),
             status == AdministratorAccountStatus.Succeeded
@@ -355,7 +354,7 @@ public static class AdministratorAccountEndpoints
                     : "An administrator account was disabled.")
                 : $"The account state change was rejected with status '{status}'.",
             timeProvider,
-            HostManagementAudit.ClientAddress(context),
+            ManagementAudit.ClientAddress(context),
             cancellationToken);
         return status == AdministratorAccountStatus.Succeeded
             ? Results.NoContent()
@@ -368,7 +367,7 @@ public static class AdministratorAccountEndpoints
         HttpContext context,
         IAntiforgery antiforgery,
         IAdministratorAccountService accounts,
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
@@ -389,7 +388,7 @@ public static class AdministratorAccountEndpoints
             auditRecorder,
             logger,
             user,
-            StructaDocManagementAudit.Actions.AdministratorDeleted,
+            ManagementAuditCatalog.Actions.AdministratorDeleted,
             id.ToString("D"),
             id.ToString("D"),
             status == AdministratorAccountStatus.Succeeded
@@ -399,7 +398,7 @@ public static class AdministratorAccountEndpoints
                 ? "An administrator account was deleted."
                 : $"The account deletion was rejected with status '{status}'.",
             timeProvider,
-            HostManagementAudit.ClientAddress(context),
+            ManagementAudit.ClientAddress(context),
             cancellationToken);
         return status == AdministratorAccountStatus.Succeeded
             ? Results.NoContent()

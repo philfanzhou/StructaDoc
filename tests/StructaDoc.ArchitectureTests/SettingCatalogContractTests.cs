@@ -165,7 +165,7 @@ public sealed class SettingCatalogContractTests
         var settable = SettingCatalog.All
             .Select(definition => definition.Key)
             .Where(key => key.StartsWith(
-                StructaDocAuthenticationOptions.SectionName + ":",
+                AuthenticationBootstrapOptions.SectionName + ":",
                 StringComparison.Ordinal))
             .ToArray();
 
@@ -206,9 +206,13 @@ public sealed class SettingCatalogContractTests
         TuningWhere(SettingCatalog.AuthenticationAdministratorSessionLifetime, session.Minimum).Validate();
         TuningWhere(SettingCatalog.AuthenticationAdministratorSessionLifetime, session.Maximum).Validate();
         Assert.ThrowsAny<Exception>(
-            () => TuningWhere(SettingCatalog.AuthenticationAdministratorSessionLifetime, session.Minimum - 1).Validate());
+            () => TuningWhere(
+                SettingCatalog.AuthenticationAdministratorSessionLifetime,
+                session.Minimum - 1).Validate());
         Assert.ThrowsAny<Exception>(
-            () => TuningWhere(SettingCatalog.AuthenticationAdministratorSessionLifetime, session.Maximum + 1).Validate());
+            () => TuningWhere(
+                SettingCatalog.AuthenticationAdministratorSessionLifetime,
+                session.Maximum + 1).Validate());
 
         // The two login keys are narrowed below what their options class accepts, because both
         // values feed the ServiceMantle sign-in policies, which accept a permit limit of 1–60 and a
@@ -620,8 +624,16 @@ public sealed class SettingCatalogContractTests
             MaxArchiveBytes = Pick(key, SettingCatalog.ProviderResultsMaxArchiveBytes, value, defaults.MaxArchiveBytes),
             MaxEntryCount = (int)Pick(key, SettingCatalog.ProviderResultsMaxEntryCount, value, defaults.MaxEntryCount),
             MaxEntryBytes = Pick(key, SettingCatalog.ProviderResultsMaxEntryBytes, value, defaults.MaxEntryBytes),
-            MaxExpandedBytes = Pick(key, SettingCatalog.ProviderResultsMaxExpandedBytes, value, defaults.MaxExpandedBytes),
-            MaxEntryPathBytes = (int)Pick(key, SettingCatalog.ProviderResultsMaxEntryPathBytes, value, defaults.MaxEntryPathBytes),
+            MaxExpandedBytes = Pick(
+                key,
+                SettingCatalog.ProviderResultsMaxExpandedBytes,
+                value,
+                defaults.MaxExpandedBytes),
+            MaxEntryPathBytes = (int)Pick(
+                key,
+                SettingCatalog.ProviderResultsMaxEntryPathBytes,
+                value,
+                defaults.MaxEntryPathBytes),
             MaxCentralDirectoryBytes = Pick(
                 key,
                 SettingCatalog.ProviderResultsMaxCentralDirectoryBytes,
@@ -658,7 +670,11 @@ public sealed class SettingCatalogContractTests
         var defaults = new LibreOfficeConversionOptions();
         return new LibreOfficeConversionOptions
         {
-            MaxConcurrency = (int)Pick(key, SettingCatalog.LibreOfficeMaxConcurrency, milliseconds, defaults.MaxConcurrency),
+            MaxConcurrency = (int)Pick(
+                key,
+                SettingCatalog.LibreOfficeMaxConcurrency,
+                milliseconds,
+                defaults.MaxConcurrency),
             Timeout = TimeSpan.FromMilliseconds(
                 Pick(key, SettingCatalog.LibreOfficeTimeout, milliseconds, defaults.Timeout.TotalMilliseconds)),
             ResourceInspectionInterval = TimeSpan.FromMilliseconds(Pick(

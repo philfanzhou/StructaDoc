@@ -10,14 +10,14 @@ namespace StructaDoc.Host.Workers;
 /// started attempt runs to its own outcome); it only stops new claims until the running count falls
 /// below the new ceiling. Raising it admits waiting dispatches at once.
 /// </summary>
-public sealed class WorkerConcurrencyGate
+public sealed class ConcurrencyGate
 {
     private readonly object sync = new();
     private readonly Queue<Waiter> waiters = new();
     private int limit;
     private int active;
 
-    public WorkerConcurrencyGate(int limit)
+    public ConcurrencyGate(int limit)
     {
         if (limit < 1)
         {

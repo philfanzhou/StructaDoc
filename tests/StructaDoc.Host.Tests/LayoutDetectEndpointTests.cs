@@ -2,12 +2,10 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.Persistence;
 using StructaDoc.Adapters.Persistence.Entities;
@@ -308,7 +306,7 @@ public sealed class LayoutDetectEndpointTests
     {
         // The shipped state: no LayoutRuntime base URL, so the capability resolution refuses and
         // nothing falls back to document parsing.
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
         var apiKey = await CreateApiClientAsync(factory, AuthenticationScopes.LayoutDetect);
         var countsBefore = await TakeCountsAsync(factory);
@@ -359,7 +357,7 @@ public sealed class LayoutDetectEndpointTests
         // the cloud backend refuses with the explicit configuration error naming what is missing.
         // Nothing falls back to the runtime (none is configured) or to document parsing, and no
         // request leaves the process.
-        using var inner = new StructaDocWebApplicationFactory();
+        using var inner = new HostWebApplicationFactory();
         using var factory = inner.WithWebHostBuilder(builder =>
             builder.UseSetting("Layout:Backend", "mineru-cloud"));
         using var client = factory.CreateClient();
@@ -385,16 +383,56 @@ public sealed class LayoutDetectEndpointTests
 
     [Theory]
     [InlineData("mineru-layout-timeout", ProviderFailureCategory.Transient, HttpStatusCode.GatewayTimeout, "layout-timeout")]
-    [InlineData("mineru-layout-network-error", ProviderFailureCategory.Transient, HttpStatusCode.BadGateway, "layout-runtime-unavailable")]
-    [InlineData("mineru-layout-response-invalid", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
-    [InlineData("mineru-layout-response-too-large", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
-    [InlineData("mineru-layout-http-401", ProviderFailureCategory.Configuration, HttpStatusCode.ServiceUnavailable, "layout-runtime-unavailable")]
-    [InlineData("mineru-layout-http-400", ProviderFailureCategory.Input, HttpStatusCode.BadGateway, "layout-runtime-rejected")]
-    [InlineData("mineru-layout-cloud-submit-rejected", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
-    [InlineData("mineru-layout-cloud-task-failed", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
-    [InlineData("mineru-layout-cloud-layout-response-invalid", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
-    [InlineData("mineru-layout-cloud-archive-too-large", ProviderFailureCategory.Permanent, HttpStatusCode.BadGateway, "layout-output-invalid")]
-    [InlineData("mineru-layout-cloud-status-network-error", ProviderFailureCategory.Transient, HttpStatusCode.BadGateway, "layout-runtime-unavailable")]
+    [InlineData(
+            "mineru-layout-network-error",
+            ProviderFailureCategory.Transient,
+            HttpStatusCode.BadGateway,
+            "layout-runtime-unavailable")]
+    [InlineData(
+            "mineru-layout-response-invalid",
+            ProviderFailureCategory.Permanent,
+            HttpStatusCode.BadGateway,
+            "layout-output-invalid")]
+    [InlineData(
+            "mineru-layout-response-too-large",
+            ProviderFailureCategory.Permanent,
+            HttpStatusCode.BadGateway,
+            "layout-output-invalid")]
+    [InlineData(
+            "mineru-layout-http-401",
+            ProviderFailureCategory.Configuration,
+            HttpStatusCode.ServiceUnavailable,
+            "layout-runtime-unavailable")]
+    [InlineData(
+            "mineru-layout-http-400",
+            ProviderFailureCategory.Input,
+            HttpStatusCode.BadGateway,
+            "layout-runtime-rejected")]
+    [InlineData(
+            "mineru-layout-cloud-submit-rejected",
+            ProviderFailureCategory.Permanent,
+            HttpStatusCode.BadGateway,
+            "layout-output-invalid")]
+    [InlineData(
+            "mineru-layout-cloud-task-failed",
+            ProviderFailureCategory.Permanent,
+            HttpStatusCode.BadGateway,
+            "layout-output-invalid")]
+    [InlineData(
+            "mineru-layout-cloud-layout-response-invalid",
+            ProviderFailureCategory.Permanent,
+            HttpStatusCode.BadGateway,
+            "layout-output-invalid")]
+    [InlineData(
+            "mineru-layout-cloud-archive-too-large",
+            ProviderFailureCategory.Permanent,
+            HttpStatusCode.BadGateway,
+            "layout-output-invalid")]
+    [InlineData(
+            "mineru-layout-cloud-status-network-error",
+            ProviderFailureCategory.Transient,
+            HttpStatusCode.BadGateway,
+            "layout-runtime-unavailable")]
     public async Task Every_provider_failure_maps_to_its_stable_http_outcome(
         string errorCode,
         ProviderFailureCategory category,
@@ -786,7 +824,7 @@ public sealed class LayoutDetectEndpointTests
     /// </summary>
     private sealed class LayoutRuntimeFactory : IDisposable
     {
-        private readonly StructaDocWebApplicationFactory factory = new();
+        private readonly HostWebApplicationFactory factory = new();
 
         public StubLayoutDetectionProvider Stub { get; } = new();
 
@@ -826,7 +864,7 @@ public sealed class LayoutDetectEndpointTests
     /// </summary>
     private sealed class LayoutCloudFactory : IDisposable
     {
-        private readonly StructaDocWebApplicationFactory factory = new();
+        private readonly HostWebApplicationFactory factory = new();
 
         public StubLayoutDetectionProvider Stub { get; } = new();
 

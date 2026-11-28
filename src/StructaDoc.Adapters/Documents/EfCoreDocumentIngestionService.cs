@@ -66,7 +66,8 @@ public sealed class EfCoreDocumentIngestionService(
             if (request.Owner is not null
                 && !PrincipalIdentity.IsValid(request.Owner.Issuer, request.Owner.Subject))
             {
-                throw new ArgumentException("Document owner is neither an OIDC issuer and subject pair nor an API client.");
+                throw new ArgumentException(
+                    "Document owner is neither an OIDC issuer and subject pair nor an API client.");
             }
 
             dbContext.Documents.Add(entity);

@@ -608,7 +608,7 @@ public sealed partial class MinerUParseProviderTests
     public void Registration_exposes_one_adapter_per_provider_type()
     {
         var services = new ServiceCollection();
-        services.AddStructaDocParseProviders();
+        services.AddParseProviders();
         using var serviceProvider = services.BuildServiceProvider();
 
         var providers = serviceProvider.GetServices<IParseProvider>().ToArray();

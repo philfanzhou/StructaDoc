@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 using ServiceMantle.Web;
-using ServiceMantle.Web.Http;
 
 namespace StructaDoc.Host.Settings;
 
@@ -18,7 +16,7 @@ public static class ReverseProxyExtensions
     /// no header is read, and a service published directly cannot be told by a caller that it is
     /// somewhere else.
     /// </summary>
-    public static ServiceMantleBuilder AddStructaDocForwardedHeaders(
+    public static ServiceMantleBuilder AddReverseProxy(
         this ServiceMantleBuilder serviceMantle,
         ReverseProxyOptions options)
     {
@@ -50,7 +48,7 @@ public static class ReverseProxyExtensions
     /// A deployment that names no proxy is left exactly as it was: no header is read, and a service
     /// published directly cannot be told by a caller that it is somewhere else.
     /// </summary>
-    public static IApplicationBuilder UseStructaDocReverseProxy(
+    public static IApplicationBuilder UseReverseProxy(
         this IApplicationBuilder app,
         ReverseProxyOptions options,
         ILogger logger)

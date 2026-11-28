@@ -305,7 +305,7 @@ public sealed class ReverseProxyTests
 
         await using var service = await ProbeService.StartAsync(
             options,
-            extraRegistration: serviceMantle => serviceMantle.AddStructaDocForwardedHeaders(options));
+            extraRegistration: serviceMantle => serviceMantle.AddReverseProxy(options));
 
         var request = await service.ProbeAsync(
             ("X-Forwarded-Proto", ForwardedScheme),
@@ -395,11 +395,11 @@ public sealed class ReverseProxyTests
             var serviceMantle = builder.Services.AddServiceMantle(
                 ServiceId.Parse("structadoc"),
                 InstanceId.Parse($"structadoc-probe-{Guid.NewGuid():N}"));
-            serviceMantle.AddStructaDocForwardedHeaders(options);
+            serviceMantle.AddReverseProxy(options);
             extraRegistration?.Invoke(serviceMantle);
 
             var app = builder.Build();
-            app.UseStructaDocReverseProxy(options, logger ?? NullLogger.Instance);
+            app.UseReverseProxy(options, logger ?? NullLogger.Instance);
             app.MapGet("/probe", (HttpContext context) => Results.Json(new
             {
                 scheme = context.Request.Scheme,
@@ -430,11 +430,11 @@ public sealed class ReverseProxyTests
             var serviceMantle = builder.Services.AddServiceMantle(
                 ServiceId.Parse("structadoc"),
                 InstanceId.Parse($"structadoc-probe-{Guid.NewGuid():N}"));
-            serviceMantle.AddStructaDocForwardedHeaders(options);
+            serviceMantle.AddReverseProxy(options);
             extraRegistration?.Invoke(serviceMantle);
 
             var app = builder.Build();
-            app.UseStructaDocReverseProxy(options, NullLogger.Instance);
+            app.UseReverseProxy(options, NullLogger.Instance);
             app.MapGet("/probe", () => Results.Ok());
 
             try

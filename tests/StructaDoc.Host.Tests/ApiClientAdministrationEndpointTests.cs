@@ -6,8 +6,8 @@ using StructaDoc.Contracts.Authentication;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class ApiClientAdministrationEndpointTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ApiClientAdministrationEndpointTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Management_endpoints_require_an_administrator()

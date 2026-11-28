@@ -147,7 +147,7 @@ An expired `running` job with an external ID becomes an adoption candidate. One 
 
 ## Recoverable Executor
 
-`ParseRunExecutionWorker` and `ParseRunExecutor` run this sequence:
+`ParseRunExecution` and `ParseRunExecutor` run this sequence:
 
 1. adopt expired resumable external work before claiming new `queued` work;
 2. load the captured configuration and source and validate capabilities, media type, and size;

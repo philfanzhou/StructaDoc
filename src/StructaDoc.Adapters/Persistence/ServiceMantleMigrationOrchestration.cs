@@ -59,7 +59,7 @@ public static class ServiceMantleMigrationOrchestration
     /// </summary>
     /// <param name="serviceProvider">
     /// A provider carrying the registrations made by
-    /// <c>AddStructaDocPersistenceMigrationServices</c>.
+    /// <c>AddPersistenceMigrationServices</c>.
     /// </param>
     /// <param name="databaseOptions">The deployment database configuration.</param>
     /// <param name="deploymentMode">
@@ -72,7 +72,7 @@ public static class ServiceMantleMigrationOrchestration
     /// </param>
     /// <param name="cancellationToken">Propagates caller cancellation into every stage.</param>
     /// <returns>The orchestration result, whose failure codes are safe to log.</returns>
-    public static async Task<StartupDatabaseGateResult> OrchestrateStructaDocMigrationsAsync(
+    public static async Task<StartupDatabaseGateResult> OrchestrateMigrationsAsync(
         this IServiceProvider serviceProvider,
         DatabaseOptions databaseOptions,
         DatabaseDeploymentMode deploymentMode,

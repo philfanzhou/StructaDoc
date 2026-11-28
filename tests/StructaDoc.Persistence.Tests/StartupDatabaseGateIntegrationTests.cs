@@ -23,7 +23,7 @@ public sealed class StartupDatabaseGateIntegrationTests
     public void Shared_direct_composition_registers_four_capabilities_and_three_real_leases()
     {
         var services = new ServiceCollection();
-        services.AddStructaDocPersistenceMigrationServices(Options(DatabaseProvider.Sqlite));
+        services.AddPersistenceMigrationServices(Options(DatabaseProvider.Sqlite));
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
 
         Assert.Collection(provider.GetServices<IDatabaseDeploymentCapabilityProvider>(),
@@ -57,10 +57,10 @@ public sealed class StartupDatabaseGateIntegrationTests
         var options = Options(provider);
         await using var services = Services(options, executor, preparation, new TestLockProvider(lease));
 
-        var first = await services.OrchestrateStructaDocMigrationsAsync(
+        var first = await services.OrchestrateMigrationsAsync(
             options, ServiceMantleMigrationOrchestration.ResolveDeploymentMode(provider),
             cancellationToken: TestContext.Current.CancellationToken);
-        var repeat = await services.OrchestrateStructaDocMigrationsAsync(
+        var repeat = await services.OrchestrateMigrationsAsync(
             options, ServiceMantleMigrationOrchestration.ResolveDeploymentMode(provider),
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -86,7 +86,7 @@ public sealed class StartupDatabaseGateIntegrationTests
             new TestLockProvider(new TestLease(providerId), fail: true));
 
         // Even a caller requesting SingleInstance must take the real server lease.
-        var result = await services.OrchestrateStructaDocMigrationsAsync(
+        var result = await services.OrchestrateMigrationsAsync(
             options, DatabaseDeploymentMode.SingleInstance,
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.False(result.Succeeded);
@@ -98,7 +98,7 @@ public sealed class StartupDatabaseGateIntegrationTests
         Assert.DoesNotContain(Secret, result.ToString(), StringComparison.Ordinal);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            services.ApplyStructaDocMigrationsAsync(options, TestContext.Current.CancellationToken));
+            services.ApplyMigrationsAsync(options, TestContext.Current.CancellationToken));
         Assert.Contains(WellKnownMigrationErrorCodes.LockFailed, error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain(Secret, error.ToString(), StringComparison.Ordinal);
     }
@@ -116,7 +116,7 @@ public sealed class StartupDatabaseGateIntegrationTests
         cancellation.Cancel();
 
         var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            services.OrchestrateStructaDocMigrationsAsync(options,
+            services.OrchestrateMigrationsAsync(options,
                 DatabaseDeploymentMode.SingleInstance, cancellationToken: cancellation.Token));
         Assert.Equal(cancellation.Token, error.CancellationToken);
         Assert.False(Directory.Exists(directory));
@@ -144,13 +144,13 @@ public sealed class StartupDatabaseGateIntegrationTests
         if (callerCancels)
         {
             var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-                services.OrchestrateStructaDocMigrationsAsync(options,
+                services.OrchestrateMigrationsAsync(options,
                     DatabaseDeploymentMode.MultiInstance, cancellationToken: caller.Token));
             Assert.Equal(caller.Token, error.CancellationToken);
         }
         else
         {
-            var result = await services.OrchestrateStructaDocMigrationsAsync(options,
+            var result = await services.OrchestrateMigrationsAsync(options,
                 DatabaseDeploymentMode.MultiInstance, cancellationToken: caller.Token);
             Assert.False(result.Succeeded);
             Assert.Equal(WellKnownMigrationErrorCodes.LockFailed, result.ErrorCode);
@@ -182,7 +182,7 @@ public sealed class StartupDatabaseGateIntegrationTests
         Assert.Null(receipt.ErrorCode);
         Assert.Equal(0, executor.Executions);
 
-        await services.ApplyStructaDocMigrationsAsync(new DatabaseOptions
+        await services.ApplyMigrationsAsync(new DatabaseOptions
         {
             Provider = options.Provider,
             ConnectionString = options.ConnectionString,
@@ -228,7 +228,7 @@ public sealed class StartupDatabaseGateIntegrationTests
         ForbiddenPreparation preparation, TestLockProvider lockProvider)
     {
         var services = new ServiceCollection();
-        services.AddStructaDocPersistenceMigrationServices(options);
+        services.AddPersistenceMigrationServices(options);
         services.AddScoped<IDatabaseMigrationExecutor>(_ => executor);
         services.AddSingleton(new DatabaseTargetPreparationProviderRegistry(
             [preparation], DatabaseProviderIdResolver.Empty));

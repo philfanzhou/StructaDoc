@@ -7,15 +7,30 @@ using StructaDoc.Domain.Resources;
 
 namespace StructaDoc.Host.Workers;
 
-public sealed class ResourceCleanupWorker(IServiceScopeFactory scopeFactory, TimeProvider clock, ILogger<ResourceCleanupWorker> logger) : BackgroundService
+public sealed class ResourceCleanup(
+    IServiceScopeFactory scopeFactory,
+    TimeProvider clock,
+    ILogger<ResourceCleanup> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            try { if (!await ProcessOneAsync(stoppingToken)) await Task.Delay(TimeSpan.FromSeconds(3), clock, stoppingToken); }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception exception) { logger.LogError(exception, "Resource cleanup loop failed."); await Task.Delay(TimeSpan.FromSeconds(5), clock, stoppingToken); }
+            try
+            {
+                if (!await ProcessOneAsync(stoppingToken))
+                    await Task.Delay(TimeSpan.FromSeconds(3), clock, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Resource cleanup loop failed.");
+                await Task.Delay(TimeSpan.FromSeconds(5), clock, stoppingToken);
+            }
         }
     }
 
@@ -25,14 +40,25 @@ public sealed class ResourceCleanupWorker(IServiceScopeFactory scopeFactory, Tim
         var db = scope.ServiceProvider.GetRequiredService<StructaDocDbContext>();
         var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
         var now = clock.GetUtcNow().UtcDateTime;
-        var job = await db.CleanupJobs.Where(item => (item.Status == CleanupJobStatuses.Pending || item.Status == CleanupJobStatuses.RetryWait || item.Status == CleanupJobStatuses.Running) && item.NextAttemptAtUtc <= now).OrderBy(item => item.NextAttemptAtUtc).FirstOrDefaultAsync(cancellationToken);
+        var job = await db.CleanupJobs.Where(
+            item => (item.Status == CleanupJobStatuses.Pending
+                || item.Status == CleanupJobStatuses.RetryWait
+                || item.Status == CleanupJobStatuses.Running) && item.NextAttemptAtUtc <= now)
+                    .OrderBy(item => item.NextAttemptAtUtc)
+                    .FirstOrDefaultAsync(cancellationToken);
         if (job is null) return false;
         job.Status = CleanupJobStatuses.Running;
         job.AttemptCount++;
         job.NextAttemptAtUtc = now.AddMinutes(5);
         job.UpdatedAtUtc = now;
-        try { await db.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateConcurrencyException) { return true; }
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return true;
+        }
 
         // The concurrency version this claim just wrote identifies the attempt. Every later
         // database write of the attempt is fenced by it: completion updates the row through the
@@ -44,7 +70,8 @@ public sealed class ResourceCleanupWorker(IServiceScopeFactory scopeFactory, Tim
 
         try
         {
-            foreach (var storageRef in JsonSerializer.Deserialize<string[]>(job.StorageRefsJson) ?? []) await storage.DeleteIfExistsAsync(storageRef, cancellationToken);
+            foreach (var storageRef in JsonSerializer.Deserialize<string[]>(job.StorageRefsJson) ?? [])
+                await storage.DeleteIfExistsAsync(storageRef, cancellationToken);
             if (job.TargetType == CleanupTargetTypes.ParseRun)
             {
                 var run = await db.ParseRuns.SingleOrDefaultAsync(item => item.Id == job.TargetId, cancellationToken);
@@ -52,9 +79,12 @@ public sealed class ResourceCleanupWorker(IServiceScopeFactory scopeFactory, Tim
             }
             else if (job.TargetType == CleanupTargetTypes.Document)
             {
-                var runs = await db.ParseRuns.Where(item => item.DocumentId == job.TargetId).ToListAsync(cancellationToken);
+                var runs = await db.ParseRuns.Where(
+                    item => item.DocumentId == job.TargetId).ToListAsync(cancellationToken);
                 db.ParseRuns.RemoveRange(runs);
-                var document = await db.Documents.SingleOrDefaultAsync(item => item.Id == job.TargetId, cancellationToken);
+                var document = await db.Documents.SingleOrDefaultAsync(
+                    item => item.Id == job.TargetId,
+                    cancellationToken);
                 if (document is not null) db.Documents.Remove(document);
             }
             else throw new InvalidOperationException($"Unknown cleanup target type '{job.TargetType}'.");
@@ -62,7 +92,11 @@ public sealed class ResourceCleanupWorker(IServiceScopeFactory scopeFactory, Tim
             job.ErrorMessage = null;
             job.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime;
             await db.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Completed cleanup job {CleanupJobId} for {TargetType} {TargetId}.", job.Id, job.TargetType, job.TargetId);
+            logger.LogInformation(
+                "Completed cleanup job {CleanupJobId} for {TargetType} {TargetId}.",
+                job.Id,
+                job.TargetType,
+                job.TargetId);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

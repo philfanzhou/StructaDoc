@@ -13,8 +13,8 @@ using StructaDoc.Contracts.Providers;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class ProviderConfigAndParseRunEndpointTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ProviderConfigAndParseRunEndpointTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     // Configuring a Provider means supplying an address and deciding whether two optional fields are
     // worth filling in. An administrator can answer neither from the form alone: the hosted service

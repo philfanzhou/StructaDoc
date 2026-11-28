@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Providers;
@@ -65,7 +64,7 @@ public static class ProviderConfigAdministrationEndpoints
         HttpContext context,
         IAntiforgery antiforgery,
         IProviderConfigAdministrationService service,
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
@@ -91,7 +90,7 @@ public static class ProviderConfigAdministrationEndpoints
             auditRecorder,
             logger,
             user,
-            StructaDocManagementAudit.Actions.ProviderConfigCreated,
+            ManagementAuditCatalog.Actions.ProviderConfigCreated,
             result.Config?.Id.ToString("D") ?? Guid.Empty.ToString("D"),
             result.Config,
             outcome: result.Status == ProviderConfigMutationStatus.Succeeded
@@ -101,7 +100,7 @@ public static class ProviderConfigAdministrationEndpoints
                 ? "A Provider configuration was created."
                 : "The Provider configuration creation was rejected.",
             timeProvider,
-            HostManagementAudit.ClientAddress(context),
+            ManagementAudit.ClientAddress(context),
             cancellationToken);
 
         context.Response.Headers.CacheControl = "no-store";
@@ -117,7 +116,7 @@ public static class ProviderConfigAdministrationEndpoints
         HttpContext context,
         IAntiforgery antiforgery,
         IProviderConfigAdministrationService service,
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger<ManagementAuditRecordPoints> logger,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
@@ -146,10 +145,10 @@ public static class ProviderConfigAdministrationEndpoints
         var action = (existing is null, request.IsEnabled) switch
         {
             (false, true) when !existing!.IsEnabled =>
-                StructaDocManagementAudit.Actions.ProviderConfigEnabled,
+                ManagementAuditCatalog.Actions.ProviderConfigEnabled,
             (false, false) when existing!.IsEnabled =>
-                StructaDocManagementAudit.Actions.ProviderConfigDisabled,
-            _ => StructaDocManagementAudit.Actions.ProviderConfigChanged,
+                ManagementAuditCatalog.Actions.ProviderConfigDisabled,
+            _ => ManagementAuditCatalog.Actions.ProviderConfigChanged,
         };
 
         await RecordProviderAuditAsync(
@@ -166,7 +165,7 @@ public static class ProviderConfigAdministrationEndpoints
                 ? "A Provider configuration changed: a new immutable version now applies."
                 : "The Provider configuration update was rejected.",
             timeProvider,
-            HostManagementAudit.ClientAddress(context),
+            ManagementAudit.ClientAddress(context),
             cancellationToken);
 
         context.Response.Headers.CacheControl = "no-store";
@@ -277,7 +276,7 @@ public static class ProviderConfigAdministrationEndpoints
     /// default state — never the credential or the endpoint address.
     /// </summary>
     private static async Task RecordProviderAuditAsync(
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger logger,
         ClaimsPrincipal user,
         ManagementAuditAction action,
@@ -300,10 +299,10 @@ public static class ProviderConfigAdministrationEndpoints
         }
 
         var auditEvent = ManagementAuditEvent.Create(
-            HostManagementAudit.AdministratorOperator(user),
+            ManagementAudit.AdministratorOperator(user),
             action,
             ManagementAuditTarget.Create(
-                StructaDocManagementAudit.TargetTypes.ProviderConfig,
+                ManagementAuditCatalog.TargetTypes.ProviderConfig,
                 providerConfigId),
             outcome,
             clientIp: clientIp,
@@ -311,7 +310,7 @@ public static class ProviderConfigAdministrationEndpoints
             metadata: metadata,
             timeProvider: timeProvider);
 
-        await HostManagementAudit.RecordAsync(
+        await ManagementAudit.RecordAsync(
             auditRecorder,
             logger,
             auditEvent,

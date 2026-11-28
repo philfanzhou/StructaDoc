@@ -251,7 +251,10 @@ internal sealed class CloudApiStub : HttpMessageHandler
 
         public override long Length => length;
 
-        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override long Position
+        {
+            get => throw new NotSupportedException(); set => throw new NotSupportedException();
+        }
 
         public override void Flush() { }
 

@@ -10,9 +10,9 @@ namespace StructaDoc.Adapters.Settings;
 
 public sealed class SettingsService(
     ControlPlaneDbContext dbContext,
-    StructaDocSettingsConfiguration configuration,
+    SettingsConfiguration configuration,
     ISettingSecretProtector secretProtector,
-    StructaDocManagementAuditRecorder auditRecorder,
+    ManagementAuditRecorder auditRecorder,
     IEnumerable<ISettingChangeListener> listeners,
     ILogger<SettingsService> logger) : ISettingsService
 {
@@ -257,7 +257,7 @@ public sealed class SettingsService(
         DateTime nowUtc)
     {
         return ManagementAuditEvent.Create(
-            StructaDocManagementAudit.AdministratorOperator(
+            ManagementAuditCatalog.AdministratorOperator(
                 actor.AdministratorId,
                 actor.Username),
             WellKnownManagementAuditActions.ConfigurationChanged,

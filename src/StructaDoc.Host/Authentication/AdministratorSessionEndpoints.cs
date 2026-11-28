@@ -1,8 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
 using ServiceMantle.Web.RateLimiting;
 using StructaDoc.Adapters.Authentication;
@@ -72,7 +70,7 @@ public static class AdministratorSessionEndpoints
             HttpContext context,
             IAntiforgery antiforgery,
             IAdministratorAuthenticationService authenticationService,
-            StructaDocManagementAuditRecorder auditRecorder,
+            ManagementAuditRecorder auditRecorder,
             ILogger<ManagementAuditRecordPoints> logger,
             TimeProvider timeProvider,
             CancellationToken cancellationToken)
@@ -96,11 +94,11 @@ public static class AdministratorSessionEndpoints
                     logger,
                     // A failed sign-in has no established identity, so the event is attributed to
                     // the username that was submitted.
-                    StructaDocManagementAudit.LoginAttemptOperator(request.Username),
+                    ManagementAuditCatalog.LoginAttemptOperator(request.Username),
                     succeeded: false,
                     request.Username,
                     timeProvider,
-                    HostManagementAudit.ClientAddress(context),
+                    ManagementAudit.ClientAddress(context),
                     cancellationToken);
                 return Results.Problem(
                     statusCode: StatusCodes.Status401Unauthorized,
@@ -121,13 +119,13 @@ public static class AdministratorSessionEndpoints
             await RecordLoginAuditAsync(
                 auditRecorder,
                 logger,
-                StructaDocManagementAudit.AdministratorOperator(
+                ManagementAuditCatalog.AdministratorOperator(
                     administrator.Id.ToString("D"),
                     administrator.Username),
                 succeeded: true,
                 administrator.Id.ToString("D"),
                 timeProvider,
-                HostManagementAudit.ClientAddress(context),
+                ManagementAudit.ClientAddress(context),
                 cancellationToken);
 
             return Results.Ok(ToResponse(administrator));
@@ -135,7 +133,7 @@ public static class AdministratorSessionEndpoints
     }
 
     private static async Task RecordLoginAuditAsync(
-        StructaDocManagementAuditRecorder auditRecorder,
+        ManagementAuditRecorder auditRecorder,
         ILogger logger,
         ManagementAuditOperator operatorInfo,
         bool succeeded,
@@ -156,7 +154,7 @@ public static class AdministratorSessionEndpoints
             clientIp: clientIp,
             timeProvider: timeProvider);
 
-        await HostManagementAudit.RecordAsync(
+        await ManagementAudit.RecordAsync(
             auditRecorder,
             logger,
             auditEvent,

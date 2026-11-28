@@ -2,7 +2,7 @@ namespace StructaDoc.Adapters.Persistence;
 
 public static class DatabaseMigrationExtensions
 {
-    public static async Task ApplyStructaDocMigrationsAsync(
+    public static async Task ApplyMigrationsAsync(
         this IServiceProvider serviceProvider,
         DatabaseOptions databaseOptions,
         CancellationToken cancellationToken = default)
@@ -15,7 +15,7 @@ public static class DatabaseMigrationExtensions
             return;
         }
 
-        var result = await serviceProvider.OrchestrateStructaDocMigrationsAsync(
+        var result = await serviceProvider.OrchestrateMigrationsAsync(
             databaseOptions,
             ServiceMantleMigrationOrchestration.ResolveDeploymentMode(databaseOptions.Provider),
             cancellationToken: cancellationToken);

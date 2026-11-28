@@ -88,7 +88,7 @@ public sealed class LoggingLevelSettingTests
         Assert.False((await GetAsync(client, SettingCatalog.LoggingDefaultLevel)).IsStored);
 
         // The seeded switch is the running filter: the pin, not the shipped default.
-        var switches = factory.Services.GetRequiredService<StructaDocConsoleLogSwitches>();
+        var switches = factory.Services.GetRequiredService<ConsoleLogSwitches>();
         Assert.True(switches.TryGet(SettingCatalog.LoggingDefaultLevel, out var seeded));
         Assert.Equal("Debug", seeded);
     }
@@ -116,7 +116,7 @@ public sealed class LoggingLevelSettingTests
             Assert.False(state.IsPendingRestart);
         }
 
-        var switches = restarted.Services.GetRequiredService<StructaDocConsoleLogSwitches>();
+        var switches = restarted.Services.GetRequiredService<ConsoleLogSwitches>();
         Assert.True(switches.TryGet(SettingCatalog.LoggingAspNetCoreLevel, out var seeded));
         Assert.Equal("Error", seeded);
     }

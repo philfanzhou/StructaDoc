@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Configuration;
@@ -355,7 +354,7 @@ public sealed class OidcInteractiveSessionTests
             DiscoveryFails = discoveryFails,
             HasEndSessionEndpoint = hasEndSessionEndpoint,
         };
-        var factory = new StructaDocWebApplicationFactory().WithWebHostBuilder(builder =>
+        var factory = new HostWebApplicationFactory().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Oidc:Enabled", "true");
             builder.UseSetting("Oidc:Authority", OidcTestAuthority.Issuer);

@@ -3,7 +3,6 @@ using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace StructaDoc.Host.Tests;
@@ -161,7 +160,10 @@ internal sealed class StubMinerUServer : IAsyncDisposable
         using var buffer = new MemoryStream();
         using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
         {
-            Write(archive, v4 ? "markdown.md" : "full.md", Encoding.UTF8.GetBytes($"# {MarkdownHeading}\n\n{MarkdownBody}\n"));
+            Write(
+                archive,
+                v4 ? "markdown.md" : "full.md",
+                Encoding.UTF8.GetBytes($"# {MarkdownHeading}\n\n{MarkdownBody}\n"));
             if (v4)
             {
                 // Synthetic physical PDF output in the observed 4.0.12 renderer shape; no inference claim.

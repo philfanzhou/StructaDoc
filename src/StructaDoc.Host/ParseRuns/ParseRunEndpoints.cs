@@ -275,12 +275,24 @@ public static class ParseRunEndpoints
             : Results.Ok(ToResponse(parseRun));
     }
 
-    private static async Task<IResult> ListForDocumentAsync(Guid documentId, HttpContext context, IParseResultReadService service, StructaDoc.Application.Documents.IDocumentAuthorizationService authorizationService, CancellationToken cancellationToken)
+    private static async Task<IResult> ListForDocumentAsync(
+        Guid documentId,
+        HttpContext context,
+        IParseResultReadService service,
+        StructaDoc.Application.Documents.IDocumentAuthorizationService authorizationService,
+        CancellationToken cancellationToken)
     {
         var access = ResourceAccessContextFactory.Create(context.User);
-        if (!await authorizationService.HasPermissionAsync(documentId, access, RequiredDocumentPermission.Of(context), cancellationToken))
+        if (!await authorizationService.HasPermissionAsync(
+            documentId,
+            access,
+            RequiredDocumentPermission.Of(context),
+            cancellationToken))
         {
-            return Results.Problem(statusCode: 404, title: "Document not found", detail: $"Document '{documentId:D}' does not exist or is not accessible.");
+            return Results.Problem(
+                statusCode: 404,
+                title: "Document not found",
+                detail: $"Document '{documentId:D}' does not exist or is not accessible.");
         }
         var runs = await service.ListForDocumentAsync(documentId, access, cancellationToken);
         return Results.Ok(runs.Select(ToResponse));

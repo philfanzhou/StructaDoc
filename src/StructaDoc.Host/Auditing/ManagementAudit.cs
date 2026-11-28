@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Authentication;
@@ -18,7 +17,7 @@ public sealed record ManagementAuditRecordPoints;
 /// succeeded when the audit row is written. An audit failure is never silent — it is logged at
 /// error level — but it does not retroactively fail an operation that committed.
 /// </summary>
-public static class HostManagementAudit
+public static class ManagementAudit
 {
     /// <summary>
     /// The audit operator for an authenticated administrator: the account's stable identifier and
@@ -26,7 +25,7 @@ public static class HostManagementAudit
     /// </summary>
     public static ManagementAuditOperator AdministratorOperator(ClaimsPrincipal user)
     {
-        return StructaDocManagementAudit.AdministratorOperator(
+        return ManagementAuditCatalog.AdministratorOperator(
             user.FindFirstValue(ClaimTypes.NameIdentifier)!,
             user.FindFirstValue(StructaDocClaimTypes.Username));
     }
@@ -38,7 +37,7 @@ public static class HostManagementAudit
     public static ManagementAuditOperator AdministratorOperator(
         string administratorId,
         string? username) =>
-        StructaDocManagementAudit.AdministratorOperator(administratorId, username);
+        ManagementAuditCatalog.AdministratorOperator(administratorId, username);
 
     /// <summary>
     /// Records an audit row, logging a failure rather than failing the record point's operation.
@@ -51,7 +50,7 @@ public static class HostManagementAudit
     /// </param>
     /// <param name="cancellationToken">Propagates caller cancellation.</param>
     public static async Task RecordAsync(
-        StructaDocManagementAuditRecorder recorder,
+        ManagementAuditRecorder recorder,
         ILogger logger,
         ManagementAuditEvent auditEvent,
         string recordPoint,

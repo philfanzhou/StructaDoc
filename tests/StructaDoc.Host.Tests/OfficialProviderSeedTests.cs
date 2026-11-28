@@ -11,8 +11,8 @@ namespace StructaDoc.Host.Tests;
 /// The state a deployment starts in. This class owns its own Host so nothing here observes a
 /// Provider another test configured.
 /// </summary>
-public sealed class OfficialProviderSeedTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class OfficialProviderSeedTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     // Assembling the first Provider out of an address, a model name, and a default marker is the step
     // a first-run administrator has no way to get right, and getting it wrong looks like a service

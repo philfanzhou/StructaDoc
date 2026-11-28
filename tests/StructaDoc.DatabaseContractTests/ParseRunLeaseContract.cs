@@ -9,7 +9,6 @@ using StructaDoc.Adapters.Persistence.Entities;
 using StructaDoc.Adapters.Persistence.ParseRuns;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Canonical;
-using StructaDoc.Application.Documents;
 using StructaDoc.Application.ParseRuns;
 using StructaDoc.Application.Providers;
 using StructaDoc.Application.Storage;
@@ -221,7 +220,9 @@ internal static class ParseRunLeaseContract
             ParseBundleValidator.CurrentSchemaVersion,
             resultLease.ParseRunId,
             // A non-ASCII label checks that every database stores the column as Unicode text.
-            [new ParsePage(1, 1000, 1400, "pixel", Label: "Anhang-\u00e4 \u2167", LabelSource: PageLabelSources.PdfPageLabels)],
+            [
+                new ParsePage(1, 1000, 1400, "pixel", Label: "Anhang-\u00e4 \u2167", LabelSource: PageLabelSources.PdfPageLabels)
+            ],
             // Non-ASCII caption and footnote text checks the new Block columns store Unicode too.
             [new ParseBlock(
                 Guid.NewGuid(),

@@ -2,7 +2,6 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using StructaDoc.Contracts.Documents;
@@ -22,8 +21,8 @@ namespace StructaDoc.Host.Tests;
 /// Every other test in this suite stops short of one of those steps. This is the one that fails if
 /// they do not fit together.
 /// </summary>
-public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ParseExecutionEndToEndTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Theory]
     [InlineData(false)]
@@ -214,7 +213,7 @@ public sealed class ParseExecutionEndToEndTests(StructaDocWebApplicationFactory 
         return factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
-                services.AddHostedService<ParseRunExecutionWorker>());
+                services.AddHostedService<ParseRunExecution>());
             builder.UseSetting("Worker:MaintenanceInterval", "00:00:00.100");
             builder.UseSetting("Worker:MinimumPollDelay", "00:00:00.100");
             builder.UseSetting("Worker:MaximumPollDelay", "00:00:00.200");

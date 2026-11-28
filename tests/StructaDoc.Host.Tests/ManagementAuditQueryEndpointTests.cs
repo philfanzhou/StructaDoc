@@ -22,8 +22,8 @@ namespace StructaDoc.Host.Tests;
 /// Every test filters on its own action, because the shared host's control plane accumulates the
 /// audit rows every test in this class writes.
 /// </summary>
-public sealed class ManagementAuditQueryEndpointTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ManagementAuditQueryEndpointTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     private const string WalkAction = "structadoc.query_walk";
     private const string CursorAction = "structadoc.query_cursor";
@@ -100,8 +100,18 @@ public sealed class ManagementAuditQueryEndpointTests(StructaDocWebApplicationFa
     {
         await SeedAsync(
             ProbeEvent(FilterAction, "target-1", "operator-a", ManagementAuditOutcome.Success, ProbeBaseTime),
-            ProbeEvent(FilterAction, "target-2", "operator-a", ManagementAuditOutcome.Failure, ProbeBaseTime.AddMinutes(1)),
-            ProbeEvent(FilterAction, "target-3", "operator-b", ManagementAuditOutcome.Success, ProbeBaseTime.AddMinutes(2)));
+            ProbeEvent(
+                FilterAction,
+                "target-2",
+                "operator-a",
+                ManagementAuditOutcome.Failure,
+                ProbeBaseTime.AddMinutes(1)),
+            ProbeEvent(
+                FilterAction,
+                "target-3",
+                "operator-b",
+                ManagementAuditOutcome.Success,
+                ProbeBaseTime.AddMinutes(2)));
 
         var byOperator = await QueryPageAsync($"?action={FilterAction}&operator=operator-a");
         Assert.Equal(2, byOperator.TotalCount);
@@ -235,7 +245,7 @@ public sealed class ManagementAuditQueryEndpointTests(StructaDocWebApplicationFa
     [Fact]
     public async Task The_endpoint_is_described_in_the_operator_document_only()
     {
-        using var browserFactory = new StructaDocWebApplicationFactory();
+        using var browserFactory = new HostWebApplicationFactory();
         using var client = browserFactory.CreateClient();
 
         using var browser = await client.GetAsync(

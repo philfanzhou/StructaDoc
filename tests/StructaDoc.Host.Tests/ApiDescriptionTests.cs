@@ -13,7 +13,7 @@ public sealed class ApiDescriptionTests
     [Fact]
     public async Task The_description_is_served_without_a_credential()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
 
         using var response = await client.GetAsync(
@@ -139,7 +139,8 @@ public sealed class ApiDescriptionTests
         // The answer is described with its blocks, lines, and object bounding boxes.
         var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
         Assert.True(schemas.TryGetProperty("ImageRecognizeResponse", out _));
-        Assert.True(schemas.GetProperty("ImageRecognizeBlock").GetProperty("properties").TryGetProperty("lines", out _));
+        Assert.True(
+            schemas.GetProperty("ImageRecognizeBlock").GetProperty("properties").TryGetProperty("lines", out _));
         Assert.True(schemas.GetProperty("ImageRecognizeLine").GetProperty("properties").TryGetProperty("bbox", out _));
     }
 
@@ -174,9 +175,12 @@ public sealed class ApiDescriptionTests
             .Where(path => path.Name.StartsWith("/api/v1/documents/{", StringComparison.Ordinal)
                 || path.Name.StartsWith("/api/v1/parse-runs/{", StringComparison.Ordinal))
             .SelectMany(path => path.Value.EnumerateObject()
-                .Select(operation => (Route: $"{operation.Name.ToUpperInvariant()} {path.Name}", Operation: operation.Value)))
+                .Select(
+                    operation => (Route: $"{operation.Name.ToUpperInvariant()} {path.Name}", Operation: operation.Value)))
             .Where(entry => !(entry.Operation.TryGetProperty("description", out var description)
-                && (description.GetString() ?? string.Empty).Contains("permission on the Document", StringComparison.Ordinal)))
+                && (description.GetString() ?? string.Empty).Contains(
+                    "permission on the Document",
+                    StringComparison.Ordinal)))
             .Select(entry => entry.Route)
             .ToArray();
 
@@ -301,7 +305,9 @@ public sealed class ApiDescriptionTests
             .ToArray();
 
         var missing = operations.Where(operation => string.IsNullOrWhiteSpace(operation.Id)).ToArray();
-        Assert.True(missing.Length == 0, $"Missing operationId: {string.Join(", ", missing.Select(operation => operation.Route))}.");
+        Assert.True(
+            missing.Length == 0,
+            $"Missing operationId: {string.Join(", ", missing.Select(operation => operation.Route))}.");
 
         var duplicate = operations.GroupBy(operation => operation.Id, StringComparer.Ordinal)
             .Where(group => group.Count() > 1)
@@ -355,7 +361,9 @@ public sealed class ApiDescriptionTests
         Assert.Equal(1, maxAttempts.GetProperty("minimum").GetInt32());
         Assert.Equal(10, maxAttempts.GetProperty("maximum").GetInt32());
         Assert.Equal(3, maxAttempts.GetProperty("default").GetInt32());
-        Assert.Equal("object", request.GetProperty("properties").GetProperty("options").GetProperty("type").GetString());
+        Assert.Equal(
+            "object",
+            request.GetProperty("properties").GetProperty("options").GetProperty("type").GetString());
     }
 
     [Fact]
@@ -446,7 +454,7 @@ public sealed class ApiDescriptionTests
     [Fact]
     public async Task The_browsable_page_is_served_from_the_service_itself()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
 
         using var response = await client.GetAsync(
@@ -481,7 +489,8 @@ public sealed class ApiDescriptionTests
 
         var undescribed = document.RootElement.GetProperty("paths").EnumerateObject()
             .SelectMany(path => path.Value.EnumerateObject()
-                .Select(operation => (Route: $"{operation.Name.ToUpperInvariant()} {path.Name}", Operation: operation.Value)))
+                .Select(
+                    operation => (Route: $"{operation.Name.ToUpperInvariant()} {path.Name}", Operation: operation.Value)))
             .Where(entry => !DescribesSuccess(entry.Operation))
             .Select(entry => entry.Route)
             .ToArray();
@@ -506,7 +515,9 @@ public sealed class ApiDescriptionTests
             Assert.True(block.TryGetProperty(field, out _), $"Block field '{field}' is missing.");
         }
 
-        foreach (var name in new[] { "ParsePageResponse", "ParseAssetResponse", "ParseArtifactResponse", "BoundingBoxResponse" })
+        foreach (var name in new[]
+            {
+                "ParsePageResponse", "ParseAssetResponse", "ParseArtifactResponse", "BoundingBoxResponse" })
         {
             Assert.True(schemas.TryGetProperty(name, out _), $"Schema '{name}' is missing.");
         }
@@ -554,11 +565,23 @@ public sealed class ApiDescriptionTests
     }
 
     [Theory]
-    [InlineData("/api/v1/parse-runs/{parseRunId}/markdown", "get", "Returns the stored Markdown Artifact without rendering it.")]
-    [InlineData("/api/v1/parse-runs/{parseRunId}/markdown/preview", "get", "The Markdown result rendered as a self-contained HTML page, for display rather than for saving.")]
-    [InlineData("/api/v1/parse-runs/{parseRunId}/exports/{format}", "get", "Creates a packaged Markdown, HTML, ZIP, or PDF deliverable.")]
+    [InlineData(
+            "/api/v1/parse-runs/{parseRunId}/markdown",
+            "get",
+            "Returns the stored Markdown Artifact without rendering it.")]
+    [InlineData(
+            "/api/v1/parse-runs/{parseRunId}/markdown/preview",
+            "get",
+            "The Markdown result rendered as a self-contained HTML page, for display rather than for saving.")]
+    [InlineData(
+            "/api/v1/parse-runs/{parseRunId}/exports/{format}",
+            "get",
+            "Creates a packaged Markdown, HTML, ZIP, or PDF deliverable.")]
     [InlineData("/api/v1/documents/{documentId}/access-grants", "get", "Lists the explicit access grants on a Document.")]
-    [InlineData("/api/v1/documents/{documentId}/access-grants", "post", "Creates or replaces a grant for one OIDC user or API client.")]
+    [InlineData(
+            "/api/v1/documents/{documentId}/access-grants",
+            "post",
+            "Creates or replaces a grant for one OIDC user or API client.")]
     [InlineData("/api/v1/documents/{documentId}/access-grants/{grantId}", "delete", "Revokes one explicit access grant.")]
     [InlineData("/api/v1/documents/{documentId}/parse-runs", "post", "Creates a durable Parse Run for a Document.")]
     [InlineData("/api/v1/parse-runs/{id}/cancel", "post", "Requests best-effort cancellation of a Parse Run.")]
@@ -601,7 +624,7 @@ public sealed class ApiDescriptionTests
 
     private static async Task<JsonDocument> ReadDescriptionAsync(string path)
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
         using var response = await client.GetAsync(
             path,

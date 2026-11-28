@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Settings;
 
@@ -18,7 +17,7 @@ namespace StructaDoc.Host.Settings;
 public static class RecoverableConfigurationBinder
 {
     public static TOptions Bind<TOptions>(
-        StructaDocSettingsConfiguration settings,
+        SettingsConfiguration settings,
         SettingsStartupFault fault,
         string section,
         string description,

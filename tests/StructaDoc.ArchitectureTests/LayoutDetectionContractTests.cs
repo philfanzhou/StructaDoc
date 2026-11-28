@@ -166,11 +166,13 @@ public sealed class LayoutDetectionContractTests
             .SelectMany(constructor => constructor.GetParameters())
             .Select(parameter => parameter.ParameterType)
             .Concat(type
-                .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .GetMethods(
+                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                 .SelectMany(method => method.GetParameters().Select(parameter => parameter.ParameterType)
                     .Append(method.ReturnType)))
             .Concat(type
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .GetProperties(
+                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
                 .Select(property => property.PropertyType));
 
         foreach (var member in members)

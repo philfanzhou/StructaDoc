@@ -14,7 +14,10 @@ public sealed class EfCoreParseResultReadService(
     IFileStorage fileStorage,
     ILogger<EfCoreParseResultReadService> logger) : IParseResultReadService
 {
-    public async Task<IReadOnlyList<ParseRunRecord>> ListForDocumentAsync(Guid documentId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ParseRunRecord>> ListForDocumentAsync(
+        Guid documentId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanReadDocumentAsync(documentId, access, cancellationToken)) return [];
         // Narrowed and ordered on the entity rather than on the projection. A database cannot filter
@@ -23,20 +26,40 @@ public sealed class EfCoreParseResultReadService(
         return await QueryRuns(forDocumentId: documentId).ToListAsync(cancellationToken);
     }
 
-    public async Task<ParseRunRecord?> GetAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<ParseRunRecord?> GetAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
         return await QueryRuns(parseRunId).SingleOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<ParsePageRecord>?> ListPagesAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ParsePageRecord>?> ListPagesAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
-        return await dbContext.ParsePages.AsNoTracking().Where(page => page.ParseRunId == parseRunId).OrderBy(page => page.Number)
-            .Select(page => new ParsePageRecord(page.Number, page.Width, page.Height, page.Unit, page.Label, page.LabelSource)).ToListAsync(cancellationToken);
+        return await dbContext.ParsePages.AsNoTracking().Where(
+            page => page.ParseRunId == parseRunId).OrderBy(page => page.Number)
+            .Select(
+                page => new ParsePageRecord(
+                    page.Number,
+                    page.Width,
+                    page.Height,
+                    page.Unit,
+                    page.Label,
+                    page.LabelSource)).ToListAsync(cancellationToken);
     }
 
-    public async Task<ParseBlockPage?> ListBlocksAsync(Guid parseRunId, ResourceAccessContext access, int limit, int? afterSequence = null, int? pageNumber = null, CancellationToken cancellationToken = default)
+    public async Task<ParseBlockPage?> ListBlocksAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        int limit,
+        int? afterSequence = null,
+        int? pageNumber = null,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
         var query = dbContext.ParseBlocks.AsNoTracking().Where(block => block.ParseRunId == parseRunId);
@@ -45,7 +68,11 @@ public sealed class EfCoreParseResultReadService(
         var rows = await query.OrderBy(block => block.Sequence).Take(limit + 1).Select(block => new ParseBlockRecord(
             block.Id, block.Sequence, block.PageNumber, block.Type, block.Subtype, block.Content, block.ContentFormat,
             block.BoundingBoxX0.HasValue && block.BoundingBoxY0.HasValue && block.BoundingBoxX1.HasValue && block.BoundingBoxY1.HasValue
-                ? new BoundingBoxRecord(block.BoundingBoxX0.Value, block.BoundingBoxY0.Value, block.BoundingBoxX1.Value, block.BoundingBoxY1.Value)
+                ? new BoundingBoxRecord(
+                    block.BoundingBoxX0.Value,
+                    block.BoundingBoxY0.Value,
+                    block.BoundingBoxX1.Value,
+                    block.BoundingBoxY1.Value)
                 : null,
             block.Confidence, block.AssetId, block.Caption, block.Footnote)).ToListAsync(cancellationToken);
         var hasMore = rows.Count > limit;
@@ -53,36 +80,90 @@ public sealed class EfCoreParseResultReadService(
         return new ParseBlockPage(rows, hasMore ? rows[^1].Sequence : null);
     }
 
-    public async Task<IReadOnlyList<ParseAssetRecord>?> ListAssetsAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ParseAssetRecord>?> ListAssetsAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
-        return await dbContext.ParseAssets.AsNoTracking().Where(asset => asset.ParseRunId == parseRunId).OrderBy(asset => asset.Name)
-            .Select(asset => new ParseAssetRecord(asset.Id, asset.Name, asset.MediaType, asset.SizeBytes, asset.Sha256, asset.Width, asset.Height)).ToListAsync(cancellationToken);
+        return await dbContext.ParseAssets.AsNoTracking().Where(
+            asset => asset.ParseRunId == parseRunId).OrderBy(asset => asset.Name)
+            .Select(
+                asset => new ParseAssetRecord(
+                    asset.Id,
+                    asset.Name,
+                    asset.MediaType,
+                    asset.SizeBytes,
+                    asset.Sha256,
+                    asset.Width,
+                    asset.Height)).ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<ParseExportAssetRecord>?> ListAssetsForExportAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ParseExportAssetRecord>?> ListAssetsForExportAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
-        return await dbContext.ParseAssets.AsNoTracking().Where(asset => asset.ParseRunId == parseRunId).OrderBy(asset => asset.Name)
-            .Select(asset => new ParseExportAssetRecord(asset.ParseRunId, asset.Id, asset.Name, asset.MediaType, asset.SizeBytes, asset.Sha256, asset.Width, asset.Height, asset.StorageRef)).ToListAsync(cancellationToken);
+        return await dbContext.ParseAssets.AsNoTracking().Where(
+            asset => asset.ParseRunId == parseRunId).OrderBy(asset => asset.Name)
+            .Select(
+                asset => new ParseExportAssetRecord(
+                    asset.ParseRunId,
+                    asset.Id,
+                    asset.Name,
+                    asset.MediaType,
+                    asset.SizeBytes,
+                    asset.Sha256,
+                    asset.Width,
+                    asset.Height,
+                    asset.StorageRef)).ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<ParseArtifactRecord>?> ListArtifactsAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ParseArtifactRecord>?> ListArtifactsAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
-        return await dbContext.ParseArtifacts.AsNoTracking().Where(artifact => artifact.ParseRunId == parseRunId).OrderBy(artifact => artifact.Type).ThenBy(artifact => artifact.Name)
-            .Select(artifact => new ParseArtifactRecord(artifact.Id, artifact.Type, artifact.Name, artifact.MediaType, artifact.SizeBytes, artifact.Sha256, artifact.CreatedAtUtc)).ToListAsync(cancellationToken);
+        return await dbContext.ParseArtifacts.AsNoTracking()
+            .Where(artifact => artifact.ParseRunId == parseRunId)
+            .OrderBy(artifact => artifact.Type)
+            .ThenBy(artifact => artifact.Name)
+            .Select(
+                artifact => new ParseArtifactRecord(
+                    artifact.Id,
+                    artifact.Type,
+                    artifact.Name,
+                    artifact.MediaType,
+                    artifact.SizeBytes,
+                    artifact.Sha256,
+                    artifact.CreatedAtUtc)).ToListAsync(cancellationToken);
     }
 
-    public async Task<ParseResultContent?> OpenAssetAsync(Guid parseRunId, Guid assetId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<ParseResultContent?> OpenAssetAsync(
+        Guid parseRunId,
+        Guid assetId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
-        var item = await dbContext.ParseAssets.AsNoTracking().Where(asset => asset.ParseRunId == parseRunId && asset.Id == assetId)
-            .Select(asset => new StoredResult(asset.Name, asset.MediaType, asset.SizeBytes, asset.Sha256, asset.StorageRef)).SingleOrDefaultAsync(cancellationToken);
+        var item = await dbContext.ParseAssets.AsNoTracking().Where(
+            asset => asset.ParseRunId == parseRunId && asset.Id == assetId)
+            .Select(
+                asset => new StoredResult(
+                    asset.Name,
+                    asset.MediaType,
+                    asset.SizeBytes,
+                    asset.Sha256,
+                    asset.StorageRef)).SingleOrDefaultAsync(cancellationToken);
         return await OpenAsync(item, parseRunId, cancellationToken);
     }
 
-    public Task<ParseResultContent?> OpenExportAssetAsync(Guid parseRunId, ParseExportAssetRecord asset, CancellationToken cancellationToken = default)
+    public Task<ParseResultContent?> OpenExportAssetAsync(
+        Guid parseRunId,
+        ParseExportAssetRecord asset,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(asset);
         if (asset.ParseRunId != parseRunId)
@@ -96,26 +177,58 @@ public sealed class EfCoreParseResultReadService(
             cancellationToken);
     }
 
-    public async Task<ParseResultContent?> OpenArtifactAsync(Guid parseRunId, Guid artifactId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<ParseResultContent?> OpenArtifactAsync(
+        Guid parseRunId,
+        Guid artifactId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
-        var item = await dbContext.ParseArtifacts.AsNoTracking().Where(artifact => artifact.ParseRunId == parseRunId && artifact.Id == artifactId)
-            .Select(artifact => new StoredResult(artifact.Name, artifact.MediaType, artifact.SizeBytes, artifact.Sha256, artifact.StorageRef)).SingleOrDefaultAsync(cancellationToken);
+        var item = await dbContext.ParseArtifacts.AsNoTracking().Where(
+            artifact => artifact.ParseRunId == parseRunId && artifact.Id == artifactId)
+            .Select(
+                artifact => new StoredResult(
+                    artifact.Name,
+                    artifact.MediaType,
+                    artifact.SizeBytes,
+                    artifact.Sha256,
+                    artifact.StorageRef)).SingleOrDefaultAsync(cancellationToken);
         return await OpenAsync(item, parseRunId, cancellationToken);
     }
 
-    public async Task<ParseResultContent?> OpenMarkdownAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken = default)
+    public async Task<ParseResultContent?> OpenMarkdownAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanReadRunAsync(parseRunId, access, cancellationToken)) return null;
-        var item = await dbContext.ParseArtifacts.AsNoTracking().Where(artifact => artifact.ParseRunId == parseRunId && artifact.Type == ArtifactTypes.Markdown)
-            .OrderBy(artifact => artifact.Name).Select(artifact => new StoredResult(artifact.Name, artifact.MediaType, artifact.SizeBytes, artifact.Sha256, artifact.StorageRef)).FirstOrDefaultAsync(cancellationToken);
+        var item = await dbContext.ParseArtifacts.AsNoTracking().Where(
+            artifact => artifact.ParseRunId == parseRunId && artifact.Type == ArtifactTypes.Markdown)
+            .OrderBy(artifact => artifact.Name).Select(
+                artifact => new StoredResult(
+                    artifact.Name,
+                    artifact.MediaType,
+                    artifact.SizeBytes,
+                    artifact.Sha256,
+                    artifact.StorageRef)).FirstOrDefaultAsync(cancellationToken);
         return await OpenAsync(item, parseRunId, cancellationToken);
     }
 
-    private async Task<ParseResultContent?> OpenAsync(StoredResult? item, Guid parseRunId, CancellationToken cancellationToken)
+    private async Task<ParseResultContent?> OpenAsync(
+        StoredResult? item,
+        Guid parseRunId,
+        CancellationToken cancellationToken)
     {
         if (item is null) return null;
-        try { return new ParseResultContent(await fileStorage.OpenReadAsync(item.StorageRef, cancellationToken), item.Name, item.MediaType, item.SizeBytes, item.Sha256); }
+        try
+        {
+            return new ParseResultContent(
+                await fileStorage.OpenReadAsync(item.StorageRef, cancellationToken),
+                item.Name,
+                item.MediaType,
+                item.SizeBytes,
+                item.Sha256);
+        }
         catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
         {
             logger.LogError(exception, "Stored result for Parse Run {ParseRunId} is missing.", parseRunId);
@@ -123,12 +236,24 @@ public sealed class EfCoreParseResultReadService(
         }
     }
 
-    private Task<bool> CanReadRunAsync(Guid parseRunId, ResourceAccessContext access, CancellationToken cancellationToken) =>
-        ApplyAccess(dbContext.ParseRuns.AsNoTracking().Where(run => run.Id == parseRunId && run.LifecycleState == ResourceLifecycleStates.Active), access)
+    private Task<bool> CanReadRunAsync(
+        Guid parseRunId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken) =>
+        ApplyAccess(
+            dbContext.ParseRuns.AsNoTracking().Where(
+                run => run.Id == parseRunId && run.LifecycleState == ResourceLifecycleStates.Active),
+            access)
             .AnyAsync(cancellationToken);
 
-    private Task<bool> CanReadDocumentAsync(Guid documentId, ResourceAccessContext access, CancellationToken cancellationToken) =>
-        ApplyDocumentAccess(dbContext.Documents.AsNoTracking().Where(document => document.Id == documentId && document.LifecycleState == ResourceLifecycleStates.Active), access)
+    private Task<bool> CanReadDocumentAsync(
+        Guid documentId,
+        ResourceAccessContext access,
+        CancellationToken cancellationToken) =>
+        ApplyDocumentAccess(
+            dbContext.Documents.AsNoTracking().Where(
+                document => document.Id == documentId && document.LifecycleState == ResourceLifecycleStates.Active),
+            access)
             .AnyAsync(cancellationToken);
 
     private IQueryable<ParseRunEntity> ApplyAccess(IQueryable<ParseRunEntity> query, ResourceAccessContext access) =>
@@ -138,7 +263,9 @@ public sealed class EfCoreParseResultReadService(
                 DocumentOwnerIdentity.From(access))
             : query.Where(_ => false);
 
-    private IQueryable<DocumentEntity> ApplyDocumentAccess(IQueryable<DocumentEntity> query, ResourceAccessContext access) =>
+    private IQueryable<DocumentEntity> ApplyDocumentAccess(
+        IQueryable<DocumentEntity> query,
+        ResourceAccessContext access) =>
         access.IsAdministrator ? query : access.HasPrincipalIdentity
             ? ApplyPrincipalDocumentAccess(
                 query,
@@ -167,12 +294,36 @@ public sealed class EfCoreParseResultReadService(
 
     private IQueryable<ParseRunRecord> QueryRuns(Guid? id = null, Guid? forDocumentId = null)
     {
-        var query = dbContext.ParseRuns.AsNoTracking().Where(run => run.LifecycleState == ResourceLifecycleStates.Active);
+        var query = dbContext.ParseRuns.AsNoTracking().Where(
+            run => run.LifecycleState == ResourceLifecycleStates.Active);
         if (id.HasValue) query = query.Where(run => run.Id == id.Value);
         // Newest first, then by ID: two Parse Runs created in the same tick would otherwise come back
         // in whatever order the database chose that time.
-        if (forDocumentId.HasValue) query = query.Where(run => run.DocumentId == forDocumentId.Value).OrderByDescending(run => run.CreatedAtUtc).ThenByDescending(run => run.Id);
-        return query.Select(run => new ParseRunRecord(run.Id, run.DocumentId, run.Status, run.Stage, run.ProviderType, run.ProviderConfigId, run.ProviderConfigVersion, run.OptionsJson, run.SourceMediaType, run.SubmittedMediaType, run.AttemptCount, run.MaxAttempts, run.NextAttemptAtUtc, run.ErrorCode, run.ErrorMessage, run.CreatedAtUtc, run.StartedAtUtc, run.CompletedAtUtc));
+        if (forDocumentId.HasValue)
+            query = query.Where(
+                run => run.DocumentId == forDocumentId.Value)
+                    .OrderByDescending(run => run.CreatedAtUtc)
+                    .ThenByDescending(run => run.Id);
+        return query.Select(
+            run => new ParseRunRecord(
+                run.Id,
+                run.DocumentId,
+                run.Status,
+                run.Stage,
+                run.ProviderType,
+                run.ProviderConfigId,
+                run.ProviderConfigVersion,
+                run.OptionsJson,
+                run.SourceMediaType,
+                run.SubmittedMediaType,
+                run.AttemptCount,
+                run.MaxAttempts,
+                run.NextAttemptAtUtc,
+                run.ErrorCode,
+                run.ErrorMessage,
+                run.CreatedAtUtc,
+                run.StartedAtUtc,
+                run.CompletedAtUtc));
     }
 
     private sealed record StoredResult(string Name, string MediaType, long SizeBytes, string Sha256, string StorageRef);

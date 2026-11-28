@@ -15,9 +15,9 @@ public static class AdministratorBootstrapExtensions
     /// normal path; this one exists so unattended deployments and CI can provision without a
     /// browser. Configuring it also closes first-run setup, because an administrator then exists.
     /// </summary>
-    public static async Task BootstrapStructaDocAdministratorAsync(
+    public static async Task BootstrapAdministratorAsync(
         this IServiceProvider serviceProvider,
-        StructaDocAuthenticationOptions options,
+        AuthenticationBootstrapOptions options,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);

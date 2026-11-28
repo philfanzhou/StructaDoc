@@ -354,7 +354,7 @@ public sealed class InfrastructureSettingsEndpointTests
         return deployment.CreateFactory(builder => builder.ConfigureServices(
             (context, services) =>
             {
-                services.AddSingleton(StructaDocSettingsConfiguration.Create(
+                services.AddSingleton(SettingsConfiguration.Create(
                     context.Configuration,
                     new ControlPlaneOptions
                     {

@@ -11,7 +11,7 @@ namespace StructaDoc.Adapters.Authentication;
 /// section's sign-in tuning lives in <see cref="AuthenticationTuningOptions"/> instead and is bound
 /// after the stored settings have joined the configuration.
 /// </summary>
-public sealed class StructaDocAuthenticationOptions
+public sealed class AuthenticationBootstrapOptions
 {
     public const string SectionName = "Authentication";
 

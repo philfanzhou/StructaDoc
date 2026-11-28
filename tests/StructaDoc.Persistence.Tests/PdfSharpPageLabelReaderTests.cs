@@ -35,8 +35,12 @@ public sealed class PdfSharpPageLabelReaderTests
     {
         var pdf = PageLabelPdf.Create(4, document =>
         {
-            var first = PageLabelPdf.Indirect(document, PageLabelPdf.Nums(document, (0, PageLabelPdf.Label(document, "/R"))));
-            var second = PageLabelPdf.Indirect(document, PageLabelPdf.Nums(document, (2, PageLabelPdf.Label(document, "/a", start: 3))));
+            var first = PageLabelPdf.Indirect(
+                document,
+                PageLabelPdf.Nums(document, (0, PageLabelPdf.Label(document, "/R"))));
+            var second = PageLabelPdf.Indirect(
+                document,
+                PageLabelPdf.Nums(document, (2, PageLabelPdf.Label(document, "/a", start: 3))));
             var leaf = PageLabelPdf.Kids(document, first, second);
             // Root plus fourteen more levels plus the two leaves is exactly sixteen levels.
             for (var level = 0; level < 14; level++)
@@ -284,7 +288,9 @@ public sealed class PdfSharpPageLabelReaderTests
             label.Elements["/S"] = new PdfString("D");
             return PageLabelPdf.Nums(document, (0, label));
         },
-        ["start below one"] = document => PageLabelPdf.Nums(document, (0, PageLabelPdf.Label(document, "/D", start: 0))),
+        ["start below one"] = document => PageLabelPdf.Nums(
+            document,
+            (0, PageLabelPdf.Label(document, "/D", start: 0))),
         ["start is not an integer"] = document =>
         {
             var label = PageLabelPdf.Label(document, "/D");
@@ -347,7 +353,11 @@ public sealed class PdfSharpPageLabelReaderTests
             TestContext.Current.CancellationToken);
 
     private static ProviderDocumentSource Source(byte[] pdf) =>
-        new("submitted.pdf", "application/pdf", pdf.Length, _ => Task.FromResult<Stream>(new MemoryStream(pdf, writable: false)));
+        new(
+            "submitted.pdf",
+            "application/pdf",
+            pdf.Length,
+            _ => Task.FromResult<Stream>(new MemoryStream(pdf, writable: false)));
 
     private static ParseBundle Bundle(int[] pages, (int Page, string Text)[] pageNumbers) =>
         new(

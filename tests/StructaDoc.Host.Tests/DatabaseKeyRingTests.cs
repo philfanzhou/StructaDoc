@@ -6,9 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using ServiceMantle.Persistence.Relational.DataProtection;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.Persistence;
@@ -80,8 +78,8 @@ public sealed class DatabaseKeyRingTests
         using var deployment = new KeyRingDeployment();
         deployment.MigrateBusinessDatabaseBlocking();
 
-        var rightRing = StructaDocKeyRing.CreateDatabase(
-            new StructaDocAuthenticationOptions
+        var rightRing = DataProtectionKeyRing.CreateDatabase(
+            new AuthenticationBootstrapOptions
             {
                 DataProtectionKeyPersistence = DataProtectionKeyPersistence.Database,
                 DataProtectionRootKey = RootKey,
@@ -89,8 +87,8 @@ public sealed class DatabaseKeyRingTests
             deployment.DatabaseOptions);
         var protectedValue = rightRing.CreateProtector("probe").Protect("shared secret");
 
-        var wrongRing = StructaDocKeyRing.CreateDatabase(
-            new StructaDocAuthenticationOptions
+        var wrongRing = DataProtectionKeyRing.CreateDatabase(
+            new AuthenticationBootstrapOptions
             {
                 DataProtectionKeyPersistence = DataProtectionKeyPersistence.Database,
                 DataProtectionRootKey = "a-different-root-key",
@@ -221,8 +219,8 @@ public sealed class DatabaseKeyRingTests
                 databaseKeyRing: true,
                 rootKey,
                 pinBusinessDatabase,
-                StructaDocWebApplicationFactory.AdministratorUsername,
-                StructaDocWebApplicationFactory.AdministratorPassword);
+                HostWebApplicationFactory.AdministratorUsername,
+                HostWebApplicationFactory.AdministratorPassword);
             // Creating the client runs the entry point, which is where the startup failures under
             // test surface; signing in then drives the ring through a real request.
             using var client = factory.CreateClient();
@@ -239,8 +237,8 @@ public sealed class DatabaseKeyRingTests
                 databaseKeyRing: false,
                 rootKey: null,
                 pinBusinessDatabase: true,
-                StructaDocWebApplicationFactory.AdministratorUsername,
-                StructaDocWebApplicationFactory.AdministratorPassword);
+                HostWebApplicationFactory.AdministratorUsername,
+                HostWebApplicationFactory.AdministratorPassword);
             using var client = factory.CreateClient();
             await client.LoginAsAdministratorAsync();
             return factory;
@@ -336,7 +334,7 @@ public sealed class DatabaseKeyRingTests
                 {
                     builder.ConfigureServices((context, services) =>
                     {
-                        services.AddSingleton(StructaDocSettingsConfiguration.Create(
+                        services.AddSingleton(SettingsConfiguration.Create(
                             context.Configuration,
                             new ControlPlaneOptions
                             {

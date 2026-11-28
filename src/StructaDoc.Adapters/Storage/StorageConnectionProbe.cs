@@ -91,7 +91,8 @@ public sealed class StorageConnectionProbe
             File.WriteAllText(probePath, ProbeContent);
             return new StorageProbeResult(StorageProbeCode.Writable, string.Empty);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception error)
+        when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             return new StorageProbeResult(
                 error is UnauthorizedAccessException ? StorageProbeCode.AccessDenied : StorageProbeCode.NotWritable,

@@ -1,6 +1,4 @@
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using ServiceMantle;
 using ServiceMantle.Persistence.Relational.DataProtection;
 using StructaDoc.Adapters.Authentication;
@@ -16,7 +14,7 @@ namespace StructaDoc.Host.Authentication;
 /// it. The same instance is then registered for the rest of the application, which keeps a single
 /// key ring rather than two readers of the same directory that could disagree about it.
 /// </summary>
-public static class StructaDocKeyRing
+public static class DataProtectionKeyRing
 {
     /// <summary>
     /// Fixes the purpose chain across processes. A different name would produce keys that cannot
@@ -24,7 +22,7 @@ public static class StructaDocKeyRing
     /// </summary>
     public const string ApplicationName = "StructaDoc";
 
-    public static IDataProtectionProvider Create(StructaDocAuthenticationOptions options)
+    public static IDataProtectionProvider Create(AuthenticationBootstrapOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -49,7 +47,7 @@ public static class StructaDocKeyRing
     /// commits in its own transaction, so it never joins a caller's unit of work.
     /// </summary>
     public static IDataProtectionProvider CreateDatabase(
-        StructaDocAuthenticationOptions options,
+        AuthenticationBootstrapOptions options,
         DatabaseOptions databaseOptions)
     {
         ArgumentNullException.ThrowIfNull(options);

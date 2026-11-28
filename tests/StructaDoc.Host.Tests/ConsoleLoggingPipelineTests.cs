@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ServiceMantle;
-using ServiceMantle.Web.Logging;
 using StructaDoc.Application.Settings;
 using StructaDoc.Contracts.System;
 using StructaDoc.Host.Logging;
@@ -12,7 +11,7 @@ using StructaDoc.Host.Logging;
 namespace StructaDoc.Host.Tests;
 
 // The host registers the ServiceMantle identity (AddServiceMantle) and routes console logging
-// through the locally composed Serilog pipeline (AddStructaDocConsoleLogging): a root
+// through the locally composed Serilog pipeline (AddConsoleLogging): a root
 // LoggingLevelSwitch plus one per fixed override category, structured properties sanitized by the
 // ServiceMantle core StructuredLogSanitizer before they reach the sink. These tests hold the parts
 // of that contract an operator or another component can rely on: the identity the log scope and
@@ -21,8 +20,8 @@ namespace StructaDoc.Host.Tests;
 // secret-shaped values stay masked, and that moving a switch changes what the same process
 // filters without rebuilding anything.
 [Collection("Console output")]
-public sealed class ConsoleLoggingPipelineTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ConsoleLoggingPipelineTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Host_start_exposes_the_registered_service_identity()
@@ -50,7 +49,7 @@ public sealed class ConsoleLoggingPipelineTests(StructaDocWebApplicationFactory 
     {
         var providers = factory.Services.GetServices<ILoggerProvider>().ToArray();
 
-        // AddStructaDocConsoleLogging removes the default MEL providers so nothing can write console
+        // AddConsoleLogging removes the default MEL providers so nothing can write console
         // output around the sanitizing boundary. What must remain is the Serilog bridge.
         Assert.Single(providers);
         Assert.Equal(
@@ -166,7 +165,7 @@ public sealed class ConsoleLoggingPipelineTests(StructaDocWebApplicationFactory 
     [Fact]
     public void Moving_a_switch_changes_what_the_same_process_logs()
     {
-        var switches = new StructaDocConsoleLogSwitches();
+        var switches = new ConsoleLogSwitches();
         var originalOutput = Console.Out;
         using var capture = new ChainingConsoleWriter(originalOutput);
         Console.SetOut(capture);
@@ -180,7 +179,7 @@ public sealed class ConsoleLoggingPipelineTests(StructaDocWebApplicationFactory 
             var logger = host.Services.GetRequiredService<ILoggerFactory>()
                 .CreateLogger("StructaDoc.SwitchContract");
             var efLogger = host.Services.GetRequiredService<ILoggerFactory>()
-                .CreateLogger(StructaDocConsoleLogSwitches.EntityFrameworkCoreDatabaseCommandCategory);
+                .CreateLogger(ConsoleLogSwitches.EntityFrameworkCoreDatabaseCommandCategory);
 
             logger.LogInformation("Root information before any change");
             switches.TrySet(SettingCatalog.LoggingDefaultLevel, "Warning", out _);
@@ -242,7 +241,7 @@ public sealed class ConsoleLoggingPipelineTests(StructaDocWebApplicationFactory 
     [Fact]
     public void Seeding_reads_the_configuration_the_service_actually_uses()
     {
-        var switches = new StructaDocConsoleLogSwitches();
+        var switches = new ConsoleLogSwitches();
         var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -267,7 +266,7 @@ public sealed class ConsoleLoggingPipelineTests(StructaDocWebApplicationFactory 
     [Fact]
     public void Every_published_level_round_trips_through_the_switches()
     {
-        var switches = new StructaDocConsoleLogSwitches();
+        var switches = new ConsoleLogSwitches();
 
         foreach (var key in new[]
                  {
@@ -276,7 +275,7 @@ public sealed class ConsoleLoggingPipelineTests(StructaDocWebApplicationFactory 
                      SettingCatalog.LoggingEfCoreDatabaseCommandLevel,
                  })
         {
-            foreach (var level in StructaDocConsoleLogSwitches.AcceptedLevels)
+            foreach (var level in ConsoleLogSwitches.AcceptedLevels)
             {
                 Assert.True(switches.TrySet(key, level.ToLowerInvariant(), out var applied));
                 Assert.Equal(level, applied);
@@ -292,13 +291,13 @@ public sealed class ConsoleLoggingPipelineTests(StructaDocWebApplicationFactory 
         Assert.False(switches.TryGet(SettingCatalog.ParseMaxConcurrency, out _));
     }
 
-    private static IHost CreatePipelineHost(StructaDocConsoleLogSwitches? switches = null)
+    private static IHost CreatePipelineHost(ConsoleLogSwitches? switches = null)
     {
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
         builder.Services.AddServiceMantle(
             ServiceId.Parse("structadoc"),
             InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"));
-        builder.Services.AddStructaDocConsoleLogging(switches ?? new StructaDocConsoleLogSwitches());
+        builder.Services.AddConsoleLogging(switches ?? new ConsoleLogSwitches());
         return builder.Build();
     }
 }

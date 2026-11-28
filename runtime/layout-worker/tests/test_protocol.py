@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 
-import httpx
 import pytest
 
 from structadoc_layout_worker.app import LAYOUT_ROUTE

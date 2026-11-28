@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -388,8 +387,16 @@ public sealed class MinerUCloudLayoutDetectionProviderTests
     }
 
     [Theory]
-    [InlineData("batch", HttpStatusCode.InternalServerError, "mineru-layout-cloud-submit-http-500", ProviderFailureCategory.Transient)]
-    [InlineData("status", HttpStatusCode.Unauthorized, "mineru-layout-cloud-status-http-401", ProviderFailureCategory.Configuration)]
+    [InlineData(
+            "batch",
+            HttpStatusCode.InternalServerError,
+            "mineru-layout-cloud-submit-http-500",
+            ProviderFailureCategory.Transient)]
+    [InlineData(
+            "status",
+            HttpStatusCode.Unauthorized,
+            "mineru-layout-cloud-status-http-401",
+            ProviderFailureCategory.Configuration)]
     [InlineData("upload", HttpStatusCode.Forbidden, "mineru-layout-cloud-upload-http-403", ProviderFailureCategory.Permanent)]
     [InlineData("result", HttpStatusCode.NotFound, "mineru-layout-cloud-result-http-404", ProviderFailureCategory.Permanent)]
     public async Task Http_failures_on_every_leg_map_to_the_provider_categories(
@@ -505,8 +512,8 @@ public sealed class MinerUCloudLayoutDetectionProviderTests
         // database context the source reads, which a bare container does not have — the composed
         // host covers activation, and these hold the composition itself.
         var services = new ServiceCollection()
-            .AddStructaDocParseProviders()
-            .AddStructaDocLayoutDetection(
+            .AddParseProviders()
+            .AddLayoutDetection(
                 new LayoutRuntimeOptions { BaseUrl = "https://runtime.example" },
                 new LayoutOptions { Backend = LayoutBackendNames.MinerUCloud });
 
@@ -535,7 +542,7 @@ public sealed class MinerUCloudLayoutDetectionProviderTests
         // The default backend keeps registering the runtime adapter only; its registration has no
         // database dependency, so the built provider hands back the real instance.
         var runtimeServices = new ServiceCollection()
-            .AddStructaDocLayoutDetection(
+            .AddLayoutDetection(
                 new LayoutRuntimeOptions { BaseUrl = "https://runtime.example" },
                 new LayoutOptions());
         using var runtimeBuilt = runtimeServices.BuildServiceProvider();

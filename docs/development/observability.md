@@ -38,7 +38,7 @@ required; the process identity remains ephemeral.
 ## Structured Logging Pipeline
 
 Console logging runs through a Serilog pipeline composed in this repository
-(`AddStructaDocConsoleLogging`), registered before the host is built so startup logging —
+(`AddConsoleLogging`), registered before the host is built so startup logging —
 including the stored-configuration fault warnings — flows through it. It replaced
 ServiceMantle.Logging's Serilog host, whose published options are read once at startup and offer
 no runtime switch; composing the pipeline locally is what lets the level move without a restart.

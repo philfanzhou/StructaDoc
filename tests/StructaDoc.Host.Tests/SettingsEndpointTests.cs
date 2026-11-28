@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
@@ -163,10 +162,10 @@ public sealed class SettingsEndpointTests
         // A pin is an environment variable or a command-line argument, and both are process-wide.
         // The registration is replaced instead, so one test cannot change what a Host running beside
         // it sees. Precedence itself is covered where the rule lives, in
-        // StructaDocSettingsConfigurationTests.
+        // SettingsConfigurationTests.
         using var factory = deployment.CreateFactory(builder => builder.ConfigureServices(
             (context, services) => services.AddSingleton(
-                StructaDocSettingsConfiguration.Create(
+                SettingsConfiguration.Create(
                     context.Configuration,
                     new ControlPlaneOptions
                     {
@@ -419,7 +418,9 @@ public sealed class SettingsEndpointTests
         {
             Assert.Equal("00:05:00", (await GetAsync(client, SettingCatalog.WorkerLeaseDuration)).Value);
             Assert.Equal("150.5", (await GetAsync(client, SettingCatalog.ProviderResultsMaxCompressionRatio)).Value);
-            Assert.Equal("00:00:01", (await GetAsync(client, SettingCatalog.LibreOfficeResourceInspectionInterval)).Value);
+            Assert.Equal(
+                "00:00:01",
+                (await GetAsync(client, SettingCatalog.LibreOfficeResourceInspectionInterval)).Value);
 
             // This process bound its options with the rows in place, so nothing is waiting on a
             // restart any more.
@@ -455,7 +456,7 @@ public sealed class SettingsEndpointTests
 
         using var factory = deployment.CreateFactory(builder => builder.ConfigureServices(
             (context, services) => services.AddSingleton(
-                StructaDocSettingsConfiguration.Create(
+                SettingsConfiguration.Create(
                     context.Configuration,
                     new ControlPlaneOptions
                     {
@@ -579,7 +580,7 @@ public sealed class SettingsEndpointTests
 
         using var factory = deployment.CreateFactory(builder => builder.ConfigureServices(
             (context, services) => services.AddSingleton(
-                StructaDocSettingsConfiguration.Create(
+                SettingsConfiguration.Create(
                     context.Configuration,
                     new ControlPlaneOptions
                     {

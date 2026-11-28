@@ -4,7 +4,6 @@ public static class ResourceLifecycleStates
 {
     public const string Active = "active";
     public const string DeletionPending = "deletion-pending";
-    public const string DeletionFailed = "deletion-failed";
 }
 
 public static class CleanupJobStatuses

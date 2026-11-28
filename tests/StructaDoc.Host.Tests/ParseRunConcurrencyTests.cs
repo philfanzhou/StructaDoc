@@ -14,8 +14,8 @@ using StructaDoc.Host.Workers;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class ParseRunConcurrencyTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ParseRunConcurrencyTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Execution_slots_run_parse_runs_at_the_same_time()
@@ -30,7 +30,7 @@ public sealed class ParseRunConcurrencyTests(StructaDocWebApplicationFactory fac
             {
                 // Execution is the subject here, and the shared host leaves its worker out so that
                 // Parse Runs written as fixtures elsewhere are not claimed out from under them.
-                services.AddHostedService<ParseRunExecutionWorker>();
+                services.AddHostedService<ParseRunExecution>();
                 services.RemoveAll<IParseProvider>();
                 services.AddSingleton<IParseProvider>(provider);
             });

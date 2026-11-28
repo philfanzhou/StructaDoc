@@ -20,9 +20,14 @@ internal sealed class ParseSegmentEntityConfiguration : IEntityTypeConfiguration
         builder.Property(segment => segment.Sha256).HasColumnName("sha256").HasMaxLength(64).IsUnicode(false);
         builder.Property(segment => segment.Status).HasColumnName("status").HasMaxLength(32).IsUnicode(false);
         builder.Property(segment => segment.ExternalTaskId).HasColumnName("external_task_id").HasMaxLength(512);
-        builder.Property(segment => segment.ProtectedSubmissionContinuation).HasColumnName("protected_submission_continuation");
+        builder.Property(
+            segment => segment.ProtectedSubmissionContinuation).HasColumnName("protected_submission_continuation");
         builder.Property(segment => segment.UpdatedAtUtc).HasColumnName("updated_at_utc");
-        builder.HasOne(segment => segment.ParseRun).WithMany(run => run.Segments).HasForeignKey(segment => segment.ParseRunId).OnDelete(DeleteBehavior.Cascade);
-        builder.HasIndex(segment => new { segment.ParseRunId, segment.Index }).IsUnique().HasDatabaseName("ux_parse_segments_index");
+        builder.HasOne(segment => segment.ParseRun)
+            .WithMany(run => run.Segments)
+            .HasForeignKey(segment => segment.ParseRunId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(
+            segment => new { segment.ParseRunId, segment.Index }).IsUnique().HasDatabaseName("ux_parse_segments_index");
     }
 }

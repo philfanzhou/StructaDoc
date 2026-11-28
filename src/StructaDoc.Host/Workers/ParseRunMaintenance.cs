@@ -2,11 +2,11 @@ using StructaDoc.Application.ParseRuns;
 
 namespace StructaDoc.Host.Workers;
 
-public sealed class ParseRunMaintenanceWorker(
+public sealed class ParseRunMaintenance(
     IServiceScopeFactory serviceScopeFactory,
     ParseRunWorkerOptions options,
     TimeProvider timeProvider,
-    ILogger<ParseRunMaintenanceWorker> logger) : BackgroundService
+    ILogger<ParseRunMaintenance> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

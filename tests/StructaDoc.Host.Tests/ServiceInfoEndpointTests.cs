@@ -4,8 +4,8 @@ using StructaDoc.Contracts.System;
 
 namespace StructaDoc.Host.Tests;
 
-public sealed class ServiceInfoEndpointTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ServiceInfoEndpointTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public async Task Service_info_returns_product_identity()

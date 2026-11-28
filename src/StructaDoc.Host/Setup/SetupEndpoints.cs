@@ -1,7 +1,5 @@
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.Extensions.Logging;
 using ServiceMantle.Audit;
 using ServiceMantle.Web.RateLimiting;
 using StructaDoc.Adapters.ControlPlane;
@@ -55,7 +53,7 @@ public static class SetupEndpoints
             HttpContext context,
             IAntiforgery antiforgery,
             IAdministratorProvisioningService provisioning,
-            StructaDocManagementAuditRecorder auditRecorder,
+            ManagementAuditRecorder auditRecorder,
             ILogger<ManagementAuditRecordPoints> logger,
             TimeProvider timeProvider,
             CancellationToken cancellationToken)
@@ -140,7 +138,7 @@ public static class SetupEndpoints
         // happens without an authenticated operator: the account the claim produced is the only
         // identity the event can carry, and the address it came from is part of the record.
         static async Task RecordClaimAuditAsync(
-            StructaDocManagementAuditRecorder auditRecorder,
+            ManagementAuditRecorder auditRecorder,
             ILogger logger,
             string submittedUsername,
             string? claimedAdministratorId,
@@ -151,13 +149,13 @@ public static class SetupEndpoints
         {
             var auditEvent = ManagementAuditEvent.Create(
                 claimedAdministratorId is null
-                    ? StructaDocManagementAudit.LoginAttemptOperator(submittedUsername)
-                    : StructaDocManagementAudit.AdministratorOperator(
+                    ? ManagementAuditCatalog.LoginAttemptOperator(submittedUsername)
+                    : ManagementAuditCatalog.AdministratorOperator(
                         claimedAdministratorId,
                         submittedUsername),
-                StructaDocManagementAudit.Actions.SetupClaimed,
+                ManagementAuditCatalog.Actions.SetupClaimed,
                 ManagementAuditTarget.Create(
-                    StructaDocManagementAudit.TargetTypes.AdministratorAccount,
+                    ManagementAuditCatalog.TargetTypes.AdministratorAccount,
                     claimedAdministratorId ?? submittedUsername),
                 outcome,
                 // The audit client IP is a structured field that must be a real address; a
@@ -168,7 +166,7 @@ public static class SetupEndpoints
                     : "An attempt to claim setup was rejected.",
                 timeProvider: timeProvider);
 
-            await HostManagementAudit.RecordAsync(
+            await ManagementAudit.RecordAsync(
                 auditRecorder,
                 logger,
                 auditEvent,

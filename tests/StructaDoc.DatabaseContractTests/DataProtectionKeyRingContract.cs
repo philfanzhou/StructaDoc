@@ -42,14 +42,14 @@ internal static class DataProtectionKeyRingContract
             await context.Database.MigrateAsync(cancellationToken);
         }
 
-        var first = StructaDocKeyRing.CreateDatabase(
+        var first = DataProtectionKeyRing.CreateDatabase(
             AuthenticationWithRootKey("contract-root-key-one"),
             databaseOptions);
         var protectedValue = first.CreateProtector("contract").Protect("cross-instance secret");
 
         // A separately constructed ring is what another process resolves: same database, same root
         // key, no shared in-memory state.
-        var second = StructaDocKeyRing.CreateDatabase(
+        var second = DataProtectionKeyRing.CreateDatabase(
             AuthenticationWithRootKey("contract-root-key-one"),
             databaseOptions);
         Assert.Equal(
@@ -60,7 +60,7 @@ internal static class DataProtectionKeyRingContract
         // the next, and material protected before the revocation no longer decrypts.
         var revoking = BuildRing(databaseOptions, "contract-root-key-one");
         revoking.Keys.RevokeAllKeys(DateTimeOffset.UtcNow, "contract test");
-        var afterRevocation = StructaDocKeyRing.CreateDatabase(
+        var afterRevocation = DataProtectionKeyRing.CreateDatabase(
             AuthenticationWithRootKey("contract-root-key-one"),
             databaseOptions);
         Assert.ThrowsAny<CryptographicException>(
@@ -68,7 +68,7 @@ internal static class DataProtectionKeyRingContract
 
         // A wrong root key cannot open the stored envelopes and fails closed, without either root
         // key in the error.
-        var wrong = StructaDocKeyRing.CreateDatabase(
+        var wrong = DataProtectionKeyRing.CreateDatabase(
             AuthenticationWithRootKey("contract-root-key-two"),
             databaseOptions);
         var error = Assert.ThrowsAny<Exception>(
@@ -89,7 +89,7 @@ internal static class DataProtectionKeyRingContract
         }
     }
 
-    private static StructaDocAuthenticationOptions AuthenticationWithRootKey(string rootKey) => new()
+    private static AuthenticationBootstrapOptions AuthenticationWithRootKey(string rootKey) => new()
     {
         DataProtectionKeyPersistence = DataProtectionKeyPersistence.Database,
         DataProtectionRootKey = rootKey,
@@ -111,7 +111,7 @@ internal static class DataProtectionKeyRingContract
             .PersistKeysToServiceMantleEfCore<StructaDocDbContext>(
                 ServiceId.Parse("structadoc"),
                 _ => rootKey)
-            .SetApplicationName(StructaDocKeyRing.ApplicationName);
+            .SetApplicationName(DataProtectionKeyRing.ApplicationName);
         var provider = services.BuildServiceProvider();
         return (
             provider.GetRequiredService<IDataProtectionProvider>(),

@@ -21,8 +21,8 @@ namespace StructaDoc.Host.Tests;
 // produced by the static files, the SPA fallback, and the API error paths, and the value in the
 // response header, the request context, and the downstream log scope is one and the same.
 [Collection("Console output")]
-public sealed partial class CorrelationIdTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed partial class CorrelationIdTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     private const string ResponseHeaderName = ServiceHeaderNames.CorrelationId;
     private const string FieldName = ServiceLogFieldNames.CorrelationId;
@@ -273,7 +273,7 @@ public sealed partial class CorrelationIdTests(StructaDocWebApplicationFactory f
         builder.Services.AddServiceMantle(
             ServiceId.Parse("structadoc"),
             InstanceId.Parse($"structadoc-{Guid.NewGuid():N}"));
-        builder.Services.AddStructaDocConsoleLogging(new StructaDocConsoleLogSwitches());
+        builder.Services.AddConsoleLogging(new ConsoleLogSwitches());
         builder.WebHost.UseTestServer();
 
         var app = builder.Build();

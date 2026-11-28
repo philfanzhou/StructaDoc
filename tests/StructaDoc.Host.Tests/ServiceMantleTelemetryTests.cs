@@ -1,11 +1,9 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using ServiceMantle;
-using ServiceMantle.Diagnostics.Instrumentation;
 
 namespace StructaDoc.Host.Tests;
 
@@ -14,8 +12,8 @@ namespace StructaDoc.Host.Tests;
 // both providers are registered and resolved by the running host, the OTel resource is exactly the
 // three identity fields the log pipeline uses, no export-side registration of any kind exists, and
 // a registration that enables nothing fails host startup with a stable error.
-public sealed class ServiceMantleTelemetryTests(StructaDocWebApplicationFactory factory)
-    : IClassFixture<StructaDocWebApplicationFactory>
+public sealed class ServiceMantleTelemetryTests(HostWebApplicationFactory factory)
+    : IClassFixture<HostWebApplicationFactory>
 {
     [Fact]
     public void Host_identity_is_stable_within_one_host_and_random_between_hosts()
@@ -29,7 +27,7 @@ public sealed class ServiceMantleTelemetryTests(StructaDocWebApplicationFactory 
         Assert.Equal(instanceId, factory.Services.GetRequiredService<InstanceId>());
         Assert.Equal(instanceId.ToString(), context.InstanceId);
 
-        using var secondHost = new StructaDocWebApplicationFactory();
+        using var secondHost = new HostWebApplicationFactory();
         var secondInstance = secondHost.Services.GetRequiredService<InstanceId>();
         Assert.Equal(serviceId, secondHost.Services.GetRequiredService<ServiceId>());
         Assert.Matches("^structadoc-[0-9a-f]{32}$", secondInstance.ToString());

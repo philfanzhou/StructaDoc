@@ -19,7 +19,12 @@ public static class ParseExportEndpoints
             .WithName("ExportParseRun")
             .RequireAuthorization(AuthorizationPolicies.ParsesRead)
             .RequiresDocumentPermission(DocumentPermissions.Export)
-            .Produces<Stream>(StatusCodes.Status200OK, contentType: "text/markdown", additionalContentTypes: ["text/html", "application/zip", "application/pdf"])
+            .Produces<Stream>(StatusCodes.Status200OK, contentType: "text/markdown", additionalContentTypes:
+                [
+                    "text/html",
+                    "application/zip",
+                    "application/pdf"
+                ])
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
@@ -29,7 +34,8 @@ public static class ParseExportEndpoints
             // cannot be accepted by the service and left out of the document.
             .AddOpenApiOperationTransformer((operation, _, _) =>
             {
-                if (operation.Parameters?.FirstOrDefault(parameter => parameter.Name == "format")?.Schema is OpenApiSchema schema)
+                if (operation.Parameters?.FirstOrDefault(
+                    parameter => parameter.Name == "format")?.Schema is OpenApiSchema schema)
                 {
                     schema.Enum = [.. Formats.Select(format => (JsonNode)format)];
                 }
@@ -44,20 +50,49 @@ public static class ParseExportEndpoints
     /// Export permission gates the packaged deliverable, not confidentiality: a caller with read
     /// permission can still retrieve the stored result resources and rendered HTML preview.
     /// </remarks>
-    internal static async Task<IResult> ExportAsync(Guid parseRunId, string format, HttpContext context, IParseResultReadService readService, IDocumentAuthorizationService authorization, IParseExportService exports, CancellationToken cancellationToken)
+    internal static async Task<IResult> ExportAsync(
+        Guid parseRunId,
+        string format,
+        HttpContext context,
+        IParseResultReadService readService,
+        IDocumentAuthorizationService authorization,
+        IParseExportService exports,
+        CancellationToken cancellationToken)
     {
-        if (!Formats.Contains(format, StringComparer.OrdinalIgnoreCase)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["format"] = [$"Format must be one of: {string.Join(", ", Formats)}."] });
+        if (!Formats.Contains(format, StringComparer.OrdinalIgnoreCase))
+            return Results.ValidationProblem(
+                new Dictionary<string,
+                string[]>
+                { ["format"] = [$"Format must be one of: {string.Join(", ", Formats)}."] });
         var access = ResourceAccessContextFactory.Create(context.User);
         var run = await readService.GetAsync(parseRunId, access, cancellationToken);
-        if (run is null || !await authorization.HasPermissionAsync(run.DocumentId, access, RequiredDocumentPermission.Of(context), cancellationToken)) return Results.Problem(statusCode: 404, title: "Parse Run not found", detail: "The Parse Run does not exist or cannot be exported by the current subject.");
+        if (run is null
+            || !await authorization.HasPermissionAsync(
+                run.DocumentId,
+                access,
+                RequiredDocumentPermission.Of(context),
+                cancellationToken))
+            return Results.Problem(
+                statusCode: 404,
+                title: "Parse Run not found",
+                detail: "The Parse Run does not exist or cannot be exported by the current subject.");
         var export = await exports.CreateAsync(parseRunId, format, access, cancellationToken);
-        if (export is null) return Results.Problem(statusCode: 409, title: "Export unavailable", detail: "The requested export is not available for this Parse Run.");
+        if (export is null)
+            return Results.Problem(
+                statusCode: 409,
+                title: "Export unavailable",
+                detail: "The requested export is not available for this Parse Run.");
         context.Response.Headers.CacheControl = "private, max-age=0, must-revalidate";
         context.Response.Headers.XContentTypeOptions = "nosniff";
         context.Response.Headers["Content-Security-Policy"] =
             "default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
             + "base-uri 'none'; form-action 'none'; frame-src 'none'; sandbox";
         context.Response.Headers["Referrer-Policy"] = "no-referrer";
-        return Results.File(export.Content, export.MediaType, export.Name, entityTag: new EntityTagHeaderValue($"\"{export.Sha256}\""), enableRangeProcessing: true);
+        return Results.File(
+            export.Content,
+            export.MediaType,
+            export.Name,
+            entityTag: new EntityTagHeaderValue($"\"{export.Sha256}\""),
+            enableRangeProcessing: true);
     }
 }

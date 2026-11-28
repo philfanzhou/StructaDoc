@@ -182,8 +182,20 @@ internal sealed class ApiClientContractTransformer : IOpenApiOperationTransforme
         else if (path == "/api/v1/parse-runs/{parseRunId}/blocks")
         {
             ConfigureIntegerParameter(operation, "limit", 1, 1000, 200, "Maximum number of Blocks to return.");
-            ConfigureIntegerParameter(operation, "afterSequence", 0, null, null, "Return Blocks whose sequence is greater than this cursor.");
-            ConfigureIntegerParameter(operation, "pageNumber", 1, null, null, "Return only Blocks on this one-based page number.");
+            ConfigureIntegerParameter(
+                operation,
+                "afterSequence",
+                0,
+                null,
+                null,
+                "Return Blocks whose sequence is greater than this cursor.");
+            ConfigureIntegerParameter(
+                operation,
+                "pageNumber",
+                1,
+                null,
+                null,
+                "Return only Blocks on this one-based page number.");
         }
     }
 

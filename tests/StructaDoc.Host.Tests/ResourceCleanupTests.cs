@@ -15,20 +15,20 @@ namespace StructaDoc.Host.Tests;
 
 /// <summary>
 /// Ownership fencing of the cleanup Worker. A cleanup attempt can outlive its five-minute reclaim
-/// deadline, so these tests drive the real <see cref="ResourceCleanupWorker"/> pipeline against a
+/// deadline, so these tests drive the real <see cref="ResourceCleanup"/> pipeline against a
 /// temporary SQLite database with a manual clock and a scripted storage double: each scenario parks
 /// the first attempt inside object deletion, lets a second claim take over, and then observes what
 /// the stale attempt may still write. The Worker's loop is not hosted, so nothing runs unless a
 /// scenario invokes one attempt explicitly.
 /// </summary>
-public sealed class ResourceCleanupWorkerTests
+public sealed class ResourceCleanupTests
 {
     private static readonly MethodInfo ProcessOneAsyncMethod =
-        typeof(ResourceCleanupWorker).GetMethod(
+        typeof(ResourceCleanup).GetMethod(
             "ProcessOneAsync",
             BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException(
-            "ResourceCleanupWorker.ProcessOneAsync was not found by the test harness.");
+            "ResourceCleanup.ProcessOneAsync was not found by the test harness.");
 
     [Fact]
     public async Task Late_failure_after_reclaim_completion_cannot_overwrite_the_terminal_state()
@@ -242,7 +242,7 @@ public sealed class ResourceCleanupWorkerTests
         (new ManualTimeProvider(startUtc), new ScriptedFileStorage());
 
     private static Task<bool> ProcessOneAsync(
-        ResourceCleanupWorker worker,
+        ResourceCleanup worker,
         CancellationToken cancellationToken) =>
         (Task<bool>)ProcessOneAsyncMethod.Invoke(worker, [cancellationToken])!;
 
@@ -375,10 +375,10 @@ public sealed class ResourceCleanupWorkerTests
             return environment;
         }
 
-        public ResourceCleanupWorker CreateWorker() => new(
+        public ResourceCleanup CreateWorker() => new(
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             serviceProvider.GetRequiredService<TimeProvider>(),
-            NullLogger<ResourceCleanupWorker>.Instance);
+            NullLogger<ResourceCleanup>.Instance);
 
         public async Task<SeededCleanupJob> SeedParseRunJobAsync(DateTime nowUtc)
         {

@@ -16,7 +16,7 @@ public sealed class ApiClientIsolationTests
     [Fact]
     public async Task A_client_reads_only_the_documents_it_uploaded()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var administrator = factory.CreateClient();
         await administrator.LoginAsAdministratorAsync();
 
@@ -60,7 +60,7 @@ public sealed class ApiClientIsolationTests
     [Fact]
     public async Task A_client_cannot_parse_or_delete_another_clients_document()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var administrator = factory.CreateClient();
         await administrator.LoginAsAdministratorAsync();
 
@@ -96,7 +96,7 @@ public sealed class ApiClientIsolationTests
     [Fact]
     public async Task An_administrator_still_reaches_every_client_document()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var administrator = factory.CreateClient();
         await administrator.LoginAsAdministratorAsync();
 
@@ -121,7 +121,7 @@ public sealed class ApiClientIsolationTests
     [Fact]
     public async Task An_access_grant_names_an_api_client_and_restores_what_isolation_withheld()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var administrator = factory.CreateClient();
         await administrator.LoginAsAdministratorAsync();
 
@@ -146,7 +146,7 @@ public sealed class ApiClientIsolationTests
             $"/api/v1/documents/{document.Id:D}/access-grants",
             new DocumentAccessGrantRequest(
                 PrincipalIdentity.ApiClientIssuer,
-                PrincipalIdentity.ApiClientSubject(granteeId),
+                granteeId.ToString("D"),
                 ["read"]),
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, grant.StatusCode);
@@ -154,7 +154,7 @@ public sealed class ApiClientIsolationTests
             TestContext.Current.CancellationToken);
         Assert.NotNull(grantResponse);
         Assert.Equal(PrincipalIdentity.ApiClientIssuer, grantResponse.Issuer);
-        Assert.Equal(PrincipalIdentity.ApiClientSubject(granteeId), grantResponse.Subject);
+        Assert.Equal(granteeId.ToString("D"), grantResponse.Subject);
         Assert.Equal($"api-client:{ownerId:D}", grantResponse.CreatedBy);
 
         using var afterGrant = await grantee.GetAsync(
@@ -178,7 +178,7 @@ public sealed class ApiClientIsolationTests
     [Fact]
     public async Task A_grant_round_trips_a_nul_bearing_boundary_principal()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var administrator = factory.CreateClient();
         await administrator.LoginAsAdministratorAsync();
         using var owner = await CreateApiClientAsync(factory, administrator, "Owner");
@@ -208,7 +208,7 @@ public sealed class ApiClientIsolationTests
     [Fact]
     public async Task A_grant_rejects_an_api_client_subject_that_is_not_a_client_id()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var administrator = factory.CreateClient();
         await administrator.LoginAsAdministratorAsync();
 
@@ -233,7 +233,7 @@ public sealed class ApiClientIsolationTests
     [Fact]
     public async Task A_grant_rejects_a_permission_no_operation_checks()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var administrator = factory.CreateClient();
         await administrator.LoginAsAdministratorAsync();
 
@@ -249,7 +249,7 @@ public sealed class ApiClientIsolationTests
             $"/api/v1/documents/{document.Id:D}/access-grants",
             new DocumentAccessGrantRequest(
                 PrincipalIdentity.ApiClientIssuer,
-                PrincipalIdentity.ApiClientSubject(granteeId),
+                granteeId.ToString("D"),
                 ["read", "write"]),
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -268,7 +268,7 @@ public sealed class ApiClientIsolationTests
     }
 
     private static async Task<HttpClient> CreateApiClientAsync(
-        StructaDocWebApplicationFactory factory,
+        HostWebApplicationFactory factory,
         HttpClient administrator,
         string name)
     {
@@ -277,7 +277,7 @@ public sealed class ApiClientIsolationTests
     }
 
     private static async Task<(Guid Id, HttpClient Client)> CreateIdentifiedApiClientAsync(
-        StructaDocWebApplicationFactory factory,
+        HostWebApplicationFactory factory,
         HttpClient administrator,
         string name)
     {

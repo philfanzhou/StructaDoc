@@ -55,7 +55,9 @@ public sealed class DatabaseConnectionProbe
         }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or FormatException)
         {
-            return new DatabaseProbeResult(DatabaseProbeCode.InvalidConfiguration, SanitizeMessage(error, candidate.ConnectionString));
+            return new DatabaseProbeResult(
+                DatabaseProbeCode.InvalidConfiguration,
+                SanitizeMessage(error, candidate.ConnectionString));
         }
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -82,7 +84,9 @@ public sealed class DatabaseConnectionProbe
         }
         catch (Exception error)
         {
-            return new DatabaseProbeResult(DatabaseProbeCode.Unreachable, SanitizeMessage(error, candidate.ConnectionString));
+            return new DatabaseProbeResult(
+                DatabaseProbeCode.Unreachable,
+                SanitizeMessage(error, candidate.ConnectionString));
         }
     }
 

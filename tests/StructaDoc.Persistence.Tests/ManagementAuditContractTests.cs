@@ -9,7 +9,6 @@ using ServiceMantle.Persistence.Relational.Stores;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Adapters.Settings;
 using StructaDoc.Application.Settings;
-using StructaDoc.Migrations.Sqlite;
 using StructaDoc.Testing;
 
 namespace StructaDoc.Persistence.Tests;
@@ -29,7 +28,7 @@ public sealed class ManagementAuditContractTests
         await deployment.MigrateAsync();
 
         var auditEvent = ManagementAuditEvent.Create(
-            StructaDocManagementAudit.AdministratorOperator(
+            ManagementAuditCatalog.AdministratorOperator(
                 Guid.NewGuid().ToString("D"),
                 "staging-admin"),
             WellKnownManagementAuditActions.AdminLoginSucceeded,
@@ -53,7 +52,7 @@ public sealed class ManagementAuditContractTests
         await deployment.MigrateAsync();
 
         var error = Assert.Throws<ManagementAuditException>(() => ManagementAuditEvent.Create(
-            StructaDocManagementAudit.AdministratorOperator(
+            ManagementAuditCatalog.AdministratorOperator(
                 Guid.NewGuid().ToString("D"),
                 "rejected-admin"),
             WellKnownManagementAuditActions.ConfigurationChanged,
@@ -73,7 +72,7 @@ public sealed class ManagementAuditContractTests
     public async Task A_secret_shaped_metadata_value_is_redacted_whole()
     {
         var auditEvent = ManagementAuditEvent.Create(
-            StructaDocManagementAudit.AdministratorOperator(
+            ManagementAuditCatalog.AdministratorOperator(
                 Guid.NewGuid().ToString("D"),
                 "redacted-admin"),
             WellKnownManagementAuditActions.ConfigurationChanged,
@@ -94,7 +93,7 @@ public sealed class ManagementAuditContractTests
     public async Task A_connection_string_shaped_value_is_redacted()
     {
         var auditEvent = ManagementAuditEvent.Create(
-            StructaDocManagementAudit.AdministratorOperator(
+            ManagementAuditCatalog.AdministratorOperator(
                 Guid.NewGuid().ToString("D"),
                 "redacted-admin"),
             WellKnownManagementAuditActions.ConfigurationChanged,
@@ -116,7 +115,7 @@ public sealed class ManagementAuditContractTests
             -----END RSA PRIVATE KEY-----
             """;
         var auditEvent = ManagementAuditEvent.Create(
-            StructaDocManagementAudit.AdministratorOperator(
+            ManagementAuditCatalog.AdministratorOperator(
                 Guid.NewGuid().ToString("D"),
                 "redacted-admin"),
             WellKnownManagementAuditActions.AdminLoginSucceeded,
@@ -135,7 +134,7 @@ public sealed class ManagementAuditContractTests
     {
         using var deployment = new ControlPlaneDeployment();
         await deployment.MigrateAsync();
-        var configuration = StructaDocSettingsConfiguration.Create(
+        var configuration = SettingsConfiguration.Create(
             new ConfigurationBuilder().Build(),
             deployment.Options,
             [],
@@ -178,7 +177,7 @@ public sealed class ManagementAuditContractTests
         ControlPlaneServiceCollectionExtensions.ConfigureControlPlane(options, deployment.Options);
         options.AddInterceptors(new FailingSaveInterceptor());
         await using var dbContext = new ControlPlaneDbContext(options.Options);
-        var configuration = StructaDocSettingsConfiguration.Create(
+        var configuration = SettingsConfiguration.Create(
             new ConfigurationBuilder().Build(),
             deployment.Options,
             [],
@@ -188,7 +187,7 @@ public sealed class ManagementAuditContractTests
             dbContext,
             configuration,
             new FakeSettingSecretProtector(),
-            new StructaDocManagementAuditRecorder(
+            new ManagementAuditRecorder(
                 new EfCoreManagementAuditWriter<ControlPlaneDbContext>(dbContext),
                 dbContext),
             [],
@@ -247,7 +246,7 @@ public sealed class ManagementAuditContractTests
                 DatabasePath = Path.Combine(directory, "control.db"),
             };
             var services = new ServiceCollection();
-            services.AddStructaDocControlPlane(Options);
+            services.AddControlPlane(Options);
             Provider = services.BuildServiceProvider();
         }
 
@@ -256,14 +255,14 @@ public sealed class ManagementAuditContractTests
         public ControlPlaneDbContext DbContext =>
             Provider.GetRequiredService<ControlPlaneDbContext>();
 
-        public StructaDocManagementAuditRecorder AuditRecorder =>
-            Provider.GetRequiredService<StructaDocManagementAuditRecorder>();
+        public ManagementAuditRecorder AuditRecorder =>
+            Provider.GetRequiredService<ManagementAuditRecorder>();
 
         private ServiceProvider Provider { get; }
 
         // The same entry Program.cs and the migration command use.
         public async Task MigrateThroughOrdinaryEntryAsync() =>
-            await Provider.ApplyStructaDocControlPlaneMigrationsAsync(
+            await Provider.ApplyControlPlaneMigrationsAsync(
                 TestContext.Current.CancellationToken);
 
         // Kept distinct from the ordinary entry for tests that need the raw context behavior.

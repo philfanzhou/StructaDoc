@@ -208,11 +208,21 @@ public sealed class PdfSharpPageLabelReader : IPdfPageLabelReader
                 };
                 switch (name)
                 {
-                    case "/D": style = PdfPageLabelStyle.Decimal; break;
-                    case "/R": style = PdfPageLabelStyle.UpperRoman; break;
-                    case "/r": style = PdfPageLabelStyle.LowerRoman; break;
-                    case "/A": style = PdfPageLabelStyle.UpperLetters; break;
-                    case "/a": style = PdfPageLabelStyle.LowerLetters; break;
+                    case "/D":
+                        style = PdfPageLabelStyle.Decimal;
+                        break;
+                    case "/R":
+                        style = PdfPageLabelStyle.UpperRoman;
+                        break;
+                    case "/r":
+                        style = PdfPageLabelStyle.LowerRoman;
+                        break;
+                    case "/A":
+                        style = PdfPageLabelStyle.UpperLetters;
+                        break;
+                    case "/a":
+                        style = PdfPageLabelStyle.LowerLetters;
+                        break;
                     default: return null;
                 }
             }

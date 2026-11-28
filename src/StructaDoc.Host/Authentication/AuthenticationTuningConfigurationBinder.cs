@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using StructaDoc.Adapters.Authentication;
 using StructaDoc.Adapters.ControlPlane;
 using StructaDoc.Application.Settings;
@@ -17,7 +16,7 @@ namespace StructaDoc.Host.Authentication;
 public static class AuthenticationTuningConfigurationBinder
 {
     public static AuthenticationTuningOptions Bind(
-        StructaDocSettingsConfiguration settings,
+        SettingsConfiguration settings,
         SettingsStartupFault fault)
     {
         return RecoverableConfigurationBinder.Bind(

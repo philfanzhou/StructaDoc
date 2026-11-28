@@ -13,7 +13,7 @@ public sealed class DocumentReadEndpointTests
     [Fact]
     public async Task Read_endpoints_require_documents_read_scope()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
 
         using var anonymousResponse = await client.GetAsync(
@@ -53,7 +53,7 @@ public sealed class DocumentReadEndpointTests
     [Fact]
     public async Task List_uses_stable_cursor_pagination_without_internal_fields()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
         await client.LoginAsAdministratorAsync();
         var created = new List<DocumentResponse>();
@@ -114,7 +114,7 @@ public sealed class DocumentReadEndpointTests
     [InlineData("/api/v1/documents?cursor=not-a-cursor")]
     public async Task List_rejects_invalid_pagination(string path)
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
         await client.LoginAsAdministratorAsync();
 
@@ -126,7 +126,7 @@ public sealed class DocumentReadEndpointTests
     [Fact]
     public async Task Detail_and_content_support_private_conditional_range_downloads()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
         await client.LoginAsAdministratorAsync();
         var bytes = "%PDF-1.7\nDownload content\n%%EOF"u8.ToArray();
@@ -194,7 +194,7 @@ public sealed class DocumentReadEndpointTests
     [Fact]
     public async Task Missing_stored_content_returns_generic_service_unavailable()
     {
-        using var factory = new StructaDocWebApplicationFactory();
+        using var factory = new HostWebApplicationFactory();
         using var client = factory.CreateClient();
         await client.LoginAsAdministratorAsync();
         var created = await UploadPdfAsync(

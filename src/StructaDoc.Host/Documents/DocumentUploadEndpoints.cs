@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.AspNetCore.Mvc;
 using StructaDoc.Application.Authentication;
 using StructaDoc.Application.Documents;
 using StructaDoc.Application.Storage;

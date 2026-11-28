@@ -177,7 +177,9 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
         var taskId = MinerUHttpProtocol.ValidateExternalTaskId(externalTaskId);
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            MinerUHttpProtocol.BuildEndpoint(configuration.BaseUri, $"{(tier is null ? "tasks" : "v1/tasks")}/{taskId}"));
+            MinerUHttpProtocol.BuildEndpoint(
+                configuration.BaseUri,
+                $"{(tier is null ? "tasks" : "v1/tasks")}/{taskId}"));
         MinerUHttpProtocol.AddBearerCredential(
             request,
             configuration.Credential,

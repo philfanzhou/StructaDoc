@@ -185,13 +185,13 @@ public sealed class ServiceMantleMigrationOrchestrationTests
                 DatabasePath = controlPlanePath,
             };
             var services = new ServiceCollection();
-            services.AddStructaDocControlPlane(controlPlaneOptions);
-            services.AddStructaDocPersistenceMigrationServices(databaseOptions);
+            services.AddControlPlane(controlPlaneOptions);
+            services.AddPersistenceMigrationServices(databaseOptions);
             serviceProvider = services.BuildServiceProvider();
         }
 
         public async Task MigrateControlPlaneAsync(CancellationToken cancellationToken) =>
-            await serviceProvider.ApplyStructaDocControlPlaneMigrationsAsync(cancellationToken);
+            await serviceProvider.ApplyControlPlaneMigrationsAsync(cancellationToken);
 
         public Task<StartupDatabaseGateResult> OrchestrateAsync(
             DatabaseOptions databaseOptions,
@@ -208,7 +208,7 @@ public sealed class ServiceMantleMigrationOrchestrationTests
             DatabaseDeploymentMode mode,
             TimeSpan lockAcquireTimeout,
             CancellationToken cancellationToken) =>
-            serviceProvider.OrchestrateStructaDocMigrationsAsync(
+            serviceProvider.OrchestrateMigrationsAsync(
                 databaseOptions,
                 mode,
                 lockAcquireTimeout,

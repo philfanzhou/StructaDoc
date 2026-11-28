@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using ServiceMantle.Health;
 using ServiceMantle.Installation;
 using StructaDoc.Adapters.ControlPlane;
@@ -30,7 +29,7 @@ namespace StructaDoc.Host.Health;
 /// closed with `health.probe_failed`. The error codes below carry no connection string, path, or
 /// exception text.
 /// </summary>
-public sealed class StructaDocHealthSnapshotSource(
+public sealed class HealthSnapshotSource(
     ControlPlaneDbContext controlPlane,
     StructaDocDbContext businessDatabase,
     SettingsStartupFault settingsStartupFault) : IServiceHealthSnapshotSource

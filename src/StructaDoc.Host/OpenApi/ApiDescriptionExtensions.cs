@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
-using Microsoft.AspNetCore.OpenApi;
 using StructaDoc.Host.Authentication;
 
 namespace StructaDoc.Host.OpenApi;
@@ -15,13 +14,12 @@ namespace StructaDoc.Host.OpenApi;
 // The document is produced by the platform's own OpenAPI support. What it cannot know is how a
 // caller authenticates and which scope each endpoint requires, because that lives in authorization
 // policies rather than in the signature; `ApiSecurityTransformer` supplies it.
-public static class StructaDocApiDescription
+public static class ApiDescriptionExtensions
 {
     // The contract version, which is also the path segment. It is not the build version: a build
     // that adds an optional field does not change what the caller is coding against. `GET
     // /api/v1/system/info` reports which build is answering.
     public const string DocumentName = "v1";
-    public const string BrowserDocumentName = "v1-browser";
 
     // Under `/api` so the description travels with the API it describes, including through a proxy
     // that publishes only that prefix, and so the Host's client-route fallback already excludes it.
@@ -30,7 +28,7 @@ public static class StructaDocApiDescription
     public const string BrowserDocumentPath = "/api/v1-browser/openapi.json";
     public const string BrowsableRoutePrefix = "api/v1/docs";
 
-    public static IServiceCollection AddStructaDocApiDescription(this IServiceCollection services)
+    public static IServiceCollection AddApiDescription(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
 
@@ -64,7 +62,7 @@ public static class StructaDocApiDescription
         return services;
     }
 
-    public static WebApplication MapStructaDocApiDescription(this WebApplication app)
+    public static WebApplication MapApiDescription(this WebApplication app)
     {
         ArgumentNullException.ThrowIfNull(app);
 
@@ -77,7 +75,7 @@ public static class StructaDocApiDescription
         return app;
     }
 
-    public static WebApplication UseStructaDocApiDescriptionPage(this WebApplication app)
+    public static WebApplication UseApiDescriptionPage(this WebApplication app)
     {
         ArgumentNullException.ThrowIfNull(app);
 
