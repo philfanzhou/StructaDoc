@@ -31,15 +31,6 @@ public static class ManagementAudit
     }
 
     /// <summary>
-    /// The audit operator for the administrator whose account a mutating endpoint acts on, when
-    /// that account is not the signed-in caller.
-    /// </summary>
-    public static ManagementAuditOperator AdministratorOperator(
-        string administratorId,
-        string? username) =>
-        ManagementAuditCatalog.AdministratorOperator(administratorId, username);
-
-    /// <summary>
     /// Records an audit row, logging a failure rather than failing the record point's operation.
     /// </summary>
     /// <param name="recorder">The audit recorder.</param>

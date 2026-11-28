@@ -1,6 +1,5 @@
 """Bounded sequential evaluation. Acquire the shared heavy lock before invoking."""
 import argparse
-import importlib.metadata
 import json
 import os
 from pathlib import Path

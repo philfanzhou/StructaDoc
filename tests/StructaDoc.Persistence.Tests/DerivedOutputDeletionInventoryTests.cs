@@ -656,8 +656,6 @@ public sealed class DerivedOutputDeletionInventoryTests
 
         public IFileStorage Storage => storage;
 
-        public ProviderResultNormalizationOptions NormalizationOptions => normalizationOptions;
-
         public DbContextOptions<StructaDocDbContext> Options => options;
 
         public StoredProviderResultIntake Intake { get; } = new(

@@ -64,10 +64,7 @@ public static class InnoDbIndexMigrationRegistry
 public sealed record BusinessDatabaseMigrationPreflightResult(
     bool DatabaseExists,
     IReadOnlyList<string> PendingMigrations,
-    IReadOnlyList<InnoDbIndexMigrationRequirement> PendingRequirements)
-{
-    public bool RequiresInnoDbValidation => PendingRequirements.Count > 0;
-}
+    IReadOnlyList<InnoDbIndexMigrationRequirement> PendingRequirements);
 
 public interface IBusinessDatabaseMigrationPreflight
 {

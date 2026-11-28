@@ -12,7 +12,5 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
 
-  <PropertyGroup>
-  </PropertyGroup>
 
 </Project>

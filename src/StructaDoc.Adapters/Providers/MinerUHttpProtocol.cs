@@ -385,14 +385,6 @@ internal static class MinerUHttpProtocol
     public static ProviderException InvalidCloudResponse(
         string operation,
         string message,
-        ProviderFailureCategory category) => new(
-        $"mineru-{operation}-response-invalid",
-        message,
-        category);
-
-    public static ProviderException InvalidCloudResponse(
-        string operation,
-        string message,
         ProviderFailureCategory category,
         Exception innerException) => new(
         $"mineru-{operation}-response-invalid",

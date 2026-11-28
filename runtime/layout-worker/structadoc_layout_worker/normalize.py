@@ -16,7 +16,6 @@ from dataclasses import dataclass, field
 from .engine import Detection
 
 MAX_REGIONS = 4096
-MAX_LABEL_LENGTH = 32
 MAX_ENGINE_INFO_LENGTH = 128
 MAX_RESPONSE_BYTES = 1024 * 1024
 

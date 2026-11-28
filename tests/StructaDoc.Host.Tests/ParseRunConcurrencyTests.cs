@@ -337,7 +337,7 @@ public sealed class ParseRunConcurrencyTests(HostWebApplicationFactory factory)
             }
 
             stream.Position = 0;
-            return Task.FromResult(new ProviderResultContent(stream, "application/zip", "result.zip"));
+            return Task.FromResult(new ProviderResultContent(stream, "application/zip"));
         }
 
         public Task TryCancelAsync(
@@ -455,7 +455,7 @@ public sealed class ParseRunConcurrencyTests(HostWebApplicationFactory factory)
             }
 
             stream.Position = 0;
-            return Task.FromResult(new ProviderResultContent(stream, "application/zip", "result.zip"));
+            return Task.FromResult(new ProviderResultContent(stream, "application/zip"));
         }
 
         public Task TryCancelAsync(

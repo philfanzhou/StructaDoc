@@ -22,13 +22,11 @@ public sealed class ProviderResultIntakeTests
         var first = await environment.StoreAsync(
             parseRunId,
             archiveBytes,
-            "application/octet-stream; charset=binary",
-            "mineru-result.zip");
+            "application/octet-stream; charset=binary");
         var replay = await environment.StoreAsync(
             parseRunId,
             archiveBytes,
-            "application/zip",
-            "mineru-result.zip");
+            "application/zip");
 
         Assert.Equal("application/zip", first.MediaType);
         Assert.Equal("provider-result.zip", first.Name);
@@ -336,13 +334,11 @@ public sealed class ProviderResultIntakeTests
         public async Task<StoredProviderArchive> StoreAsync(
             Guid parseRunId,
             byte[] content,
-            string mediaType = "application/zip",
-            string? fileName = null)
+            string mediaType = "application/zip")
         {
             await using var result = new ProviderResultContent(
                 new MemoryStream(content, writable: false),
-                mediaType,
-                fileName);
+                mediaType);
             return await Intake.StoreArchiveAsync(parseRunId, result);
         }
 

@@ -1378,8 +1378,7 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
             return Task.FromResult(new ProviderResultContent(
                 CreateResultArchive(
                     segmentContentLists ? pageCountsByTask[externalTaskId] : null),
-                "application/zip",
-                "result.zip"));
+                "application/zip"));
         }
 
         public Task TryCancelAsync(
