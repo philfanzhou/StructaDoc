@@ -13,10 +13,10 @@ namespace StructaDoc.Host.Authentication;
 
 public static class AdministratorSessionEndpoints
 {
-    public static IEndpointRouteBuilder MapAdministratorSessionEndpoints(
+    public static IEndpointRouteBuilder MapAdministratorSession(
         this IEndpointRouteBuilder endpoints,
         TimeSpan sessionLifetime,
-        OidcAuthenticationOptions oidcOptions)
+        OidcOptions oidcOptions)
     {
         var group = endpoints.MapGroup("/api/v1/admin")
             .RequireServiceMantleSecurityResponseHeaders();

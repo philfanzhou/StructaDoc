@@ -108,6 +108,6 @@ public sealed class InnoDbMigrationPreflightTests
 
         Assert.True(result.DatabaseExists);
         Assert.Empty(result.PendingMigrations);
-        Assert.False(result.RequiresInnoDbValidation);
+        Assert.Empty(result.PendingRequirements);
     }
 }

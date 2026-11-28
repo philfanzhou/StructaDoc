@@ -134,7 +134,7 @@ public sealed class MigrationOrchestrationFaultTests
                     },
                     [],
                     new FakeSettingSecretProtector(),
-                    new SettingsStartupFault()));
+                    new StartupFault()));
             }));
     }
 

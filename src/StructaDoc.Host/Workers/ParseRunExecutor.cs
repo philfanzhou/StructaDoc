@@ -11,9 +11,9 @@ namespace StructaDoc.Host.Workers;
 
 public sealed class ParseRunExecutor(
     IParseProviderResolver providerResolver,
-    IEnumerable<IProviderResultNormalizer> normalizers,
+    IEnumerable<IResultNormalizer> normalizers,
     IEnumerable<IDocumentConverter> converters,
-    IProviderResultIntake resultIntake,
+    IResultIntake resultIntake,
     IFileStorage fileStorage,
     LargePdfParseOrchestrator largePdf,
     PageLabelEnricher pageLabels,
@@ -21,11 +21,11 @@ public sealed class ParseRunExecutor(
     ParseRunWorkerOptions options,
     ILogger<ParseRunExecutor> logger)
 {
-    private readonly IReadOnlyList<IProviderResultNormalizer> normalizers = normalizers.ToArray();
+    private readonly IReadOnlyList<IResultNormalizer> normalizers = normalizers.ToArray();
     private readonly IReadOnlyList<IDocumentConverter> converters = converters.ToArray();
 
     public async Task ExecuteAsync(
-        ParseRunLease lease,
+        RunLease lease,
         bool alreadyRunning,
         CancellationToken stoppingToken = default)
     {
@@ -273,7 +273,7 @@ public sealed class ParseRunExecutor(
             }
 
             var bundle = await normalizer.NormalizeAsync(
-                new ProviderResultNormalizationRequest(
+                new ResultNormalizationRequest(
                     context.ParseRunId,
                     context.ProviderConfiguration.ProviderType,
                     archive,
@@ -356,7 +356,7 @@ public sealed class ParseRunExecutor(
                 exception.Retryable,
                 stoppingToken);
         }
-        catch (ProviderResultIntakeException exception)
+        catch (ResultIntakeException exception)
         {
             await RecordFailureAsync(
                 session,
@@ -365,7 +365,7 @@ public sealed class ParseRunExecutor(
                 exception.Retryable,
                 stoppingToken);
         }
-        catch (ProviderResultNormalizationException exception)
+        catch (ResultNormalizationException exception)
         {
             await RecordFailureAsync(
                 session,
@@ -413,7 +413,7 @@ public sealed class ParseRunExecutor(
 
     private async Task TryFinalizeCancellationAsync(
         ParseRunLeaseSession session,
-        ParseRunLease lease,
+        RunLease lease,
         CancellationToken stoppingToken)
     {
         // A cancellation request invalidates lease renewal, so the session reports a lost lease.
@@ -450,14 +450,14 @@ public sealed class ParseRunExecutor(
     private async Task<PreparedSource> ValidateAndPrepareSourceAsync(
         ParseRunLeaseSession session,
         IParseProvider provider,
-        ParseRunExecutionContext context,
+        RunExecutionContext context,
         CancellationToken cancellationToken)
     {
         var capabilities = await provider.GetCapabilitiesAsync(
             context.ProviderConfiguration,
             session.ExecutionCancellationToken);
 
-        ParseRunConversion? conversion = context.Conversion;
+        RunConversion? conversion = context.Conversion;
         ProviderDocumentSource source;
         if (conversion is not null)
         {
@@ -510,7 +510,7 @@ public sealed class ParseRunExecutor(
                     "The stored converted PDF size does not match the converter output.");
             }
 
-            conversion = new ParseRunConversion(
+            conversion = new RunConversion(
                 converted.ConverterType,
                 converted.ConverterVersion,
                 context.SourceMediaType,
@@ -609,7 +609,7 @@ public sealed class ParseRunExecutor(
         }
     }
 
-    private IProviderResultNormalizer ResolveNormalizer(string providerType)
+    private IResultNormalizer ResolveNormalizer(string providerType)
     {
         var matches = normalizers.Where(normalizer => normalizer.Supports(providerType)).ToArray();
         return matches.Length switch
@@ -645,7 +645,7 @@ public sealed class ParseRunExecutor(
         };
     }
 
-    private ProviderDocumentSource CreateSource(ParseRunExecutionContext context) =>
+    private ProviderDocumentSource CreateSource(RunExecutionContext context) =>
         context.Conversion is null
             ? new ProviderDocumentSource(
                 context.OriginalFileName,
@@ -656,7 +656,7 @@ public sealed class ParseRunExecutor(
                     cancellationToken))
             : CreateConvertedSource(context.Conversion);
 
-    private ProviderDocumentSource CreateConvertedSource(ParseRunConversion conversion) => new(
+    private ProviderDocumentSource CreateConvertedSource(RunConversion conversion) => new(
         conversion.ArtifactName,
         conversion.OutputMediaType,
         conversion.SizeBytes,
@@ -665,8 +665,8 @@ public sealed class ParseRunExecutor(
             cancellationToken));
 
     private static void ValidateConversion(
-        ParseRunExecutionContext context,
-        ParseRunConversion conversion)
+        RunExecutionContext context,
+        RunConversion conversion)
     {
         conversion.Validate();
         if (!string.Equals(
@@ -707,7 +707,7 @@ public sealed class ParseRunExecutor(
 
     private static ParseBundle AddConversionArtifact(
         ParseBundle bundle,
-        ParseRunConversion conversion)
+        RunConversion conversion)
     {
         if (bundle.Artifacts.Any(artifact =>
                 artifact.Id == conversion.ArtifactId
@@ -810,6 +810,6 @@ public sealed class ParseRunExecutor(
 
     private sealed record PreparedSource(
         ProviderDocumentSource Source,
-        ParseRunConversion? Conversion,
+        RunConversion? Conversion,
         ProviderCapabilities Capabilities);
 }

@@ -9,7 +9,7 @@ import httpx
 import pytest
 from PIL import Image
 
-from structadoc_layout_worker.app import LAYOUT_ROUTE, create_app
+from structadoc_layout_worker.app import create_app
 from structadoc_layout_worker.config import WorkerConfig
 from structadoc_layout_worker.engine import StubEngine
 

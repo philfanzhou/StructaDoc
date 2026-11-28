@@ -345,30 +345,30 @@ internal static class DocumentIdentityMigrationContract
             Assert.Null(legacy.CreatedBySubject);
             Assert.Equal(Encoding.UTF8.GetBytes(legacyActor), legacy.CreatedByLegacy);
 
-            var service = new EfCoreParseRunService(context);
+            var service = new EfCoreRunService(context);
             var exactActor = CanonicalActor.Create("https://identity.example", "CaseSubject");
             var exact = await service.CreateAsync(
                 Request(exactActor, legacyKey),
                 cancellationToken);
-            Assert.Equal(ParseRunCreationStatus.Replayed, exact.Status);
+            Assert.Equal(RunCreationStatus.Replayed, exact.Status);
             Assert.Equal(legacyRunId, exact.ParseRun!.Id);
 
             var actorAlias = await service.CreateAsync(
                 Request(CanonicalActor.Create("https://identity.example", "casesubject"), legacyKey),
                 cancellationToken);
-            Assert.Equal(ParseRunCreationStatus.Created, actorAlias.Status);
+            Assert.Equal(RunCreationStatus.Created, actorAlias.Status);
             Assert.NotEqual(legacyRunId, actorAlias.ParseRun!.Id);
 
             var keyAlias = await service.CreateAsync(
                 Request(exactActor, "replaykey"),
                 cancellationToken);
-            Assert.Equal(ParseRunCreationStatus.Created, keyAlias.Status);
+            Assert.Equal(RunCreationStatus.Created, keyAlias.Status);
             Assert.NotEqual(legacyRunId, keyAlias.ParseRun!.Id);
 
             var otherIssuer = await service.CreateAsync(
                 Request(CanonicalActor.Create("https://identity-alt.example", "CaseSubject"), legacyKey),
                 cancellationToken);
-            Assert.Equal(ParseRunCreationStatus.Created, otherIssuer.Status);
+            Assert.Equal(RunCreationStatus.Created, otherIssuer.Status);
         }
 
         const string boundaryIssuerPrefix = "https://identity-boundary.example/";
@@ -383,12 +383,12 @@ internal static class DocumentIdentityMigrationContract
         Guid boundaryRunId;
         await using (var context = new StructaDocDbContext(options))
         {
-            var service = new EfCoreParseRunService(context);
+            var service = new EfCoreRunService(context);
             var created = await service.CreateAsync(Request(boundaryActor, boundaryKey), cancellationToken);
-            Assert.Equal(ParseRunCreationStatus.Created, created.Status);
+            Assert.Equal(RunCreationStatus.Created, created.Status);
             boundaryRunId = created.ParseRun!.Id;
             var replay = await service.CreateAsync(Request(boundaryActor, boundaryKey), cancellationToken);
-            Assert.Equal(ParseRunCreationStatus.Replayed, replay.Status);
+            Assert.Equal(RunCreationStatus.Replayed, replay.Status);
             Assert.Equal(boundaryRunId, replay.ParseRun!.Id);
         }
 
@@ -407,8 +407,8 @@ internal static class DocumentIdentityMigrationContract
         var concurrentResults = await Task.WhenAll(
             CreateInOwnContextAsync("ConcurrentKey"),
             CreateInOwnContextAsync("ConcurrentKey"));
-        Assert.Single(concurrentResults, result => result.Status == ParseRunCreationStatus.Created);
-        Assert.Single(concurrentResults, result => result.Status == ParseRunCreationStatus.Replayed);
+        Assert.Single(concurrentResults, result => result.Status == RunCreationStatus.Created);
+        Assert.Single(concurrentResults, result => result.Status == RunCreationStatus.Replayed);
         Assert.Single(concurrentResults.Select(result => result.ParseRun!.Id).Distinct());
 
         await Assert.ThrowsAnyAsync<Exception>(() => ExecuteAsync(
@@ -495,7 +495,7 @@ internal static class DocumentIdentityMigrationContract
                 break;
         }
 
-        ParseRunCreateRequest Request(CanonicalActor actor, string key) => new(
+        RunCreateRequest Request(CanonicalActor actor, string key) => new(
             documentId,
             providerConfigId,
             "{}",
@@ -504,10 +504,10 @@ internal static class DocumentIdentityMigrationContract
             key,
             DateTime.UtcNow);
 
-        async Task<ParseRunCreationResult> CreateInOwnContextAsync(string key)
+        async Task<RunCreationResult> CreateInOwnContextAsync(string key)
         {
             await using var context = new StructaDocDbContext(options);
-            return await new EfCoreParseRunService(context).CreateAsync(
+            return await new EfCoreRunService(context).CreateAsync(
                 Request(concurrentActor, key),
                 cancellationToken);
         }
@@ -967,7 +967,7 @@ internal static class DocumentIdentityMigrationContract
             ApplyMigrationsOnStartup = false,
         };
         var builder = new DbContextOptionsBuilder<StructaDocDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
+        Adapters.Persistence.ServiceCollectionExtensions.ConfigureDatabase(builder, databaseOptions);
         return builder.Options;
     }
 

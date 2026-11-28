@@ -28,7 +28,7 @@ public static class ImageRecognizeEndpoints
     /// </summary>
     private const string RecognitionTimeoutErrorCode = "mineru-recognition-timeout";
 
-    public static IEndpointRouteBuilder MapImageRecognizeEndpoints(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapImageRecognize(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 

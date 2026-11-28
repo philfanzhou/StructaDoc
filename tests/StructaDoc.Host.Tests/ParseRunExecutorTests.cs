@@ -86,7 +86,7 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
 
         Assert.Equal(ParseRunStatuses.Succeeded, result.Status);
         Assert.Equal(DocumentConversionMediaTypes.Pdf, result.SubmittedMediaType);
-        var conversion = ParseRunConversion.FromJson(Assert.IsType<string>(result.ConversionJson));
+        var conversion = RunConversion.FromJson(Assert.IsType<string>(result.ConversionJson));
         Assert.Equal(sourceMediaType, conversion.SourceMediaType);
         Assert.Equal(DocumentConversionMediaTypes.Pdf, conversion.OutputMediaType);
         Assert.Equal(1, converter.ConversionCount);
@@ -464,7 +464,7 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
                 // matters is the invariant — the run ends up queued — so accept either winner
                 // instead of asserting that this call's counter did the requeue.
                 var recovery = await scope.ServiceProvider
-                    .GetRequiredService<IParseRunLeaseStore>()
+                    .GetRequiredService<IRunLeaseStore>()
                     .RecoverExpiredUnsubmittedRunsAsync(
                         recoveryTimeUtc,
                         maxCount: 1,
@@ -478,9 +478,9 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
                 // Claim with a fresh timestamp: whichever caller requeued set the run's next
                 // attempt to its own, possibly later, clock reading, and the claim only sees
                 // runs whose next attempt is already due.
-                var recoveredLease = Assert.IsType<ParseRunLease>(
+                var recoveredLease = Assert.IsType<RunLease>(
                     await scope.ServiceProvider
-                        .GetRequiredService<IParseRunLeaseStore>()
+                        .GetRequiredService<IRunLeaseStore>()
                         .TryClaimNextAsync(
                             $"recovery-{parseRunId:N}",
                             DateTime.UtcNow,
@@ -608,8 +608,8 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
             executeLargePdfThroughExecutor: true,
             configureServices: services =>
             {
-                services.RemoveAll<IParseSegmentMutationStore>();
-                services.AddSingleton<IParseSegmentMutationStore>(new LeaseLosingSegmentStore());
+                services.RemoveAll<ISegmentMutationStore>();
+                services.AddSingleton<ISegmentMutationStore>(new LeaseLosingSegmentStore());
                 services.RemoveAll<IFileStorage>();
                 services.AddSingleton<IFileStorage>(serviceProvider =>
                     new CallbackFileStorage(
@@ -929,7 +929,7 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
                 sourceStorageRef,
                 source,
                 sourceBytes.Length);
-            ParseRunConversion? conversion = null;
+            RunConversion? conversion = null;
             if (seedConversion)
             {
                 var artifactId = Guid.NewGuid();
@@ -939,7 +939,7 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
                     $"parse-runs/{parseRunId:N}/conversions/{artifactId:N}.pdf",
                     converted,
                     convertedBytes.Length);
-                conversion = new ParseRunConversion(
+                conversion = new RunConversion(
                     "libreoffice",
                     "LibreOffice recovered-version",
                     sourceMediaType,
@@ -1013,8 +1013,8 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
         await using (var scope = application.Services.CreateAsyncScope())
         {
             var nowUtc = DateTime.UtcNow;
-            var leaseStore = scope.ServiceProvider.GetRequiredService<IParseRunLeaseStore>();
-            var lease = Assert.IsType<ParseRunLease>(await leaseStore.TryClaimNextAsync(
+            var leaseStore = scope.ServiceProvider.GetRequiredService<IRunLeaseStore>();
+            var lease = Assert.IsType<RunLease>(await leaseStore.TryClaimNextAsync(
                 $"executor-test-{parseRunId:N}",
                 nowUtc,
                 TimeSpan.FromMinutes(2)));
@@ -1032,7 +1032,7 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
                 Assert.NotNull(await session.TryStartAsync(
                     ParseRunStages.Validating,
                     TestContext.Current.CancellationToken));
-                var context = Assert.IsType<ParseRunExecutionContext>(
+                var context = Assert.IsType<RunExecutionContext>(
                     await session.LoadExecutionContextAsync(
                         TestContext.Current.CancellationToken));
                 var storage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
@@ -1045,7 +1045,7 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
                     context.ProviderConfiguration,
                     TestContext.Current.CancellationToken);
                 var normalizer = scope.ServiceProvider
-                    .GetServices<IProviderResultNormalizer>()
+                    .GetServices<IResultNormalizer>()
                     .Single(candidate => candidate.Supports(provider.ProviderType));
                 mergedBundle = await scope.ServiceProvider
                     .GetRequiredService<LargePdfParseOrchestrator>()
@@ -1378,8 +1378,7 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
             return Task.FromResult(new ProviderResultContent(
                 CreateResultArchive(
                     segmentContentLists ? pageCountsByTask[externalTaskId] : null),
-                "application/zip",
-                "result.zip"));
+                "application/zip"));
         }
 
         public Task TryCancelAsync(
@@ -1466,19 +1465,19 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
         }
     }
 
-    private sealed class LeaseLosingSegmentStore : IParseSegmentMutationStore
+    private sealed class LeaseLosingSegmentStore : ISegmentMutationStore
     {
-        public Task<ParseRunLease?> TryCreateAsync(
-            ParseRunLease currentLease,
-            IReadOnlyList<ParseSegmentCreation> segments,
+        public Task<RunLease?> TryCreateAsync(
+            RunLease currentLease,
+            IReadOnlyList<SegmentCreation> segments,
             DateTime nowUtc,
-            CancellationToken cancellationToken = default) => Task.FromResult<ParseRunLease?>(null);
+            CancellationToken cancellationToken = default) => Task.FromResult<RunLease?>(null);
 
-        public Task<ParseRunLease?> TryUpdateCheckpointAsync(
-            ParseRunLease currentLease,
-            ParseSegmentCheckpoint checkpoint,
+        public Task<RunLease?> TryUpdateCheckpointAsync(
+            RunLease currentLease,
+            SegmentCheckpoint checkpoint,
             DateTime nowUtc,
-            CancellationToken cancellationToken = default) => Task.FromResult<ParseRunLease?>(null);
+            CancellationToken cancellationToken = default) => Task.FromResult<RunLease?>(null);
     }
 
     private sealed class CommitInterruption
@@ -1501,7 +1500,7 @@ public sealed partial class ParseRunExecutorTests(HostWebApplicationFactory fact
             inner.VerifyBundleAsync(bundle, cancellationToken);
 
         public Task<ParseBundleCommitResult> TryCommitAsync(
-            ParseRunLease currentLease,
+            RunLease currentLease,
             VerifiedParseBundle verifiedBundle,
             CancellationToken cancellationToken = default) =>
             interruption.TryInterrupt()

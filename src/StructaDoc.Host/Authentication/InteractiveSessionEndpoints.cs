@@ -9,9 +9,9 @@ namespace StructaDoc.Host.Authentication;
 
 public static class InteractiveSessionEndpoints
 {
-    public static IEndpointRouteBuilder MapInteractiveSessionEndpoints(
+    public static IEndpointRouteBuilder MapInteractiveSession(
         this IEndpointRouteBuilder endpoints,
-        OidcAuthenticationOptions oidcOptions)
+        OidcOptions oidcOptions)
     {
         var group = endpoints.MapGroup("/api/v1/session");
         group.MapGet(
@@ -48,7 +48,7 @@ public static class InteractiveSessionEndpoints
     private static async Task<IResult> LogoutAsync(
         HttpContext context,
         IAntiforgery antiforgery,
-        OidcAuthenticationOptions options,
+        OidcOptions options,
         bool? redirectToHome)
     {
         try
@@ -97,7 +97,7 @@ public static class InteractiveSessionEndpoints
 
     private static InteractiveSessionResponse ToResponse(
         ClaimsPrincipal user,
-        OidcAuthenticationOptions oidcOptions,
+        OidcOptions oidcOptions,
         bool setupRequired)
     {
         var authenticated = user.Identity?.IsAuthenticated == true;

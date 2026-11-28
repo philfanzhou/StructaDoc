@@ -49,7 +49,7 @@ public static class OidcSignInFlow
     /// </summary>
     internal static Task BeginSignInAsync(
         HttpContext context,
-        OidcAuthenticationOptions options,
+        OidcOptions options,
         string? returnUrl,
         bool administratorEntry,
         string defaultReturnUrl)

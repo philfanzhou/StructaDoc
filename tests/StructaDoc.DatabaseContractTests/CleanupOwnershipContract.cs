@@ -156,7 +156,7 @@ internal static class CleanupOwnershipContract
             ApplyMigrationsOnStartup = false,
         };
         var optionsBuilder = new DbContextOptionsBuilder<StructaDocDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(
+        ServiceCollectionExtensions.ConfigureDatabase(
             optionsBuilder,
             databaseOptions);
         return optionsBuilder.Options;

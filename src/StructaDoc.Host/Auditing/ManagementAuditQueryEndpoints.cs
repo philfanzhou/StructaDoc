@@ -6,7 +6,7 @@ namespace StructaDoc.Host.Auditing;
 
 public static class ManagementAuditQueryEndpoints
 {
-    public static IEndpointRouteBuilder MapManagementAuditQueryEndpoints(
+    public static IEndpointRouteBuilder MapManagementAuditQuery(
         this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/admin/audit")
@@ -55,8 +55,8 @@ public static class ManagementAuditQueryEndpoints
         IManagementAuditQueryService queryService,
         CancellationToken cancellationToken)
     {
-        ManagementAuditAction? parsedAction = null;
-        ManagementAuditTargetType? parsedTargetType = null;
+        ManagementAuditAction? parsedAction;
+        ManagementAuditTargetType? parsedTargetType;
         try
         {
             // Parse before constructing the query so an unrecognized filter value is a client

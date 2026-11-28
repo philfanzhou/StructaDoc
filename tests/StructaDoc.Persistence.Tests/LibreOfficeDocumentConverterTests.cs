@@ -111,7 +111,7 @@ public sealed class LibreOfficeDocumentConverterTests
                 Guid.NewGuid().ToString("N"));
             Runner = new TestProcessRunner(validPdf);
             Converter = new LibreOfficeDocumentConverter(
-                new LibreOfficeConversionOptions
+                new LibreOfficeOptions
                 {
                     ExecutablePath = "test-libreoffice",
                     TemporaryPath = directoryPath,

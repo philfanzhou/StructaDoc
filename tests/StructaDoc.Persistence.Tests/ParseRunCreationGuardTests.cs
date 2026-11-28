@@ -23,15 +23,15 @@ public sealed class ParseRunCreationGuardTests
         var staleDocument = await staleDocumentContext.Documents.SingleAsync(cancellationToken);
         var staleProvider = await staleProviderContext.ProviderConfigs.SingleAsync(cancellationToken);
 
-        ParseRunCreationResult creation;
+        RunCreationResult creation;
         await using (var creationContext = new StructaDocDbContext(database.Options))
         {
-            creation = await new EfCoreParseRunService(creationContext).CreateAsync(
+            creation = await new EfCoreRunService(creationContext).CreateAsync(
                 database.CreateRequest(),
                 cancellationToken);
         }
 
-        Assert.Equal(ParseRunCreationStatus.Created, creation.Status);
+        Assert.Equal(RunCreationStatus.Created, creation.Status);
 
         staleDocument.LifecycleState = ResourceLifecycleStates.DeletionPending;
         staleDocument.DeletionRequestedAtUtc = DateTime.UtcNow;
@@ -77,11 +77,11 @@ public sealed class ParseRunCreationGuardTests
                     document => document.ConcurrencyVersion + 1),
             cancellationToken);
 
-        var result = await new EfCoreParseRunService(dbContext).CreateAsync(
+        var result = await new EfCoreRunService(dbContext).CreateAsync(
             database.CreateRequest(),
             cancellationToken);
 
-        Assert.Equal(ParseRunCreationStatus.DocumentNotFound, result.Status);
+        Assert.Equal(RunCreationStatus.DocumentNotFound, result.Status);
         Assert.Empty(await dbContext.ParseRuns.AsNoTracking().ToListAsync(cancellationToken));
     }
 
@@ -160,7 +160,7 @@ public sealed class ParseRunCreationGuardTests
             return new GuardTestDatabase(directory, options, documentId, providerConfigId);
         }
 
-        public ParseRunCreateRequest CreateRequest() => new(
+        public RunCreateRequest CreateRequest() => new(
             DocumentId,
             ProviderConfigId,
             "{}",

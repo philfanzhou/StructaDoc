@@ -78,9 +78,9 @@ public sealed class ParseRunLeaseHeartbeatTests(HostWebApplicationFactory factor
             ParseRunStages.Segmenting,
             TestContext.Current.CancellationToken));
 
-        var creationLease = Assert.IsType<ParseRunLease>(
+        var creationLease = Assert.IsType<RunLease>(
             await session.TryCreateSegmentsAsync(
-                [new ParseSegmentCreation(
+                [new SegmentCreation(
                     segmentId,
                     0,
                     1,
@@ -90,9 +90,9 @@ public sealed class ParseRunLeaseHeartbeatTests(HostWebApplicationFactory factor
                     new string('d', 64),
                     "created")],
                 TestContext.Current.CancellationToken));
-        var checkpointLease = Assert.IsType<ParseRunLease>(
+        var checkpointLease = Assert.IsType<RunLease>(
             await session.TryUpdateSegmentCheckpointAsync(
-                new ParseSegmentCheckpoint(
+                new SegmentCheckpoint(
                     segmentId,
                     "submitted",
                     "segment-task-1",
@@ -306,7 +306,7 @@ public sealed class ParseRunLeaseHeartbeatTests(HostWebApplicationFactory factor
                 StringComparison.OrdinalIgnoreCase));
     }
 
-    private Task<ParseRunLease> AddRunningParseRunAsync() =>
+    private Task<RunLease> AddRunningParseRunAsync() =>
         AddRunningParseRunAsync(factory.Services, TimeSpan.FromSeconds(30));
 
     /// <summary>
@@ -364,7 +364,7 @@ public sealed class ParseRunLeaseHeartbeatTests(HostWebApplicationFactory factor
             "{\"providerType\":\"test-provider\"}");
     }
 
-    private static async Task<ParseRunLease> AddRunningParseRunAsync(
+    private static async Task<RunLease> AddRunningParseRunAsync(
         IServiceProvider services,
         TimeSpan leaseDuration)
     {
@@ -410,7 +410,7 @@ public sealed class ParseRunLeaseHeartbeatTests(HostWebApplicationFactory factor
         });
         await dbContext.SaveChangesAsync();
 
-        return new ParseRunLease(parseRunId, workerId, 1, leaseExpiresAtUtc);
+        return new RunLease(parseRunId, workerId, 1, leaseExpiresAtUtc);
     }
 
     /// <summary>

@@ -12,7 +12,5 @@
     <PackageReference Include="Microting.EntityFrameworkCore.MySql" />
   </ItemGroup>
 
-  <PropertyGroup>
-  </PropertyGroup>
 
 </Project>

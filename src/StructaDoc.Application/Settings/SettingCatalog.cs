@@ -532,7 +532,7 @@ public static class SettingCatalog
 
         // LibreOffice conversion limits. The temporary-disk allowance covering the input and output
         // limits is a cross-field rule validation owns; the floors and the inspection-interval
-        // ceiling here are the ones LibreOfficeConversionOptions.Validate enforces per key.
+        // ceiling here are the ones LibreOfficeOptions.Validate enforces per key.
         new(LibreOfficeEnabled, SettingKind.Boolean, RequiresRestart: true, Default: "true"),
         new(
             LibreOfficeMaxConcurrency,

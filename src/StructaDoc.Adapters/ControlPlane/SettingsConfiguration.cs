@@ -53,7 +53,7 @@ public sealed class SettingsConfiguration
         ControlPlaneOptions options,
         string[] commandLineArguments,
         ISettingSecretProtector secretProtector,
-        SettingsStartupFault fault)
+        StartupFault fault)
     {
         ArgumentNullException.ThrowIfNull(baseConfiguration);
         ArgumentNullException.ThrowIfNull(options);
@@ -204,7 +204,7 @@ public sealed class SettingsConfiguration
     private static IEnumerable<KeyValuePair<string, string?>> Load(
         ControlPlaneOptions options,
         ISettingSecretProtector secretProtector,
-        SettingsStartupFault fault)
+        StartupFault fault)
     {
         // Settings are read before the control-plane migrations run, so on a first start neither the
         // file nor the table exists yet. That is not an error: a deployment with no stored settings

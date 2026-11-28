@@ -286,8 +286,7 @@ public sealed class MinerULocalParseProvider(HttpClient httpClient) : IParseProv
                 ?? "application/octet-stream";
             return new ProviderResultContent(
                 new HttpResponseOwnedStream(content, response),
-                mediaType,
-                "result.zip");
+                mediaType);
         }
         catch
         {

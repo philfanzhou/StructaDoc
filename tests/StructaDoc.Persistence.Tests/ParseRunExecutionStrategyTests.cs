@@ -81,11 +81,11 @@ public sealed class ParseRunExecutionStrategyTests
                 .ReplaceService<IExecutionStrategyFactory, ReplayingExecutionStrategyFactory>()
                 .Options;
 
-            ParseRunCreationResult result;
+            RunCreationResult result;
             await using (var creationContext = new StructaDocDbContext(replayingOptions))
             {
-                result = await new EfCoreParseRunService(creationContext).CreateAsync(
-                    new ParseRunCreateRequest(
+                result = await new EfCoreRunService(creationContext).CreateAsync(
+                    new RunCreateRequest(
                         documentId,
                         providerConfigId,
                         "{}",
@@ -102,7 +102,7 @@ public sealed class ParseRunExecutionStrategyTests
             var parseRun = Assert.Single(await verificationContext.ParseRuns.AsNoTracking()
                 .ToListAsync(TestContext.Current.CancellationToken));
 
-            Assert.Equal(ParseRunCreationStatus.Created, result.Status);
+            Assert.Equal(RunCreationStatus.Created, result.Status);
             Assert.Equal(parseRun.Id, result.ParseRun!.Id);
             Assert.Equal(1, await verificationContext.Documents
                 .Select(document => document.ConcurrencyVersion)

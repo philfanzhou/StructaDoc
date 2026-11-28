@@ -12,7 +12,5 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
   </ItemGroup>
 
-  <PropertyGroup>
-  </PropertyGroup>
 
 </Project>

@@ -225,7 +225,7 @@ internal sealed class SanitizingLogEventEnricher(StructuredLogSanitizer sanitize
     }
 }
 
-public static class ConsoleLoggingServiceCollectionExtensions
+public static class ServiceCollectionExtensions
 {
     private const string ConsoleOutputTemplate =
         "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}";

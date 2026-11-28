@@ -249,8 +249,7 @@ public sealed class MinerUCloudParseProvider(
                 ?? "application/octet-stream";
             return new ProviderResultContent(
                 new HttpResponseOwnedStream(content, response),
-                mediaType,
-                "result.zip");
+                mediaType);
         }
         catch
         {

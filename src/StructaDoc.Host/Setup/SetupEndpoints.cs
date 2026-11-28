@@ -12,7 +12,7 @@ namespace StructaDoc.Host.Setup;
 
 public static class SetupEndpoints
 {
-    public static IEndpointRouteBuilder MapSetupEndpoints(
+    public static IEndpointRouteBuilder MapSetup(
         this IEndpointRouteBuilder endpoints,
         TimeSpan sessionLifetime)
     {

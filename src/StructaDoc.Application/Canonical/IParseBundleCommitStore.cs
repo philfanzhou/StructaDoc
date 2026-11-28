@@ -27,7 +27,7 @@ public interface IParseBundleCommitStore
     /// superseded claim yields <see cref="ParseBundleCommitStatus.LeaseLost"/> and writes nothing.
     /// </summary>
     Task<ParseBundleCommitResult> TryCommitAsync(
-        ParseRunLease currentLease,
+        RunLease currentLease,
         VerifiedParseBundle verifiedBundle,
         CancellationToken cancellationToken = default);
 }

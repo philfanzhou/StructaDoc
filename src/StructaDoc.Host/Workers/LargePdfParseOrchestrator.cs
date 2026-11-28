@@ -19,7 +19,7 @@ namespace StructaDoc.Host.Workers;
 public sealed class LargePdfParseOrchestrator(
     StructaDocDbContext dbContext,
     IFileStorage storage,
-    IProviderResultIntake resultIntake,
+    IResultIntake resultIntake,
     IProviderSubmissionProtector submissionProtector,
     TimeProvider clock)
 {
@@ -42,11 +42,11 @@ public sealed class LargePdfParseOrchestrator(
 
     public async Task<ParseBundle> ExecuteAsync(
         ParseRunLeaseSession session,
-        ParseRunExecutionContext context,
+        RunExecutionContext context,
         ProviderDocumentSource source,
         ProviderCapabilities capabilities,
         IParseProvider provider,
-        IProviderResultNormalizer normalizer,
+        IResultNormalizer normalizer,
         CancellationToken cancellationToken)
     {
         if (await session.TryUpdateStageAsync(ParseRunStages.Segmenting, cancellationToken) is null)
@@ -133,7 +133,7 @@ public sealed class LargePdfParseOrchestrator(
             }
 
             var bundle = await normalizer.NormalizeAsync(
-                new ProviderResultNormalizationRequest(
+                new ResultNormalizationRequest(
                     segment.Id,
                     context.ProviderConfiguration.ProviderType,
                     archive,
@@ -210,7 +210,7 @@ public sealed class LargePdfParseOrchestrator(
                     Status = "creating",
                     UpdatedAtUtc = clock.GetUtcNow().UtcDateTime,
                 };
-                var intent = new ParseSegmentCreation(
+                var intent = new SegmentCreation(
                     segment.Id,
                     segment.Index,
                     segment.StartPage,
@@ -257,7 +257,7 @@ public sealed class LargePdfParseOrchestrator(
                     throw SegmentConflict("The stored Parse Segment does not match its durable intent.");
                 }
             }
-            catch (StorageObjectConflictException exception)
+            catch (ObjectConflictException exception)
             {
                 throw SegmentConflict("The Parse Segment storage key contains different content.", exception);
             }
@@ -287,7 +287,7 @@ public sealed class LargePdfParseOrchestrator(
         var blocks = new List<ParseBlock>();
         var assets = new List<ParseAsset>();
         var artifacts = new List<ParseArtifact>();
-        var markdownArtifacts = new List<(ParseArtifact Artifact, IReadOnlyDictionary<string, ParseAssetRecord> Assets, int SegmentIndex)>();
+        var markdownArtifacts = new List<(ParseArtifact Artifact, IReadOnlyDictionary<string, AssetRecord> Assets, int SegmentIndex)>();
         foreach (var (segment, bundle) in items.OrderBy(item => item.Segment.StartPage))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -298,7 +298,7 @@ public sealed class LargePdfParseOrchestrator(
             assets.AddRange(
                 bundle.Assets.Select(asset => asset with { Name = $"segment-{segment.Index:D4}-{asset.Name}" }));
             var segmentAssets = ExportAssetLinkRewriter.BuildAssetsByFileName(
-                bundle.Assets.Select(asset => new ParseAssetRecord(
+                bundle.Assets.Select(asset => new AssetRecord(
                     asset.Id,
                     asset.Name,
                     asset.MediaType,
@@ -418,7 +418,7 @@ public sealed class LargePdfParseOrchestrator(
         CancellationToken cancellationToken)
     {
         if (await session.TryUpdateSegmentCheckpointAsync(
-                new ParseSegmentCheckpoint(
+                new SegmentCheckpoint(
                     segment.Id,
                     segment.Status,
                     segment.ExternalTaskId,

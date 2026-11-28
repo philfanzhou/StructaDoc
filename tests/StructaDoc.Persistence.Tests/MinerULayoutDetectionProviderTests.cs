@@ -199,7 +199,7 @@ public sealed partial class MinerULayoutDetectionProviderTests
     public async Task Caller_cancellation_propagates_and_frees_the_execution_slot()
     {
         var runtime = new LayoutOnlyRuntimeStub(
-            request => Task.FromResult(SuccessResponse()))
+            _ => Task.FromResult(SuccessResponse()))
         {
             DelayResponse = true,
         };

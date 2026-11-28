@@ -22,7 +22,7 @@ public sealed partial class MinerUResultNormalizerTests
             parseRunId,
             content,
             TestContext.Current.CancellationToken);
-        var request = new ProviderResultNormalizationRequest(parseRunId, ProviderTypes.MinerULocal, archive);
+        var request = new ResultNormalizationRequest(parseRunId, ProviderTypes.MinerULocal, archive);
         var bundle = await environment.Normalizer.NormalizeAsync(request, TestContext.Current.CancellationToken);
         var replay = await environment.Normalizer.NormalizeAsync(request, TestContext.Current.CancellationToken);
 
@@ -189,7 +189,7 @@ public sealed partial class MinerUResultNormalizerTests
     public async Task Rejects_present_malformed_v4_structure(string json, string code)
     {
         using var environment = new NormalizerTestEnvironment();
-        var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => NormalizeStructuredAsync(environment, json));
+        var error = await Assert.ThrowsAsync<ResultNormalizationException>(() => NormalizeStructuredAsync(environment, json));
         Assert.Equal(code, error.ErrorCode);
         Assert.Equal(ProviderFailureCategory.Permanent, error.Category);
         Assert.DoesNotContain("sensitive", error.Message);
@@ -208,7 +208,7 @@ public sealed partial class MinerUResultNormalizerTests
     public async Task Rejects_invalid_v4_type_and_content_without_logging_values(string block)
     {
         using var environment = new NormalizerTestEnvironment();
-        var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => NormalizeStructuredAsync(environment, StructuredDocument(block)));
+        var error = await Assert.ThrowsAsync<ResultNormalizationException>(() => NormalizeStructuredAsync(environment, StructuredDocument(block)));
         Assert.Equal("mineru-result-block-invalid", error.ErrorCode);
         Assert.Equal(ProviderFailureCategory.Permanent, error.Category);
         Assert.DoesNotContain("sensitive", error.Message);
@@ -226,7 +226,7 @@ public sealed partial class MinerUResultNormalizerTests
     {
         using var environment = new NormalizerTestEnvironment();
         var json = $"{{\"pages\":[{{\"page_idx\":{pageIndex},\"blocks\":[]}}]}}";
-        var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => NormalizeStructuredAsync(environment, json));
+        var error = await Assert.ThrowsAsync<ResultNormalizationException>(() => NormalizeStructuredAsync(environment, json));
         Assert.Equal("mineru-result-page-invalid", error.ErrorCode);
     }
 
@@ -236,7 +236,7 @@ public sealed partial class MinerUResultNormalizerTests
     public async Task Rejects_repeated_or_unordered_v4_page_indices(int second)
     {
         using var environment = new NormalizerTestEnvironment();
-        var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => NormalizeStructuredAsync(environment,
+        var error = await Assert.ThrowsAsync<ResultNormalizationException>(() => NormalizeStructuredAsync(environment,
             $"{{\"pages\":[{{\"page_idx\":2,\"blocks\":[]}},{{\"page_idx\":{second},\"blocks\":[]}}]}}"));
         Assert.Equal("mineru-result-page-invalid", error.ErrorCode);
     }
@@ -322,7 +322,7 @@ public sealed partial class MinerUResultNormalizerTests
             var archive = await environment.StoreArchiveAsync(
                 Guid.NewGuid(),
                 [("markdown.md", "markdown"u8.ToArray()), .. extra]);
-            var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => environment.Normalizer.NormalizeAsync(
+            var error = await Assert.ThrowsAsync<ResultNormalizationException>(() => environment.Normalizer.NormalizeAsync(
                 new(Guid.NewGuid(), ProviderTypes.MinerULocal, archive),
                 TestContext.Current.CancellationToken));
             Assert.Equal("mineru-result-entry-ambiguous", error.ErrorCode);
@@ -371,7 +371,7 @@ public sealed partial class MinerUResultNormalizerTests
     public async Task Rejects_v4_ambiguous_validated_image_aliases()
     {
         using var environment = new NormalizerTestEnvironment();
-        var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => NormalizeStructuredAsync(environment,
+        var error = await Assert.ThrowsAsync<ResultNormalizationException>(() => NormalizeStructuredAsync(environment,
             StructuredDocument("{\"type\":\"image\",\"content\":\"x\",\"image_source\":\"images/figure.png\"}"),
             [("one/images/figure.png", PngBytes()), ("two/images/figure.png", PngBytes())]));
         Assert.Equal("mineru-result-entry-ambiguous", error.ErrorCode);
@@ -430,7 +430,7 @@ public sealed partial class MinerUResultNormalizerTests
                 ("content_list.json", ReadPipelineFixture()),
                     .. PipelineFixtureImagePaths(ReadPipelineFixture()).Select(path => (path, JpegBytes()))
             ]);
-        var conflict = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var conflict = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             environment.Normalizer.NormalizeAsync(
                 new(id, ProviderTypes.MinerUCloud, conflictArchive),
                 TestContext.Current.CancellationToken));
@@ -446,8 +446,8 @@ public sealed partial class MinerUResultNormalizerTests
     [Fact]
     public async Task Enforces_v4_json_page_block_and_content_limits()
     {
-        using var small = new NormalizerTestEnvironment(new ProviderResultNormalizationOptions { MaxJsonBytes = 8 });
-        var jsonError = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => NormalizeStructuredAsync(small, StructuredDocument("")));
+        using var small = new NormalizerTestEnvironment(new ResultNormalizationOptions { MaxJsonBytes = 8 });
+        var jsonError = await Assert.ThrowsAsync<ResultNormalizationException>(() => NormalizeStructuredAsync(small, StructuredDocument("")));
         Assert.Equal("mineru-result-json-too-large", jsonError.ErrorCode);
         using var large = new NormalizerTestEnvironment(maxEntryBytes: 8 * 1024 * 1024, maxCompressionRatio: 10000);
         var pageJson = JsonSerializer.Serialize(
@@ -456,11 +456,11 @@ public sealed partial class MinerUResultNormalizerTests
                 pages = Enumerable.Range(0, ParseBundleValidator.MaxPages + 1).Select(
                     i => new { page_idx = i, blocks = Array.Empty<object>() })
             });
-        var pageError = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => NormalizeStructuredAsync(large, pageJson));
+        var pageError = await Assert.ThrowsAsync<ResultNormalizationException>(() => NormalizeStructuredAsync(large, pageJson));
         Assert.Equal("mineru-result-page-limit", pageError.ErrorCode);
         var blockJson = StructuredDocument(
             string.Join(',', Enumerable.Repeat("{\"type\":\"text\",\"content\":\"\"}", ParseBundleValidator.MaxBlocks + 1)));
-        var blockError = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => NormalizeStructuredAsync(large, blockJson));
+        var blockError = await Assert.ThrowsAsync<ResultNormalizationException>(() => NormalizeStructuredAsync(large, blockJson));
         Assert.Equal("mineru-result-block-limit", blockError.ErrorCode);
         foreach (var field in new[] { "content", "caption", "footnote" })
         {
@@ -477,7 +477,7 @@ public sealed partial class MinerUResultNormalizerTests
                     ["content"] = oversized
                 });
             }
-            var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => NormalizeStructuredAsync(
+            var error = await Assert.ThrowsAsync<ResultNormalizationException>(() => NormalizeStructuredAsync(
                 large,
                 StructuredDocument(source.ToJsonString())));
             Assert.Equal("mineru-result-bundle-invalid", error.ErrorCode);
@@ -496,13 +496,13 @@ public sealed partial class MinerUResultNormalizerTests
             ("structured_content.json", Encoding.UTF8.GetBytes(StructuredDocument(""))));
         foreach (var exception in new Exception[]
             {
-                new IOException("synthetic"), new StorageObjectConflictException("synthetic") })
+                new IOException("synthetic"), new ObjectConflictException("synthetic") })
         {
             var normalizer = new MinerUResultNormalizer(
                 new FailingDerivedStorage(environment.Storage, exception),
-                new ProviderResultNormalizationOptions(),
+                new ResultNormalizationOptions(),
                 new CapturingLogger());
-            var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() => normalizer.NormalizeAsync(
+            var error = await Assert.ThrowsAsync<ResultNormalizationException>(() => normalizer.NormalizeAsync(
                 new(id, ProviderTypes.MinerULocal, archive),
                 TestContext.Current.CancellationToken));
             Assert.Equal(
@@ -514,7 +514,7 @@ public sealed partial class MinerUResultNormalizerTests
         }
         var canceledNormalizer = new MinerUResultNormalizer(
             new FailingDerivedStorage(environment.Storage, new OperationCanceledException()),
-            new ProviderResultNormalizationOptions(),
+            new ResultNormalizationOptions(),
             new CapturingLogger());
         await Assert.ThrowsAsync<OperationCanceledException>(() => canceledNormalizer.NormalizeAsync(
             new(id, ProviderTypes.MinerULocal, archive),

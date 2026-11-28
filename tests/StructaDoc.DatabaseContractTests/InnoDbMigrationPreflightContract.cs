@@ -33,7 +33,7 @@ internal static class InnoDbMigrationPreflightContract
         // connection for migration history. The complete migration set is pending in this state.
         var absent = await preflight.CheckAsync(options);
         Assert.False(absent.DatabaseExists);
-        Assert.True(absent.RequiresInnoDbValidation);
+        Assert.NotEmpty(absent.PendingRequirements);
         Assert.Contains(
             absent.PendingMigrations,
             migration => migration.EndsWith(
@@ -46,7 +46,7 @@ internal static class InnoDbMigrationPreflightContract
         // migration set pending, and the absent-table branch consults the DYNAMIC server default.
         var missingHistory = await preflight.CheckAsync(options);
         Assert.True(missingHistory.DatabaseExists);
-        Assert.True(missingHistory.RequiresInnoDbValidation);
+        Assert.NotEmpty(missingHistory.PendingRequirements);
 
         var compactFixtureMigration = provider == DatabaseProvider.MySql
             ? "20260805091104_AddAuthentication"
@@ -85,7 +85,7 @@ internal static class InnoDbMigrationPreflightContract
         {
             await SetGlobalDefaultRowFormatAsync(connectionBuilder, "COMPACT");
             var dynamic = await preflight.CheckAsync(options);
-            Assert.True(dynamic.RequiresInnoDbValidation);
+            Assert.NotEmpty(dynamic.PendingRequirements);
         }
         finally
         {
@@ -100,7 +100,7 @@ internal static class InnoDbMigrationPreflightContract
 
             // Once every registered migration is applied, a later default change is irrelevant.
             var current = await preflight.CheckAsync(options);
-            Assert.False(current.RequiresInnoDbValidation);
+            Assert.Empty(current.PendingRequirements);
             Assert.Empty(current.PendingMigrations);
 
             // A future table in an absent database does depend on the server default and must fail
@@ -143,7 +143,7 @@ internal static class InnoDbMigrationPreflightContract
         string? targetMigration = null)
     {
         var builder = new DbContextOptionsBuilder<StructaDocDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(builder, options);
+        ServiceCollectionExtensions.ConfigureDatabase(builder, options);
         await using var context = new StructaDocDbContext(builder.Options);
         if (targetMigration is null)
         {

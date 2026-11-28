@@ -1,0 +1,21 @@
+using Microsoft.Extensions.DependencyInjection;
+using StructaDoc.Application.Conversion;
+
+namespace StructaDoc.Adapters.Conversion;
+
+public static class ServiceCollectionExtensions
+{
+    public static IServiceCollection AddDocumentConversion(
+        this IServiceCollection services,
+        LibreOfficeOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+
+        services.AddSingleton(options);
+        services.AddSingleton<ILibreOfficeProcessRunner, LibreOfficeProcessRunner>();
+        services.AddSingleton<IDocumentConverter, LibreOfficeDocumentConverter>();
+        return services;
+    }
+}

@@ -266,7 +266,7 @@ public sealed class HealthEndpointTests(HostWebApplicationFactory factory)
                     },
                     [],
                     new FakeSettingSecretProtector(),
-                    new SettingsStartupFault()));
+                    new StartupFault()));
             }));
     }
 

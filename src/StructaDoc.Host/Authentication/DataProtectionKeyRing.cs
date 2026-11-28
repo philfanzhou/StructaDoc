@@ -22,7 +22,7 @@ public static class DataProtectionKeyRing
     /// </summary>
     public const string ApplicationName = "StructaDoc";
 
-    public static IDataProtectionProvider Create(AuthenticationBootstrapOptions options)
+    public static IDataProtectionProvider Create(BootstrapOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -47,7 +47,7 @@ public static class DataProtectionKeyRing
     /// commits in its own transaction, so it never joins a caller's unit of work.
     /// </summary>
     public static IDataProtectionProvider CreateDatabase(
-        AuthenticationBootstrapOptions options,
+        BootstrapOptions options,
         DatabaseOptions databaseOptions)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -62,7 +62,7 @@ public static class DataProtectionKeyRing
 
         var services = new ServiceCollection();
         services.AddDbContextFactory<StructaDocDbContext>(
-            dbContext => PersistenceServiceCollectionExtensions.ConfigureDatabase(
+            dbContext => Adapters.Persistence.ServiceCollectionExtensions.ConfigureDatabase(
                 dbContext,
                 databaseOptions));
         services.AddDataProtection()

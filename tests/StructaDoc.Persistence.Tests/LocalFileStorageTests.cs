@@ -80,7 +80,7 @@ public sealed class LocalFileStorageTests
 
         await using (var conflict = new MemoryStream("different-result"u8.ToArray()))
         {
-            var exception = await Assert.ThrowsAsync<StorageObjectConflictException>(
+            var exception = await Assert.ThrowsAsync<ObjectConflictException>(
                 () => storage.WriteAsync(
                     storageRef,
                     conflict,

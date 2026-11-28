@@ -172,7 +172,7 @@ public sealed partial class MinerUResultNormalizer
         return assetsByPath.TryGetValue(path.Normalize(NormalizationForm.FormC), out var assetId) ? assetId : null;
     }
 
-    private static ProviderResultNormalizationException InvalidStructuredContent() =>
+    private static ResultNormalizationException InvalidStructuredContent() =>
         Failure(
             "mineru-result-structured-content-invalid",
             "The MinerU structured-content artifact has an invalid structure.");

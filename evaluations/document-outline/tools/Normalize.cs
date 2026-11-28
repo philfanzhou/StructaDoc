@@ -11,12 +11,12 @@ using StructaDoc.Application.Storage;
 // Execute current production intake and normalization on synthetic content lists.
 // Usage: dotnet run Normalize.cs -- input.zip output-blocks.json task-storage-root
 var storage = new LocalFileStorage(new FileStorageOptions { RootPath = args[2] });
-var intake = new StoredProviderResultIntake(storage, new ProviderResultIntakeOptions());
+var intake = new StoredResultIntake(storage, new ResultIntakeOptions());
 var id = Guid.Parse("00000000-0000-0000-0000-000000000162");
 await using var input = File.OpenRead(args[0]);
 await using var content = new ProviderResultContent(input, "application/zip");
 var archive = await intake.StoreArchiveAsync(id, content);
-var normalizer = new MinerUResultNormalizer(storage, new ProviderResultNormalizationOptions(), NullLogger<MinerUResultNormalizer>.Instance);
+var normalizer = new MinerUResultNormalizer(storage, new ResultNormalizationOptions(), NullLogger<MinerUResultNormalizer>.Instance);
 var bundle = await normalizer.NormalizeAsync(new(id, ProviderTypes.MinerULocal, archive));
 await using var output = File.Create(args[1]);
 using var writer = new Utf8JsonWriter(output, new JsonWriterOptions { Indented = true });

@@ -33,9 +33,9 @@ using StructaDoc.Host.Settings;
 using StructaDoc.Host.Setup;
 using StructaDoc.Host.Workers;
 
-if (BusinessDatabaseMigrationCommand.TryExtractArguments(args, out var migrationArguments))
+if (BusinessDatabaseCommand.TryExtractArguments(args, out var migrationArguments))
 {
-    Environment.ExitCode = await BusinessDatabaseMigrationCommand.ExecuteAsync(migrationArguments);
+    Environment.ExitCode = await BusinessDatabaseCommand.ExecuteAsync(migrationArguments);
     return;
 }
 
@@ -89,8 +89,8 @@ controlPlaneOptions.Validate();
 // architecture test holds both halves of the split in place: the keys read here stay out of the
 // settings catalog, and the tuning keys are in it.
 var authenticationOptions = builder.Configuration
-    .GetSection(AuthenticationBootstrapOptions.SectionName)
-    .Get<AuthenticationBootstrapOptions>() ?? new AuthenticationBootstrapOptions();
+    .GetSection(BootstrapOptions.SectionName)
+    .Get<BootstrapOptions>() ?? new BootstrapOptions();
 authenticationOptions.Validate();
 
 // Read from the raw configuration for the same reason, though a different one applies too: which
@@ -113,8 +113,8 @@ serviceMantle.AddReverseProxy(reverseProxyOptions);
 // provisioned. Read from the raw configuration and kept out of the settings catalog; an
 // architecture test holds that exclusion in place.
 var parseExportOptions = builder.Configuration
-    .GetSection(ParseExportOptions.SectionName)
-    .Get<ParseExportOptions>() ?? new ParseExportOptions();
+    .GetSection(ExportOptions.SectionName)
+    .Get<ExportOptions>() ?? new ExportOptions();
 parseExportOptions.Validate();
 
 // The key ring has to exist before the stored settings below are decrypted. In the database form
@@ -151,7 +151,7 @@ else
 }
 
 var settingSecretProtector = new DataProtectionSettingSecretProtector(keyRing);
-var settingsStartupFault = new SettingsStartupFault();
+var settingsStartupFault = new StartupFault();
 
 // Settings an administrator chose in the browser join configuration before anything is read from
 // it. Everything below binds against this rather than the raw builder configuration, or a stored
@@ -213,24 +213,24 @@ var providerResultOptions = RecoverableConfigurationBinder.Bind(
     settingsStartupFault,
     SettingCatalog.ProviderResultsSection,
     "provider result intake configuration",
-    source => source.GetSection(ProviderResultIntakeOptions.SectionName)
-        .Get<ProviderResultIntakeOptions>() ?? new ProviderResultIntakeOptions(),
+    source => source.GetSection(ResultIntakeOptions.SectionName)
+        .Get<ResultIntakeOptions>() ?? new ResultIntakeOptions(),
     options => options.Validate());
 var providerResultNormalizationOptions = RecoverableConfigurationBinder.Bind(
     settingsConfiguration,
     settingsStartupFault,
     SettingCatalog.ProviderResultNormalizationSection,
     "provider result normalization configuration",
-    source => source.GetSection(ProviderResultNormalizationOptions.SectionName)
-        .Get<ProviderResultNormalizationOptions>() ?? new ProviderResultNormalizationOptions(),
+    source => source.GetSection(ResultNormalizationOptions.SectionName)
+        .Get<ResultNormalizationOptions>() ?? new ResultNormalizationOptions(),
     options => options.Validate());
 var conversionOptions = RecoverableConfigurationBinder.Bind(
     settingsConfiguration,
     settingsStartupFault,
     SettingCatalog.LibreOfficeSection,
     "document conversion configuration",
-    source => source.GetSection(LibreOfficeConversionOptions.SectionName)
-        .Get<LibreOfficeConversionOptions>() ?? new LibreOfficeConversionOptions(),
+    source => source.GetSection(LibreOfficeOptions.SectionName)
+        .Get<LibreOfficeOptions>() ?? new LibreOfficeOptions(),
     options => options.Validate());
 // The optional layout-detection inference runtime (ADR-0013). Bound recoverably like the other
 // tuning sections: a stored address the service cannot use is dropped and the service starts with
@@ -275,7 +275,7 @@ var oidcOptions = OidcConfigurationBinder.Bind(settingsConfiguration, settingsSt
 // recoverably for the same reason as the identity-provider options, and the cookie plus both
 // sign-in rate-limit policies are built once from the result, so a changed value reaches them at
 // the next start.
-var authenticationTuningOptions = AuthenticationTuningConfigurationBinder.Bind(
+var authenticationTuningOptions = TuningConfigurationBinder.Bind(
     settingsConfiguration,
     settingsStartupFault);
 
@@ -293,7 +293,7 @@ builder.Services.AddLayoutDetection(layoutRuntimeOptions, layoutOptions);
 // protects this Host's request-scoped memory budget, and it is registered here rather than inside
 // the adapter extension because the adapter extension owns the runtime contract, not the public
 // endpoint's admission behavior.
-builder.Services.AddSingleton<LayoutDetectInFlightGate>();
+builder.Services.AddSingleton<DetectInFlightGate>();
 builder.Services.AddImageRecognition(recognitionOptions);
 // The recognition endpoint's own overload bound, for the layout gate's reason and kept separate
 // from it so recognition traffic never changes how the layout route answers.
@@ -323,14 +323,14 @@ builder.Services.AddScoped<ISettingsService, SettingsService>();
 // owns one key, applies it to the runtime state that key governs, and reports the value currently
 // running, which is what the settings read uses to say honestly whether a restart is pending.
 builder.Services.AddSingleton<ISettingChangeListener, ConcurrencySettingListener>();
-builder.Services.AddSingleton<ISettingChangeListener, DocumentUploadLimitsSettingListener>();
+builder.Services.AddSingleton<ISettingChangeListener, UploadLimitsSettingListener>();
 builder.Services.AddSingleton<ISettingChangeListener, LogLevelSettingListener>();
 builder.Services.AddSingleton(new ConcurrencyGate(workerOptions.MaxConcurrency));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ParseRunLeaseHeartbeat>();
 builder.Services.AddScoped<ParseRunExecutor>();
 builder.Services.AddScoped<LargePdfParseOrchestrator>();
-builder.Services.AddScoped<StructaDoc.Application.ParseRuns.IParseExportService, ParseExportService>();
+builder.Services.AddScoped<StructaDoc.Application.ParseRuns.IExportService, ExportService>();
 builder.Services.AddHostedService<ParseRunMaintenance>();
 builder.Services.AddHostedService<ParseRunExecution>();
 builder.Services.AddHostedService<ResourceCleanup>();
@@ -495,33 +495,33 @@ if (ingestionOptions.UploadApiEnabled)
 {
     app.MapDocumentUpload();
 }
-app.MapDocumentReadEndpoints();
-app.MapDocumentAccessGrantEndpoints();
+app.MapDocumentRead();
+app.MapDocumentAccessGrant();
 
-app.MapSetupEndpoints(authenticationTuningOptions.AdministratorSessionLifetime);
-app.MapAdministratorSessionEndpoints(
+app.MapSetup(authenticationTuningOptions.AdministratorSessionLifetime);
+app.MapAdministratorSession(
     authenticationTuningOptions.AdministratorSessionLifetime,
     oidcOptions);
-app.MapInteractiveSessionEndpoints(oidcOptions);
-app.MapAdministratorAccountEndpoints(
+app.MapInteractiveSession(oidcOptions);
+app.MapAdministratorAccount(
     authenticationTuningOptions.AdministratorSessionLifetime);
-app.MapManagementAuditQueryEndpoints();
-app.MapApiClientAdministrationEndpoints();
-app.MapSettingsEndpoints();
-app.MapOidcSettingsEndpoints();
-app.MapInfrastructureSettingsEndpoints();
-app.MapSystemControlEndpoints();
-app.MapProviderConfigAdministrationEndpoints();
-app.MapParseRunEndpoints();
-app.MapParseResultEndpoints();
-app.MapParseExportEndpoints();
+app.MapManagementAuditQuery();
+app.MapApiClientAdministration();
+app.MapSettings();
+app.MapOidcSettings();
+app.MapInfrastructureSettings();
+app.MapSystemControl();
+app.MapProviderConfigAdministration();
+app.MapParseRun();
+app.MapParseResult();
+app.MapParseExport();
 // The public non-archiving layout-detection endpoint (ADR-0013): API clients holding the
 // `layout:detect` scope only; interactive sessions are deliberately not admitted.
-app.MapLayoutDetectEndpoints();
+app.MapLayoutDetect();
 // The public non-archiving image text-recognition endpoint (ADR-0015): API clients holding the
 // `image:recognize` scope only, and only when Recognition:Enabled is on.
-app.MapImageRecognizeEndpoints();
-app.MapResourceDeletionEndpoints();
+app.MapImageRecognize();
+app.MapResourceDeletion();
 
 app.MapServiceMantleHealthEndpoints();
 

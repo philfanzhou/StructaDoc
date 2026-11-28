@@ -13,14 +13,6 @@ from __future__ import annotations
 
 from typing import Any
 
-# The layout-only entry points, left untouched.
-LAYOUT_METHODS = frozenset({
-    "layout_detect",
-    "batch_layout_detect",
-    "aio_layout_detect",
-    "aio_batch_layout_detect",
-})
-
 # Content recognition and full document parsing: the paths this worker must
 # never invoke. Everything public on MinerUClient that is not a layout method,
 # an accessor, or lifecycle management.

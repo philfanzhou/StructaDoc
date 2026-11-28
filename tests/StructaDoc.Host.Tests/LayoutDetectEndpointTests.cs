@@ -474,7 +474,7 @@ public sealed class LayoutDetectEndpointTests
         var countsBefore = await TakeCountsAsync(factory.Host);
 
         var requests = Enumerable
-            .Range(0, LayoutDetectInFlightGate.Capacity + 1)
+            .Range(0, DetectInFlightGate.Capacity + 1)
             .Select(_ => client.PostWithApiKeyAsync(
                 Route,
                 CreateUpload(CreatePng(100, 100), "page.png", "image/png"),
@@ -489,7 +489,7 @@ public sealed class LayoutDetectEndpointTests
         // is the 429 itself, observed while every slot was still held, so no slot can free early
         // under runner load and let the ninth request in.
         await WaitForAsync(
-            () => factory.Stub.PeakInFlight >= LayoutDetectInFlightGate.Capacity
+            () => factory.Stub.PeakInFlight >= DetectInFlightGate.Capacity
                 && requests.Count(request => request.IsCompleted) == 1,
             TimeSpan.FromSeconds(30));
         release.TrySetResult();
@@ -497,7 +497,7 @@ public sealed class LayoutDetectEndpointTests
 
         var statuses = responses.Select(response => response.StatusCode).OrderBy(code => code).ToArray();
         Assert.Equal(
-            Enumerable.Repeat(HttpStatusCode.OK, LayoutDetectInFlightGate.Capacity)
+            Enumerable.Repeat(HttpStatusCode.OK, DetectInFlightGate.Capacity)
                 .Append(HttpStatusCode.TooManyRequests)
                 .OrderBy(code => code)
                 .ToArray(),
@@ -506,7 +506,7 @@ public sealed class LayoutDetectEndpointTests
         // The rejected request was answered before execution began, with a retry hint.
         var rejected = responses.Single(response => response.StatusCode == HttpStatusCode.TooManyRequests);
         Assert.Equal("1", GetHeader(rejected, "Retry-After"));
-        Assert.Equal(LayoutDetectInFlightGate.Capacity, factory.Stub.RequestCount);
+        Assert.Equal(DetectInFlightGate.Capacity, factory.Stub.RequestCount);
         foreach (var response in responses)
         {
             response.Dispose();

@@ -38,20 +38,6 @@ public sealed class ProviderExecutionAbstractionTests
         Assert.Equal("provider-test-credential", credential.Reveal());
     }
 
-    [Theory]
-    [InlineData("../result.zip")]
-    [InlineData("result\\archive.zip")]
-    [InlineData(" result.zip")]
-    [InlineData("result\narchive.zip")]
-    public void Provider_result_rejects_unsafe_display_file_names(string fileName)
-    {
-        Assert.Throws<ArgumentException>(() =>
-            new ProviderResultContent(
-                new MemoryStream("result"u8.ToArray()),
-                "application/zip",
-                fileName));
-    }
-
     [Fact]
     public void Resolver_rejects_duplicate_types_and_returns_the_matching_provider()
     {
@@ -155,10 +141,10 @@ public sealed class ProviderExecutionAbstractionTests
                 await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
             }
 
-            ParseRunLease runningLease;
+            RunLease runningLease;
             await using (var dbContext = new StructaDocDbContext(options))
             {
-                var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+                var leaseStore = new EfCoreRunLeaseStore(dbContext);
                 var claimedLease = await leaseStore.TryClaimNextAsync(
                     "execution-test-worker",
                     nowUtc,
@@ -166,8 +152,8 @@ public sealed class ProviderExecutionAbstractionTests
                     TestContext.Current.CancellationToken);
                 Assert.NotNull(claimedLease);
 
-                var stateStore = new EfCoreParseRunStateStore(dbContext);
-                runningLease = Assert.IsType<ParseRunLease>(await stateStore.TryStartAsync(
+                var stateStore = new EfCoreRunStateStore(dbContext);
+                runningLease = Assert.IsType<RunLease>(await stateStore.TryStartAsync(
                     claimedLease,
                     ParseRunStages.Validating,
                     nowUtc.AddSeconds(1),
@@ -176,7 +162,7 @@ public sealed class ProviderExecutionAbstractionTests
 
             await using (var dbContext = new StructaDocDbContext(options))
             {
-                var store = new EfCoreParseRunExecutionContextStore(
+                var store = new EfCoreRunExecutionContextStore(
                     dbContext,
                     new TestSecretProtector(),
                     new TestSecretProtector());
@@ -205,23 +191,23 @@ public sealed class ProviderExecutionAbstractionTests
                 Assert.Null(staleContext);
             }
 
-            ParseRunLease checkpointedLease;
+            RunLease checkpointedLease;
             var checkpoint = new ProviderSubmissionCheckpoint(
                 "batch-1",
                 "https://upload.example/signed?secret=value");
             await using (var dbContext = new StructaDocDbContext(options))
             {
-                var stateStore = new EfCoreParseRunStateStore(dbContext);
-                var submittingLease = Assert.IsType<ParseRunLease>(
+                var stateStore = new EfCoreRunStateStore(dbContext);
+                var submittingLease = Assert.IsType<RunLease>(
                     await stateStore.TryUpdateStageAsync(
                         runningLease,
                         ParseRunStages.Submitting,
                         nowUtc.AddSeconds(3),
                         TestContext.Current.CancellationToken));
-                var checkpointStore = new EfCoreParseRunSubmissionCheckpointStore(
+                var checkpointStore = new EfCoreRunSubmissionCheckpointStore(
                     dbContext,
                     new TestSecretProtector());
-                checkpointedLease = Assert.IsType<ParseRunLease>(
+                checkpointedLease = Assert.IsType<RunLease>(
                     await checkpointStore.TrySaveAsync(
                         submittingLease,
                         checkpoint,
@@ -239,7 +225,7 @@ public sealed class ProviderExecutionAbstractionTests
 
             await using (var dbContext = new StructaDocDbContext(options))
             {
-                var contextStore = new EfCoreParseRunExecutionContextStore(
+                var contextStore = new EfCoreRunExecutionContextStore(
                     dbContext,
                     new TestSecretProtector(),
                     new TestSecretProtector());
@@ -258,7 +244,7 @@ public sealed class ProviderExecutionAbstractionTests
                     context.SubmissionCheckpoint.ToString(),
                     StringComparison.Ordinal);
 
-                var checkpointStore = new EfCoreParseRunSubmissionCheckpointStore(
+                var checkpointStore = new EfCoreRunSubmissionCheckpointStore(
                     dbContext,
                     new TestSecretProtector());
                 var completedLease = await checkpointStore.TryCompleteAsync(

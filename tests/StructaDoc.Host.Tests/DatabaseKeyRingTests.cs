@@ -79,7 +79,7 @@ public sealed class DatabaseKeyRingTests
         deployment.MigrateBusinessDatabaseBlocking();
 
         var rightRing = DataProtectionKeyRing.CreateDatabase(
-            new AuthenticationBootstrapOptions
+            new BootstrapOptions
             {
                 DataProtectionKeyPersistence = DataProtectionKeyPersistence.Database,
                 DataProtectionRootKey = RootKey,
@@ -88,7 +88,7 @@ public sealed class DatabaseKeyRingTests
         var protectedValue = rightRing.CreateProtector("probe").Protect("shared secret");
 
         var wrongRing = DataProtectionKeyRing.CreateDatabase(
-            new AuthenticationBootstrapOptions
+            new BootstrapOptions
             {
                 DataProtectionKeyPersistence = DataProtectionKeyPersistence.Database,
                 DataProtectionRootKey = "a-different-root-key",
@@ -198,7 +198,7 @@ public sealed class DatabaseKeyRingTests
         public async Task MigrateBusinessDatabaseAsync()
         {
             var optionsBuilder = new DbContextOptionsBuilder<StructaDocDbContext>();
-            PersistenceServiceCollectionExtensions.ConfigureDatabase(optionsBuilder, DatabaseOptions);
+            Adapters.Persistence.ServiceCollectionExtensions.ConfigureDatabase(optionsBuilder, DatabaseOptions);
             await using var context = new StructaDocDbContext(optionsBuilder.Options);
             await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
         }
@@ -342,7 +342,7 @@ public sealed class DatabaseKeyRingTests
                             },
                             [],
                             new FakeSettingSecretProtector(),
-                            new SettingsStartupFault()));
+                            new StartupFault()));
                     });
                 }
             }

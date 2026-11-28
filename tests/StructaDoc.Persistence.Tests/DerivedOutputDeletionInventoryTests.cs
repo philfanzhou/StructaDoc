@@ -52,7 +52,7 @@ public sealed class DerivedOutputDeletionInventoryTests
 
         // The production normalizer rejects the negative page only after it already stored the
         // derived Markdown, Content List, and manifest.
-        var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var error = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             environment.Normalizer.NormalizeAsync(
                 new(parseRunId, ProviderTypes.MinerUCloud, archive),
                 cancellationToken));
@@ -102,7 +102,7 @@ public sealed class DerivedOutputDeletionInventoryTests
             Fault = new IOException("synthetic write outage"),
         };
         var faultingNormalizer = environment.CreateNormalizer(faulting);
-        var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var error = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             faultingNormalizer.NormalizeAsync(
                 new(parseRunId, ProviderTypes.MinerUCloud, archive),
                 cancellationToken));
@@ -186,7 +186,7 @@ public sealed class DerivedOutputDeletionInventoryTests
             Fault = new IOException("synthetic write outage"),
         };
         var faultingNormalizer = environment.CreateNormalizer(faulting);
-        await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             faultingNormalizer.NormalizeAsync(
                 new(parseRunId, ProviderTypes.MinerUCloud, archive),
                 cancellationToken));
@@ -434,7 +434,7 @@ public sealed class DerivedOutputDeletionInventoryTests
             (
                 "content_list.json",
                 """[{"type":"text","text":"Synthetic test","page_idx":-1}]"""u8.ToArray()));
-        var error = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var error = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             environment.Normalizer.NormalizeAsync(
                 new(currentRunId, ProviderTypes.MinerUCloud, archive),
                 cancellationToken));
@@ -490,7 +490,7 @@ public sealed class DerivedOutputDeletionInventoryTests
     private static async Task AssertManifestAsync(
         InventoryEnvironment environment,
         Guid parseRunId,
-        StoredProviderArchive archive,
+        StoredArchive archive,
         IReadOnlyList<string> expectedOutputs)
     {
         var bytes = await environment.ReadAllBytesAsync(
@@ -599,7 +599,7 @@ public sealed class DerivedOutputDeletionInventoryTests
         IFileStorage storage,
         Func<string, bool> exists,
         DbContextOptions<StructaDocDbContext> options,
-        ProviderResultNormalizationOptions normalizationOptions,
+        ResultNormalizationOptions normalizationOptions,
         string rootPath) : IDisposable
     {
         public static async Task<InventoryEnvironment> CreateLocalAsync(string? rootPath = null)
@@ -644,7 +644,7 @@ public sealed class DerivedOutputDeletionInventoryTests
                 storage,
                 exists,
                 options,
-                new ProviderResultNormalizationOptions
+                new ResultNormalizationOptions
                 {
                     MaxMarkdownBytes = 1024 * 1024,
                     MaxJsonBytes = 1024 * 1024,
@@ -656,13 +656,11 @@ public sealed class DerivedOutputDeletionInventoryTests
 
         public IFileStorage Storage => storage;
 
-        public ProviderResultNormalizationOptions NormalizationOptions => normalizationOptions;
-
         public DbContextOptions<StructaDocDbContext> Options => options;
 
-        public StoredProviderResultIntake Intake { get; } = new(
+        public StoredResultIntake Intake { get; } = new(
             storage,
-            new ProviderResultIntakeOptions
+            new ResultIntakeOptions
             {
                 MaxArchiveBytes = 8 * 1024 * 1024,
                 MaxEntryCount = 100,
@@ -684,7 +682,7 @@ public sealed class DerivedOutputDeletionInventoryTests
             normalizationOptions,
             NullLogger<MinerUResultNormalizer>.Instance);
 
-        public async Task<StoredProviderArchive> StoreArchiveAsync(
+        public async Task<StoredArchive> StoreArchiveAsync(
             Guid parseRunId,
             params (string Path, byte[] Content)[] entries)
         {

@@ -11,7 +11,7 @@ public sealed class ParseRunLeaseHeartbeat(
     ILogger<ParseRunLeaseHeartbeat> logger)
 {
     public ParseRunLeaseSession StartSession(
-        ParseRunLease currentLease,
+        RunLease currentLease,
         CancellationToken stoppingToken = default)
     {
         ArgumentNullException.ThrowIfNull(currentLease);
@@ -49,7 +49,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
     private readonly CancellationTokenSource? deadlineSource;
     private readonly CancellationTokenSource executionSource;
     private readonly Task heartbeatTask;
-    private ParseRunLease currentLease;
+    private RunLease currentLease;
     private int disposed;
     private int leaseLost;
 
@@ -58,7 +58,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         ParseRunWorkerOptions options,
         TimeProvider timeProvider,
         ILogger logger,
-        ParseRunLease currentLease,
+        RunLease currentLease,
         CancellationToken stoppingToken)
     {
         this.serviceScopeFactory = serviceScopeFactory;
@@ -82,7 +82,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         heartbeatTask = RunHeartbeatAsync(executionSource.Token);
     }
 
-    public ParseRunLease CurrentLease => Volatile.Read(ref currentLease);
+    public RunLease CurrentLease => Volatile.Read(ref currentLease);
 
     public CancellationToken ExecutionCancellationToken => executionSource.Token;
 
@@ -97,13 +97,13 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         && deadlineSource.IsCancellationRequested
         && !IsLeaseLost;
 
-    public Task<ParseRunLease?> TryStartAsync(
+    public Task<RunLease?> TryStartAsync(
         string initialStage,
         CancellationToken cancellationToken = default)
     {
         return ApplyMutationAsync(
             (services, lease, nowUtc, operationToken) =>
-                services.GetRequiredService<IParseRunStateStore>().TryStartAsync(
+                services.GetRequiredService<IRunStateStore>().TryStartAsync(
                     lease,
                     initialStage,
                     nowUtc,
@@ -111,13 +111,13 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             cancellationToken);
     }
 
-    public Task<ParseRunLease?> TryUpdateStageAsync(
+    public Task<RunLease?> TryUpdateStageAsync(
         string stage,
         CancellationToken cancellationToken = default)
     {
         return ApplyMutationAsync(
             (services, lease, nowUtc, operationToken) =>
-                services.GetRequiredService<IParseRunStateStore>().TryUpdateStageAsync(
+                services.GetRequiredService<IRunStateStore>().TryUpdateStageAsync(
                     lease,
                     stage,
                     nowUtc,
@@ -125,13 +125,13 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             cancellationToken);
     }
 
-    public Task<ParseRunLease?> TryRecordProviderSubmissionAsync(
+    public Task<RunLease?> TryRecordProviderSubmissionAsync(
         string externalTaskId,
         CancellationToken cancellationToken = default)
     {
         return ApplyMutationAsync(
             (services, lease, nowUtc, operationToken) =>
-                services.GetRequiredService<IParseRunStateStore>()
+                services.GetRequiredService<IRunStateStore>()
                     .TryRecordProviderSubmissionAsync(
                         lease,
                         externalTaskId,
@@ -140,15 +140,15 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             cancellationToken);
     }
 
-    public Task<ParseRunLease?> TrySaveConversionAsync(
-        ParseRunConversion conversion,
+    public Task<RunLease?> TrySaveConversionAsync(
+        RunConversion conversion,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(conversion);
 
         return ApplyMutationAsync(
             (services, lease, nowUtc, operationToken) =>
-                services.GetRequiredService<IParseRunConversionStore>().TrySaveAsync(
+                services.GetRequiredService<IRunConversionStore>().TrySaveAsync(
                     lease,
                     conversion,
                     nowUtc,
@@ -156,7 +156,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             cancellationToken);
     }
 
-    public Task<ParseRunLease?> TrySaveSubmissionCheckpointAsync(
+    public Task<RunLease?> TrySaveSubmissionCheckpointAsync(
         ProviderSubmissionCheckpoint checkpoint,
         CancellationToken cancellationToken = default)
     {
@@ -164,7 +164,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
 
         return ApplyMutationAsync(
             (services, lease, nowUtc, operationToken) =>
-                services.GetRequiredService<IParseRunSubmissionCheckpointStore>().TrySaveAsync(
+                services.GetRequiredService<IRunSubmissionCheckpointStore>().TrySaveAsync(
                     lease,
                     checkpoint,
                     nowUtc,
@@ -172,7 +172,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             cancellationToken);
     }
 
-    public Task<ParseRunLease?> TryCompleteSubmissionCheckpointAsync(
+    public Task<RunLease?> TryCompleteSubmissionCheckpointAsync(
         ProviderSubmissionCheckpoint checkpoint,
         CancellationToken cancellationToken = default)
     {
@@ -180,7 +180,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
 
         return ApplyMutationAsync(
             (services, lease, nowUtc, operationToken) =>
-                services.GetRequiredService<IParseRunSubmissionCheckpointStore>().TryCompleteAsync(
+                services.GetRequiredService<IRunSubmissionCheckpointStore>().TryCompleteAsync(
                     lease,
                     checkpoint,
                     nowUtc,
@@ -188,15 +188,15 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             cancellationToken);
     }
 
-    public Task<ParseRunLease?> TryCreateSegmentsAsync(
-        IReadOnlyList<ParseSegmentCreation> segments,
+    public Task<RunLease?> TryCreateSegmentsAsync(
+        IReadOnlyList<SegmentCreation> segments,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(segments);
 
         return ApplyMutationAsync(
             (services, lease, nowUtc, operationToken) =>
-                services.GetRequiredService<IParseSegmentMutationStore>().TryCreateAsync(
+                services.GetRequiredService<ISegmentMutationStore>().TryCreateAsync(
                     lease,
                     segments,
                     nowUtc,
@@ -204,15 +204,15 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             cancellationToken);
     }
 
-    public Task<ParseRunLease?> TryUpdateSegmentCheckpointAsync(
-        ParseSegmentCheckpoint checkpoint,
+    public Task<RunLease?> TryUpdateSegmentCheckpointAsync(
+        SegmentCheckpoint checkpoint,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(checkpoint);
 
         return ApplyMutationAsync(
             (services, lease, nowUtc, operationToken) =>
-                services.GetRequiredService<IParseSegmentMutationStore>()
+                services.GetRequiredService<ISegmentMutationStore>()
                     .TryUpdateCheckpointAsync(
                         lease,
                         checkpoint,
@@ -221,7 +221,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             cancellationToken);
     }
 
-    public async Task<ParseRunExecutionContext?> LoadExecutionContextAsync(
+    public async Task<RunExecutionContext?> LoadExecutionContextAsync(
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -240,7 +240,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
 
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             return await scope.ServiceProvider
-                .GetRequiredService<IParseRunExecutionContextStore>()
+                .GetRequiredService<IRunExecutionContextStore>()
                 .LoadAsync(
                     CurrentLease,
                     timeProvider.GetUtcNow().UtcDateTime,
@@ -252,7 +252,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         }
     }
 
-    public async Task<ParseRunFailureTransition?> TryRecordFailureAsync(
+    public async Task<RunFailureTransition?> TryRecordFailureAsync(
         string errorCode,
         string? errorMessage,
         bool retryable,
@@ -283,7 +283,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             var transition = await scope.ServiceProvider
-                .GetRequiredService<IParseRunStateStore>()
+                .GetRequiredService<IRunStateStore>()
                 .TryRecordFailureAsync(
                     lease,
                     errorCode,
@@ -357,7 +357,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
             var renewedLease = await scope.ServiceProvider
-                .GetRequiredService<IParseRunLeaseStore>()
+                .GetRequiredService<IRunLeaseStore>()
                 .TryRenewLeaseAsync(
                     CurrentLease,
                     nowUtc,
@@ -425,7 +425,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         var lease = CurrentLease;
         await using var scope = serviceScopeFactory.CreateAsyncScope();
         return await scope.ServiceProvider
-            .GetRequiredService<IParseRunStateStore>()
+            .GetRequiredService<IRunStateStore>()
             .TryFinalizeOwnedCancellationAsync(
                 lease.ParseRunId,
                 lease.WorkerId,
@@ -477,7 +477,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
                 await Task.Delay(delay, timeProvider, cancellationToken);
                 var renewedLease = await ApplyMutationAsync(
                     (services, lease, nowUtc, operationToken) =>
-                        services.GetRequiredService<IParseRunLeaseStore>().TryRenewLeaseAsync(
+                        services.GetRequiredService<IRunLeaseStore>().TryRenewLeaseAsync(
                             lease,
                             nowUtc,
                             options.LeaseDuration,
@@ -515,8 +515,8 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         }
     }
 
-    private async Task<ParseRunLease?> ApplyMutationAsync(
-        Func<IServiceProvider, ParseRunLease, DateTime, CancellationToken, Task<ParseRunLease?>> mutation,
+    private async Task<RunLease?> ApplyMutationAsync(
+        Func<IServiceProvider, RunLease, DateTime, CancellationToken, Task<RunLease?>> mutation,
         CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
@@ -556,7 +556,7 @@ public sealed class ParseRunLeaseSession : IAsyncDisposable
         }
     }
 
-    private void MarkLeaseLost(ParseRunLease lease)
+    private void MarkLeaseLost(RunLease lease)
     {
         if (Interlocked.Exchange(ref leaseLost, 1) != 0)
         {

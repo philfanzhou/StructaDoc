@@ -17,12 +17,12 @@ namespace StructaDoc.Host.ParseRuns;
 /// </remarks>
 public static partial class ExportAssetLinkRewriter
 {
-    public static IReadOnlyDictionary<string, ParseAssetRecord> BuildAssetsByFileName(
-        IReadOnlyList<ParseAssetRecord> assets)
+    public static IReadOnlyDictionary<string, AssetRecord> BuildAssetsByFileName(
+        IReadOnlyList<AssetRecord> assets)
     {
         ArgumentNullException.ThrowIfNull(assets);
 
-        var byName = new Dictionary<string, ParseAssetRecord>(StringComparer.OrdinalIgnoreCase);
+        var byName = new Dictionary<string, AssetRecord>(StringComparer.OrdinalIgnoreCase);
         var ambiguous = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var asset in assets)
@@ -53,8 +53,8 @@ public static partial class ExportAssetLinkRewriter
     /// </summary>
     public static string Rewrite(
         string markdown,
-        IReadOnlyDictionary<string, ParseAssetRecord> assetsByFileName,
-        Func<ParseAssetRecord, string?> resolve)
+        IReadOnlyDictionary<string, AssetRecord> assetsByFileName,
+        Func<AssetRecord, string?> resolve)
     {
         ArgumentNullException.ThrowIfNull(markdown);
         ArgumentNullException.ThrowIfNull(assetsByFileName);
@@ -86,7 +86,7 @@ public static partial class ExportAssetLinkRewriter
 
     public static string RewriteSegmentImages(
         string markdown,
-        IReadOnlyDictionary<string, ParseAssetRecord> assetsByFileName,
+        IReadOnlyDictionary<string, AssetRecord> assetsByFileName,
         int segmentIndex) => Rewrite(
             markdown,
             assetsByFileName,
@@ -95,8 +95,8 @@ public static partial class ExportAssetLinkRewriter
     private static string ReplaceGroup(
         Match match,
         string groupName,
-        IReadOnlyDictionary<string, ParseAssetRecord> assetsByFileName,
-        Func<ParseAssetRecord, string?> resolve)
+        IReadOnlyDictionary<string, AssetRecord> assetsByFileName,
+        Func<AssetRecord, string?> resolve)
     {
         var group = match.Groups[groupName];
         if (!group.Success || !TryResolveFileName(group.Value, out var fileName))

@@ -106,7 +106,7 @@ public sealed class ParseRunExecution(
         var executionWorkerId = $"{workerId}:{Interlocked.Increment(ref executionCounter)}";
 
         await using var scope = serviceScopeFactory.CreateAsyncScope();
-        var leaseStore = scope.ServiceProvider.GetRequiredService<IParseRunLeaseStore>();
+        var leaseStore = scope.ServiceProvider.GetRequiredService<IRunLeaseStore>();
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
         var lease = await leaseStore.TryRecoverNextRunningAsync(
             executionWorkerId,
@@ -160,5 +160,5 @@ public sealed class ParseRunExecution(
         return $"{machine}:{Environment.ProcessId}:{Guid.NewGuid():N}";
     }
 
-    private readonly record struct ClaimedExecution(ParseRunLease Lease, bool AlreadyRunning);
+    private readonly record struct ClaimedExecution(RunLease Lease, bool AlreadyRunning);
 }

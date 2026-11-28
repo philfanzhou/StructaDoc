@@ -42,7 +42,7 @@ public sealed partial class MinerUResultNormalizerTests
                 ("model.json", "{}"u8.ToArray()),
                 .. PipelineFixtureImagePaths(contentList).Select(path => (path, JpegBytes())),
             ]);
-        var request = new ProviderResultNormalizationRequest(
+        var request = new ResultNormalizationRequest(
             parseRunId,
             ProviderTypes.MinerUCloud,
             archive,
@@ -290,7 +290,7 @@ public sealed partial class MinerUResultNormalizerTests
             ("full.md", "markdown"u8.ToArray()),
             ("content_list.json", Encoding.UTF8.GetBytes($"[{item}]")));
 
-        var exception = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             environment.Normalizer.NormalizeAsync(new(
                 parseRunId,
                 ProviderTypes.MinerUCloud,
@@ -572,7 +572,7 @@ public sealed partial class MinerUResultNormalizerTests
         };
         var archive = await environment.StoreArchiveAsync(parseRunId, entries);
 
-        var exception = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             environment.Normalizer.NormalizeAsync(new(
                 parseRunId,
                 ProviderTypes.MinerUCloud,
@@ -595,7 +595,7 @@ public sealed partial class MinerUResultNormalizerTests
             ("one_content_list.json", "[]"u8.ToArray()),
             ("two_content_list.json", "[]"u8.ToArray()));
 
-        var exception = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             environment.Normalizer.NormalizeAsync(new(
                 parseRunId,
                 ProviderTypes.MinerUCloud,
@@ -615,7 +615,7 @@ public sealed partial class MinerUResultNormalizerTests
             ("one/result.md", "one"u8.ToArray()),
             ("two/result.md", "two"u8.ToArray()));
 
-        var markdownException = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var markdownException = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             environment.Normalizer.NormalizeAsync(new(
                 markdownParseRunId,
                 ProviderTypes.MinerULocal,
@@ -630,7 +630,7 @@ public sealed partial class MinerUResultNormalizerTests
             ("one/images/figure.png", PngBytes()),
             ("two/images/figure.png", PngBytes()));
 
-        var imageException = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var imageException = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             environment.Normalizer.NormalizeAsync(new(
                 imageParseRunId,
                 ProviderTypes.MinerULocal,
@@ -643,7 +643,7 @@ public sealed partial class MinerUResultNormalizerTests
     public async Task Enforces_markdown_limit_before_persisting_a_bundle()
     {
         using var environment = new NormalizerTestEnvironment(
-            normalizationOptions: new ProviderResultNormalizationOptions
+            normalizationOptions: new ResultNormalizationOptions
             {
                 MaxMarkdownBytes = 4,
                 MaxJsonBytes = 1024,
@@ -655,7 +655,7 @@ public sealed partial class MinerUResultNormalizerTests
             parseRunId,
             ("full.md", "too long"u8.ToArray()));
 
-        var exception = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             environment.Normalizer.NormalizeAsync(new(
                 parseRunId,
                 ProviderTypes.MinerUCloud,
@@ -675,7 +675,7 @@ public sealed partial class MinerUResultNormalizerTests
             ("full.md", "markdown"u8.ToArray()));
         var changedManifest = archive with { Entries = [] };
 
-        var exception = await Assert.ThrowsAsync<ProviderResultNormalizationException>(() =>
+        var exception = await Assert.ThrowsAsync<ResultNormalizationException>(() =>
             environment.Normalizer.NormalizeAsync(new(
                 parseRunId,
                 ProviderTypes.MinerUCloud,
@@ -697,7 +697,7 @@ public sealed partial class MinerUResultNormalizerTests
         var temporaryPath = Path.Combine(environment.RootPath, "normalizer-temp");
         var normalizer = new MinerUResultNormalizer(
             new NonSeekableReadStorage(environment.Storage),
-            new ProviderResultNormalizationOptions { TemporaryPath = temporaryPath },
+            new ResultNormalizationOptions { TemporaryPath = temporaryPath },
             new CapturingLogger());
 
         var bundle = await normalizer.NormalizeAsync(new(
@@ -769,7 +769,7 @@ public sealed partial class MinerUResultNormalizerTests
     private sealed class NormalizerTestEnvironment : IDisposable
     {
         public NormalizerTestEnvironment(
-            ProviderResultNormalizationOptions? normalizationOptions = null,
+            ResultNormalizationOptions? normalizationOptions = null,
             long maxEntryBytes = 1024 * 1024,
             double maxCompressionRatio = 1000)
         {
@@ -779,9 +779,9 @@ public sealed partial class MinerUResultNormalizerTests
                 Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(RootPath);
             Storage = new LocalFileStorage(new FileStorageOptions { RootPath = RootPath });
-            Intake = new StoredProviderResultIntake(
+            Intake = new StoredResultIntake(
                 Storage,
-                new ProviderResultIntakeOptions
+                new ResultIntakeOptions
                 {
                     MaxArchiveBytes = maxEntryBytes,
                     MaxEntryCount = 100,
@@ -792,7 +792,7 @@ public sealed partial class MinerUResultNormalizerTests
                 });
             Normalizer = new MinerUResultNormalizer(
                 Storage,
-                normalizationOptions ?? new ProviderResultNormalizationOptions
+                normalizationOptions ?? new ResultNormalizationOptions
                 {
                     MaxMarkdownBytes = 1024 * 1024,
                     MaxJsonBytes = maxEntryBytes,
@@ -808,11 +808,11 @@ public sealed partial class MinerUResultNormalizerTests
 
         public LocalFileStorage Storage { get; }
 
-        public StoredProviderResultIntake Intake { get; }
+        public StoredResultIntake Intake { get; }
 
         public MinerUResultNormalizer Normalizer { get; }
 
-        public async Task<StoredProviderArchive> StoreArchiveAsync(
+        public async Task<StoredArchive> StoreArchiveAsync(
             Guid parseRunId,
             params (string Path, byte[] Content)[] entries)
         {

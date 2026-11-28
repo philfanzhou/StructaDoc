@@ -1,0 +1,175 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Http.Features;
+using StructaDoc.Application.Authentication;
+using StructaDoc.Application.Documents;
+using StructaDoc.Application.Storage;
+using StructaDoc.Contracts.Documents;
+using StructaDoc.Host.Authentication;
+
+namespace StructaDoc.Host.Documents;
+
+public static class UploadEndpoints
+{
+    private const long MultipartOverheadAllowance = 1024 * 1024;
+
+    public static RouteHandlerBuilder MapDocumentUpload(
+        this IEndpointRouteBuilder endpoints)
+    {
+        // The request-size bound is set per request from the running limit rather than fixed here as
+        // mapping-time metadata, which is what lets an administrator change the upload ceiling
+        // without a restart. The filter resolves the limit each time the endpoint runs.
+        var limits = endpoints.ServiceProvider.GetRequiredService<DocumentUploadLimits>();
+
+        return endpoints.MapPost("/api/v1/documents", UploadDocumentAsync)
+            .WithName("UploadDocument")
+            .Accepts<IFormFile>("multipart/form-data")
+            .Produces<DocumentResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
+            .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
+            .RequireAuthorization(AuthorizationPolicies.DocumentsWrite)
+            .AddEndpointFilter(new UploadRequestSizeLimitFilter(limits));
+    }
+
+    private static async Task<IResult> UploadDocumentAsync(
+        HttpRequest request,
+        IDocumentIngestionService ingestionService,
+        IAntiforgery antiforgery,
+        CancellationToken cancellationToken)
+    {
+        if (!request.HasFormContentType)
+        {
+            return UploadProblem(
+                StatusCodes.Status415UnsupportedMediaType,
+                "multipart-required",
+                "The request must use multipart/form-data.");
+        }
+
+        try
+        {
+            if (!request.HttpContext.User.HasClaim(
+                    StructaDocClaimTypes.SubjectType,
+                    SubjectTypes.ApiClient))
+            {
+                await antiforgery.ValidateRequestAsync(request.HttpContext);
+            }
+
+            var form = await request.ReadFormAsync(cancellationToken);
+            var file = form.Files.GetFile("file");
+
+            if (file is null || form.Files.Count != 1)
+            {
+                return UploadProblem(
+                    StatusCodes.Status400BadRequest,
+                    "single-file-required",
+                    "Provide exactly one file in the 'file' form field.");
+            }
+
+            await using var content = file.OpenReadStream();
+            var actor = CanonicalActor.FromPrincipal(request.HttpContext.User);
+            var document = await ingestionService.IngestAsync(
+                new DocumentIngestionRequest(
+                    file.FileName,
+                    file.ContentType,
+                    content,
+                    actor,
+                    GetOwner(request.HttpContext.User, actor)),
+                cancellationToken);
+            var response = new DocumentResponse(
+                document.Id,
+                document.OriginalFileName,
+                document.MediaType,
+                document.Extension,
+                document.SizeBytes,
+                document.Sha256,
+                document.CreatedAtUtc);
+
+            return Results.Created($"/api/v1/documents/{document.Id:D}", response);
+        }
+        catch (FileSizeLimitExceededException exception)
+        {
+            return UploadProblem(
+                StatusCodes.Status413PayloadTooLarge,
+                "file-too-large",
+                exception.Message);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return UploadProblem(
+                StatusCodes.Status400BadRequest,
+                "invalid-antiforgery-token",
+                "A valid antiforgery token is required for administrator uploads.");
+        }
+        catch (UnsupportedDocumentTypeException exception)
+        {
+            return UploadProblem(
+                StatusCodes.Status415UnsupportedMediaType,
+                "unsupported-document-type",
+                exception.Message);
+        }
+        catch (InvalidDataException exception)
+        {
+            return UploadProblem(
+                StatusCodes.Status400BadRequest,
+                "invalid-upload",
+                exception.Message);
+        }
+        catch (ArgumentException exception)
+        {
+            return UploadProblem(
+                StatusCodes.Status400BadRequest,
+                "invalid-upload",
+                exception.Message);
+        }
+    }
+
+    // An upload is owned by whoever made it, and an API client is one of the principals that can.
+    // Without this the Document would be unowned, which is not the same as belonging to everyone:
+    // the client that uploaded it could not read it back except through the global access this
+    // change removed. An administrator upload stays unowned, because an administrator is not a
+    // workspace principal and reaches every Document in any case.
+    private static CanonicalActor? GetOwner(ClaimsPrincipal user, CanonicalActor actor)
+    {
+        return user.HasClaim(StructaDocClaimTypes.SubjectType, SubjectTypes.Administrator)
+            ? null
+            : actor;
+    }
+
+    private static IResult UploadProblem(int statusCode, string code, string detail)
+    {
+        return Results.Problem(
+            statusCode: statusCode,
+            title: "Document upload failed",
+            detail: detail,
+            extensions: new Dictionary<string, object?>
+            {
+                ["code"] = code,
+            });
+    }
+
+    /// <summary>
+    /// Bounds the request body to the upload limit in force at the moment the request arrives,
+    /// which is the outer half of a two-sided check: the server stops draining a body that cannot
+    /// fit under the current limit, and the storage write during ingestion remains the authority on
+    /// what "too large" means for the document itself. A host without a per-request body limit
+    /// feature — the test host, for one — simply leaves the limit where it was, and ingestion still
+    /// answers with the same 413.
+    /// </summary>
+    private sealed class UploadRequestSizeLimitFilter(DocumentUploadLimits limits) : IEndpointFilter
+    {
+        public ValueTask<object?> InvokeAsync(
+            EndpointFilterInvocationContext context,
+            EndpointFilterDelegate next)
+        {
+            var feature = context.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (feature is { IsReadOnly: false })
+            {
+                feature.MaxRequestBodySize =
+                    checked(limits.MaxUploadBytes + MultipartOverheadAllowance);
+            }
+
+            return next(context);
+        }
+    }
+}

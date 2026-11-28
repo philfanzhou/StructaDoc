@@ -50,7 +50,7 @@ internal static class ParseRunLeaseContract
         var originalLease = successfulClaims[0]!;
         await using (var dbContext = new StructaDocDbContext(options))
         {
-            var store = new EfCoreParseRunLeaseStore(dbContext);
+            var store = new EfCoreRunLeaseStore(dbContext);
             var renewedLease = await store.TryRenewLeaseAsync(
                 originalLease,
                 nowUtc.AddSeconds(10),
@@ -69,7 +69,7 @@ internal static class ParseRunLeaseContract
         var retryAtUtc = nowUtc.AddMinutes(2);
         await using (var dbContext = new StructaDocDbContext(options))
         {
-            var store = new EfCoreParseRunStateStore(dbContext);
+            var store = new EfCoreRunStateStore(dbContext);
             var runningLease = await store.TryStartAsync(
                 retryLease,
                 ParseRunStages.Validating,
@@ -103,7 +103,7 @@ internal static class ParseRunLeaseContract
                     .SetProperty(
                         parseRun => parseRun.LeaseExpiresAtUtc,
                         nowUtc.AddSeconds(-1)));
-            var store = new EfCoreParseRunLeaseStore(dbContext);
+            var store = new EfCoreRunLeaseStore(dbContext);
             var recoveredCount = await store.RequeueExpiredUnstartedClaimsAsync(
                 nowUtc,
                 maxCount: ParseRunCount);
@@ -113,7 +113,7 @@ internal static class ParseRunLeaseContract
 
         await using (var dbContext = new StructaDocDbContext(options))
         {
-            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            var stateStore = new EfCoreRunStateStore(dbContext);
             var runningLease = await stateStore.TryStartAsync(
                 externalTaskLease,
                 ParseRunStages.Submitting,
@@ -122,7 +122,7 @@ internal static class ParseRunLeaseContract
             var checkpoint = new ProviderSubmissionCheckpoint(
                 "provider-task-1",
                 "https://upload.example/signed?secret=value");
-            var checkpointStore = new EfCoreParseRunSubmissionCheckpointStore(
+            var checkpointStore = new EfCoreRunSubmissionCheckpointStore(
                 dbContext,
                 new ContractSecretProtector());
             var checkpointedLease = await checkpointStore.TrySaveAsync(
@@ -149,11 +149,11 @@ internal static class ParseRunLeaseContract
                         nowUtc.AddSeconds(-1)));
         }
 
-        ParseRunLease recoveredRunningLease;
+        RunLease recoveredRunningLease;
         await using (var dbContext = new StructaDocDbContext(options))
         {
-            var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
-            recoveredRunningLease = Assert.IsType<ParseRunLease>(
+            var leaseStore = new EfCoreRunLeaseStore(dbContext);
+            recoveredRunningLease = Assert.IsType<RunLease>(
                 await leaseStore.TryRecoverNextRunningAsync(
                     "recovery-worker",
                     nowUtc,
@@ -172,7 +172,7 @@ internal static class ParseRunLeaseContract
         var unknownSubmissionLease = successfulClaims[6]!;
         await using (var dbContext = new StructaDocDbContext(options))
         {
-            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            var stateStore = new EfCoreRunStateStore(dbContext);
             Assert.NotNull(await stateStore.TryStartAsync(
                 safeUnsubmittedLease,
                 ParseRunStages.Validating,
@@ -189,7 +189,7 @@ internal static class ParseRunLeaseContract
                     parseRun => parseRun.LeaseExpiresAtUtc,
                     nowUtc.AddSeconds(-1)));
 
-            var recovery = await new EfCoreParseRunLeaseStore(dbContext)
+            var recovery = await new EfCoreRunLeaseStore(dbContext)
                 .RecoverExpiredUnsubmittedRunsAsync(
                     nowUtc,
                     maxCount: ParseRunCount);
@@ -205,7 +205,7 @@ internal static class ParseRunLeaseContract
         var convertedFile = resultStorage.Add(
             $"parse-runs/{resultLease.ParseRunId:N}/conversions/normalized.pdf",
             "%PDF-1.7\ncontract-conversion"u8.ToArray());
-        var conversion = new ParseRunConversion(
+        var conversion = new RunConversion(
             "libreoffice",
             "LibreOffice contract-version",
             "application/pdf",
@@ -245,13 +245,13 @@ internal static class ParseRunLeaseContract
             "{\"providerType\":\"test-provider\"}");
         await using (var dbContext = new StructaDocDbContext(options))
         {
-            var stateStore = new EfCoreParseRunStateStore(dbContext);
+            var stateStore = new EfCoreRunStateStore(dbContext);
             var runningLease = await stateStore.TryStartAsync(
                 resultLease,
                 ParseRunStages.Converting,
                 nowUtc.AddSeconds(1));
             Assert.NotNull(runningLease);
-            var convertedLease = await new EfCoreParseRunConversionStore(dbContext).TrySaveAsync(
+            var convertedLease = await new EfCoreRunConversionStore(dbContext).TrySaveAsync(
                 runningLease,
                 conversion,
                 nowUtc.AddSeconds(2));
@@ -288,24 +288,24 @@ internal static class ParseRunLeaseContract
         var abandonedCancellationLease = successfulClaims[8]!;
         await using (var dbContext = new StructaDocDbContext(options))
         {
-            var service = new EfCoreParseRunService(dbContext);
-            var stateStore = new EfCoreParseRunStateStore(dbContext);
-            var leaseStore = new EfCoreParseRunLeaseStore(dbContext);
+            var service = new EfCoreRunService(dbContext);
+            var stateStore = new EfCoreRunStateStore(dbContext);
+            var leaseStore = new EfCoreRunLeaseStore(dbContext);
 
             // A final run is never reopened.
             var finalResult = await service.RequestCancellationAsync(
                 resultLease.ParseRunId,
                 nowUtc.AddSeconds(8));
-            Assert.Equal(ParseRunCancellationStatus.AlreadyFinal, finalResult.Status);
+            Assert.Equal(RunCancellationStatus.AlreadyFinal, finalResult.Status);
             Assert.Equal(ParseRunStatuses.Succeeded, finalResult.ParseRun!.Status);
 
             var requested = await service.RequestCancellationAsync(
                 ownedCancellationLease.ParseRunId,
                 nowUtc.AddSeconds(9));
-            Assert.Equal(ParseRunCancellationStatus.Requested, requested.Status);
+            Assert.Equal(RunCancellationStatus.Requested, requested.Status);
             Assert.Equal(ParseRunStatuses.CancelRequested, requested.ParseRun!.Status);
             Assert.Equal(
-                ParseRunCancellationStatus.AlreadyRequested,
+                RunCancellationStatus.AlreadyRequested,
                 (await service.RequestCancellationAsync(
                     ownedCancellationLease.ParseRunId,
                     nowUtc.AddSeconds(10))).Status);
@@ -330,7 +330,7 @@ internal static class ParseRunLeaseContract
                 nowUtc.AddSeconds(14)));
 
             Assert.Equal(
-                ParseRunCancellationStatus.Requested,
+                RunCancellationStatus.Requested,
                 (await service.RequestCancellationAsync(
                     abandonedCancellationLease.ParseRunId,
                     nowUtc.AddSeconds(15))).Status);
@@ -413,7 +413,7 @@ internal static class ParseRunLeaseContract
             ApplyMigrationsOnStartup = false,
         };
         var optionsBuilder = new DbContextOptionsBuilder<StructaDocDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureDatabase(
+        Adapters.Persistence.ServiceCollectionExtensions.ConfigureDatabase(
             optionsBuilder,
             databaseOptions);
         return optionsBuilder.Options;
@@ -471,8 +471,8 @@ internal static class ParseRunLeaseContract
 
         await using (var creationContext = new StructaDocDbContext(options))
         {
-            var result = await new EfCoreParseRunService(creationContext).CreateAsync(
-                new ParseRunCreateRequest(
+            var result = await new EfCoreRunService(creationContext).CreateAsync(
+                new RunCreateRequest(
                     documentId,
                     configId,
                     "{}",
@@ -482,7 +482,7 @@ internal static class ParseRunLeaseContract
                         "11111111-1111-1111-1111-111111111111"),
                     null,
                     nowUtc));
-            Assert.Equal(ParseRunCreationStatus.Created, result.Status);
+            Assert.Equal(RunCreationStatus.Created, result.Status);
         }
 
         staleDocument.LifecycleState = ResourceLifecycleStates.DeletionPending;
@@ -522,22 +522,22 @@ internal static class ParseRunLeaseContract
         var expiredRunId = Guid.NewGuid();
         var cancelledRunId = Guid.NewGuid();
         var takeoverRunId = Guid.NewGuid();
-        var validLease = new ParseRunLease(
+        var validLease = new RunLease(
             validRunId,
             "segment-worker",
             1,
             nowUtc.AddMinutes(5));
-        var expiredLease = new ParseRunLease(
+        var expiredLease = new RunLease(
             expiredRunId,
             "expired-segment-worker",
             1,
             nowUtc.AddSeconds(1));
-        var cancelledLease = new ParseRunLease(
+        var cancelledLease = new RunLease(
             cancelledRunId,
             "cancelled-segment-worker",
             1,
             nowUtc.AddMinutes(5));
-        var takeoverLease = new ParseRunLease(
+        var takeoverLease = new RunLease(
             takeoverRunId,
             "original-segment-worker",
             1,
@@ -569,20 +569,20 @@ internal static class ParseRunLeaseContract
         }
 
         var validSegment = Segment(validRunId, 0);
-        ParseRunLease checkpointLease;
+        RunLease checkpointLease;
         await using (var dbContext = new StructaDocDbContext(options))
         {
-            var store = new EfCoreParseSegmentMutationStore(dbContext);
-            var createdLease = Assert.IsType<ParseRunLease>(await store.TryCreateAsync(
+            var store = new EfCoreSegmentMutationStore(dbContext);
+            var createdLease = Assert.IsType<RunLease>(await store.TryCreateAsync(
                 validLease,
                 [validSegment],
                 nowUtc));
             Assert.Equal(validLease.ConcurrencyVersion + 1, createdLease.ConcurrencyVersion);
 
-            checkpointLease = Assert.IsType<ParseRunLease>(
+            checkpointLease = Assert.IsType<RunLease>(
                 await store.TryUpdateCheckpointAsync(
                     createdLease,
-                    new ParseSegmentCheckpoint(
+                    new SegmentCheckpoint(
                         validSegment.Id,
                         "submitted",
                         "segment-task-1",
@@ -604,14 +604,14 @@ internal static class ParseRunLeaseContract
         await using (var dbContext = new StructaDocDbContext(options))
         {
             var expiredSegment = Segment(expiredRunId, 0);
-            var store = new EfCoreParseSegmentMutationStore(dbContext);
-            var createdLease = Assert.IsType<ParseRunLease>(await store.TryCreateAsync(
+            var store = new EfCoreSegmentMutationStore(dbContext);
+            var createdLease = Assert.IsType<RunLease>(await store.TryCreateAsync(
                 expiredLease,
                 [expiredSegment],
                 nowUtc));
             Assert.Null(await store.TryUpdateCheckpointAsync(
                 createdLease,
-                new ParseSegmentCheckpoint(expiredSegment.Id, "submitted", "too-late", null),
+                new SegmentCheckpoint(expiredSegment.Id, "submitted", "too-late", null),
                 nowUtc.AddSeconds(2)));
             var lateSegment = Segment(expiredRunId, 1);
             Assert.Null(await store.TryCreateAsync(
@@ -630,17 +630,17 @@ internal static class ParseRunLeaseContract
         await using (var dbContext = new StructaDocDbContext(options))
         {
             var cancelledSegment = Segment(cancelledRunId, 0);
-            var store = new EfCoreParseSegmentMutationStore(dbContext);
-            var createdLease = Assert.IsType<ParseRunLease>(await store.TryCreateAsync(
+            var store = new EfCoreSegmentMutationStore(dbContext);
+            var createdLease = Assert.IsType<RunLease>(await store.TryCreateAsync(
                 cancelledLease,
                 [cancelledSegment],
                 nowUtc));
-            var cancellation = await new EfCoreParseRunService(dbContext)
+            var cancellation = await new EfCoreRunService(dbContext)
                 .RequestCancellationAsync(cancelledRunId, nowUtc.AddSeconds(1));
-            Assert.Equal(ParseRunCancellationStatus.Requested, cancellation.Status);
+            Assert.Equal(RunCancellationStatus.Requested, cancellation.Status);
             Assert.Null(await store.TryUpdateCheckpointAsync(
                 createdLease,
-                new ParseSegmentCheckpoint(cancelledSegment.Id, "submitted", "too-late", null),
+                new SegmentCheckpoint(cancelledSegment.Id, "submitted", "too-late", null),
                 nowUtc.AddSeconds(2)));
             var postCancellationSegment = Segment(cancelledRunId, 1);
             Assert.Null(await store.TryCreateAsync(
@@ -660,13 +660,13 @@ internal static class ParseRunLeaseContract
         await using (var dbContext = new StructaDocDbContext(options))
         {
             var takeoverSegment = Segment(takeoverRunId, 0);
-            var store = new EfCoreParseSegmentMutationStore(dbContext);
-            var preTakeoverLease = Assert.IsType<ParseRunLease>(await store.TryCreateAsync(
+            var store = new EfCoreSegmentMutationStore(dbContext);
+            var preTakeoverLease = Assert.IsType<RunLease>(await store.TryCreateAsync(
                 takeoverLease,
                 [takeoverSegment],
                 nowUtc.AddSeconds(-2)));
-            var recoveredLease = Assert.IsType<ParseRunLease>(
-                await new EfCoreParseRunLeaseStore(dbContext).TryRecoverNextRunningAsync(
+            var recoveredLease = Assert.IsType<RunLease>(
+                await new EfCoreRunLeaseStore(dbContext).TryRecoverNextRunningAsync(
                     "takeover-segment-worker",
                     nowUtc,
                     TimeSpan.FromMinutes(5)));
@@ -674,17 +674,17 @@ internal static class ParseRunLeaseContract
 
             Assert.Null(await store.TryUpdateCheckpointAsync(
                 preTakeoverLease,
-                new ParseSegmentCheckpoint(takeoverSegment.Id, "submitted", "stale-task", null),
+                new SegmentCheckpoint(takeoverSegment.Id, "submitted", "stale-task", null),
                 nowUtc.AddSeconds(1)));
             var competingSegment = Segment(takeoverRunId, 1);
             Assert.Null(await store.TryCreateAsync(
                 recoveredLease with { WorkerId = "competing-segment-worker" },
                 [competingSegment],
                 nowUtc.AddSeconds(1)));
-            var takeoverCheckpointLease = Assert.IsType<ParseRunLease>(
+            var takeoverCheckpointLease = Assert.IsType<RunLease>(
                 await store.TryUpdateCheckpointAsync(
                     recoveredLease,
-                    new ParseSegmentCheckpoint(
+                    new SegmentCheckpoint(
                         takeoverSegment.Id,
                         "submitted",
                         "takeover-task",
@@ -716,7 +716,7 @@ internal static class ParseRunLeaseContract
         }
 
         static ParseRunEntity CreateRunningRun(
-            ParseRunLease lease,
+            RunLease lease,
             Guid documentId,
             DateTime createdAtUtc,
             string? externalTaskId = null) => new()
@@ -742,7 +742,7 @@ internal static class ParseRunLeaseContract
                 ConcurrencyVersion = lease.ConcurrencyVersion,
             };
 
-        static ParseSegmentCreation Segment(Guid parseRunId, int index) => new(
+        static SegmentCreation Segment(Guid parseRunId, int index) => new(
             Guid.NewGuid(),
             index,
             index + 1,
@@ -858,13 +858,13 @@ internal static class ParseRunLeaseContract
             .Where(document => document.Id == documentId)
             .ExecuteDeleteAsync();
 
-        ParseRunLease Lease(string workerId) => new(
+        RunLease Lease(string workerId) => new(
             Guid.NewGuid(),
             workerId,
             1,
             nowUtc.AddMinutes(5));
 
-        ParseRunEntity Run(ParseRunLease lease) => new()
+        ParseRunEntity Run(RunLease lease) => new()
         {
             Id = lease.ParseRunId,
             DocumentId = documentId,
@@ -961,8 +961,8 @@ internal static class ParseRunLeaseContract
 
         await using (var dbContext = new StructaDocDbContext(options))
         {
-            var store = new EfCoreParseRunStateStore(dbContext);
-            var persistingLease = Assert.IsType<ParseRunLease>(
+            var store = new EfCoreRunStateStore(dbContext);
+            var persistingLease = Assert.IsType<RunLease>(
                 await store.TryUpdateStageAsync(
                     validLease,
                     ParseRunStages.Persisting,
@@ -1022,14 +1022,14 @@ internal static class ParseRunLeaseContract
             .Where(document => document.Id == documentId)
             .ExecuteDeleteAsync();
 
-        ParseRunLease Lease(string workerId, DateTime? leaseExpiresAtUtc = null) => new(
+        RunLease Lease(string workerId, DateTime? leaseExpiresAtUtc = null) => new(
             Guid.NewGuid(),
             workerId,
             1,
             leaseExpiresAtUtc ?? nowUtc.AddMinutes(5));
 
         ParseRunEntity Run(
-            ParseRunLease lease,
+            RunLease lease,
             string stage,
             string? externalTaskId = null) => new()
             {
@@ -1191,13 +1191,13 @@ internal static class ParseRunLeaseContract
             (await service.RotateCredentialAsync(existing.Id)).Status);
     }
 
-    private static async Task<ParseRunLease?> ClaimOneAsync(
+    private static async Task<RunLease?> ClaimOneAsync(
         DbContextOptions<StructaDocDbContext> options,
         string workerId,
         DateTime nowUtc)
     {
         await using var dbContext = new StructaDocDbContext(options);
-        var store = new EfCoreParseRunLeaseStore(dbContext);
+        var store = new EfCoreRunLeaseStore(dbContext);
         return await store.TryClaimNextAsync(
             workerId,
             nowUtc,

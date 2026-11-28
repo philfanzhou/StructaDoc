@@ -14,9 +14,9 @@ namespace StructaDoc.Host.Authentication;
 /// </summary>
 public static class OidcConfigurationBinder
 {
-    public static OidcAuthenticationOptions Bind(
+    public static OidcOptions Bind(
         SettingsConfiguration settings,
-        SettingsStartupFault fault)
+        StartupFault fault)
     {
         return RecoverableConfigurationBinder.Bind(
             settings,
@@ -27,10 +27,10 @@ public static class OidcConfigurationBinder
             options => options.Validate());
     }
 
-    private static OidcAuthenticationOptions Read(IConfiguration configuration)
+    private static OidcOptions Read(IConfiguration configuration)
     {
         return configuration
-            .GetSection(OidcAuthenticationOptions.SectionName)
-            .Get<OidcAuthenticationOptions>() ?? new OidcAuthenticationOptions();
+            .GetSection(OidcOptions.SectionName)
+            .Get<OidcOptions>() ?? new OidcOptions();
     }
 }

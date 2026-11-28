@@ -24,9 +24,6 @@ namespace StructaDoc.Adapters.Providers;
 /// </summary>
 public sealed class MinerUCloudLayoutDetectionProvider : ILayoutDetectionProvider
 {
-    /// <summary>The deadline bound across the whole exchange that the shipped defaults describe.</summary>
-    public static readonly TimeSpan DefaultDeadline = MinerUCloudImageExchange.DefaultDeadline;
-
     /// <summary>
     /// The concurrency bound for cloud image exchanges, shared with the recognition mode through
     /// <see cref="MinerUCloudExchangeLimiter"/>: the account behind the credential is shared with
@@ -40,9 +37,6 @@ public sealed class MinerUCloudLayoutDetectionProvider : ILayoutDetectionProvide
     /// it exists so a hostile or broken result endpoint cannot describe an unbounded download.
     /// </summary>
     public const long MaximumArchiveBytes = MinerUCloudImageExchange.MaximumArchiveBytes;
-
-    /// <summary>The bound on the single layout JSON entry read out of that archive.</summary>
-    public const long MaximumLayoutJsonBytes = MinerUCloudImageExchange.MaximumLayoutJsonBytes;
 
     /// <summary>
     /// The least-work switches (<c>is_ocr</c>, <c>enable_table</c>, <c>enable_formula</c> all

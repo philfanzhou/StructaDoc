@@ -205,10 +205,10 @@ public sealed class EfCoreResourceDeletionService(
 
             if (run.ConversionJson is not null)
             {
-                ParseRunConversion conversion;
+                RunConversion conversion;
                 try
                 {
-                    conversion = ParseRunConversion.FromJson(run.ConversionJson);
+                    conversion = RunConversion.FromJson(run.ConversionJson);
                 }
                 catch (JsonException)
                 {

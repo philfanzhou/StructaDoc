@@ -353,7 +353,7 @@ public sealed class ResourceCleanupTests
             Directory.CreateDirectory(directoryPath);
             var services = new ServiceCollection();
             services.AddDbContext<StructaDocDbContext>(options =>
-                PersistenceServiceCollectionExtensions.ConfigureDatabase(
+                ServiceCollectionExtensions.ConfigureDatabase(
                     options,
                     new DatabaseOptions
                     {

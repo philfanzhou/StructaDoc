@@ -38,7 +38,7 @@ public sealed class S3FileStorageTests
 
         await using (var conflict = new MemoryStream("different-segment"u8.ToArray(), writable: false))
         {
-            var exception = await Assert.ThrowsAsync<StorageObjectConflictException>(
+            var exception = await Assert.ThrowsAsync<ObjectConflictException>(
                 () => storage.WriteAsync(
                     storageRef,
                     conflict,
