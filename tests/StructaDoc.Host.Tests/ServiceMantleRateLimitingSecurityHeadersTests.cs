@@ -354,7 +354,7 @@ public sealed class ServiceMantleRateLimitingSecurityHeadersTests(HostWebApplica
         foreach (var name in BaselineHeaders.Keys)
         {
             Assert.False(
-                response.Headers.TryGetValues(name, out var values),
+                response.Headers.TryGetValues(name, out _),
                 $"the response carries a {name} header it must not have");
         }
     }
